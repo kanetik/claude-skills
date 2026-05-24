@@ -1,0 +1,8 @@
+{
+  "name": "kanetik-skills",
+  "skills": [
+    "./skills/translate-strings",
+    "./skills/translate-content",
+    "./skills/whats-new"
+  ]
+}
