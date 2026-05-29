@@ -1,8 +1,8 @@
 # Claude Skills
 
-A small collection of [Claude Code](https://claude.com/claude-code) skills focused on **localization for Android apps and Play Store content**.
+A collection of [Claude Code](https://claude.com/claude-code) skills I find useful and worth sharing. It isn't tied to one domain — whatever makes a good, self-contained skill can live here. (Several of the skills so far happen to deal with localization for Android and Play Store content, but that's just where I started, not the theme.)
 
-The skills here are deliberately small and single-purpose. Each one is a **pure transform** — it takes inputs, does the expert work, writes files, and stops. Figuring out *what* to translate (git ranges, "last PR", "what changed since master") is the conversation's job, not the skill's. Committing, pushing, and opening PRs are also the caller's job. Compose them with whatever commit/PR skills you already use.
+The skills here are deliberately small and single-purpose. Each one does **one job and nothing more**: it takes inputs, applies the expert work, and stops. A skill doesn't reach outside its own job — figuring out *what* to feed it (git ranges, "last PR", "what changed since master") is the conversation's job, and side concerns like committing or opening PRs belong to the caller **unless that work is the skill's actual domain** (a skill built to run a PR-review loop legitimately drives git and PRs — that's the point of it). Compose the small transforms with whatever commit/PR skills you already use.
 
 ## What's in here
 
@@ -108,15 +108,16 @@ The skills read this once per invocation and use it to find the source file, lis
 
 If you want to add to this collection (or fork it for your own), these are the rules I'm holding myself to:
 
-1. **Pure transforms.** Inputs → expertise → outputs. No git operations, no commits, no pushes, no PRs inside a skill. Those are the caller's concern.
+1. **Does its job and nothing more.** Inputs → expertise → outputs. A skill doesn't bolt on concerns outside its stated job or impose workflow the caller didn't ask for. Git operations, commits, pushes, and PRs are normally the caller's concern — *unless they are the skill's actual domain*, in which case doing them is the whole point.
 2. **Single responsibility.** One skill, one thing. `/translate-strings` and `/translate-content` are separate because XML resources and prose are different domains with different rules — better than one `/translate` with internal dispatch.
-3. **Project-agnostic.** No project-specific brand names, paths, or conventions baked into the skill. Those go in per-repo config files or per-repo `CLAUDE.md`.
-4. **Composable.** A skill should work the same whether the caller is a human typing a slash command, another skill, or a script. No assumptions about who's calling.
-5. **Conservative defaults.** Don't waste tokens re-translating what's already translated. The user can always force with `--retranslate`.
+3. **Self-contained and dependency-light.** A skill stands on its own when its folder is dropped into `~/.claude/skills/` — everything it needs lives inside the folder. Reference bundled files from `SKILL.md` by paths relative to `SKILL.md` (the documented supporting-files pattern; Claude resolves them against the skill's own directory, not the working directory). Files *executed* from a bash-injection command use the `${CLAUDE_SKILL_DIR}` substitution, since the working directory at run time is the project root. No absolute `~/.claude/...` assumptions. It doesn't demand tools a typical user wouldn't have; where a real dependency exists (`gh`, `jq`), it's stated, not silently assumed.
+4. **Project-agnostic.** No project-specific brand names, paths, or conventions baked into the skill. Those go in per-repo config files or per-repo `CLAUDE.md`.
+5. **Composable.** A skill should work the same whether the caller is a human typing a slash command, another skill, or a script. No assumptions about who's calling.
+6. **Conservative defaults.** Don't do expensive work that wasn't asked for — e.g. don't re-translate what's already translated. The user can always force it.
 
 ## Contributing
 
-Issues and PRs welcome. If you want to add a skill, please follow the principles above — small, single-purpose, no orchestration.
+Issues and PRs welcome. If you want to add a skill, please follow the principles above — small, single-purpose, self-contained, and scoped to one job (don't reach outside what the skill is actually for).
 
 ## License
 
