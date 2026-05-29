@@ -17,7 +17,11 @@ when_to_use: >-
   just start with config defaults and auto-detect the PR. Accepts natural-language
   modifiers like "no iteration cap", "only copilot", or a specific PR
   number / URL / cross-repo reference.
-allowed-tools: Bash, Read, Write, Edit
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
 ---
 
 # PR Review Loop
@@ -33,7 +37,9 @@ This skill is self-contained. All the files below live **inside this skill's own
 - [`reference/evaluation.md`](reference/evaluation.md) — the step-5 lens/mindset rubric, courses of action, resolve criteria.
 - [`reference/waiting.md`](reference/waiting.md) — the step-3 wait: capability ladder, re-entrancy, lockstep, timeouts.
 
-**Requires:** `gh` (authenticated), `git`. Bash forms also use `jq`; PowerShell forms don't. Optional: a github MCP server, and a host loop/scheduling or event-subscription primitive for waits (the loop feature-detects and degrades — see `reference/waiting.md`).
+**Requires:** `gh` (authenticated), `git`. Bash forms also use `jq`; PowerShell forms don't. Optional: a github MCP server, and a host loop/scheduling or event-subscription primitive for waits (the loop feature-detects and degrades — see [`reference/waiting.md`](reference/waiting.md)).
+
+**Snippet convention:** in the code examples here and in the reference files, `<...>` tokens — `<num>`, `<owner>`, `<repo>`, `<path>`, `<tmp>`, etc. — are **placeholders you substitute with real values** (and quote as the shell requires); they are not literal shell tokens. Don't run them verbatim.
 
 ## Reporting style — terse
 
@@ -45,7 +51,7 @@ Read defaults from this skill's [`config/defaults.yml`](config/defaults.yml), th
 
 ## Preconditions
 
-- **Find the target PR(s).** Default: `gh pr list --head "$(git branch --show-current)" --json number,title,url` (quote the substitution — on a detached HEAD it expands to empty, and unquoted it would let `--json` be swallowed as the `--head` value). Zero matches and no PR specified → surface it. Multiple → ask which.
+- **Find the target PR(s).** Default: `gh pr list --head "$(git branch --show-current)" --json number,title,url` (quote the substitution — on a detached HEAD it expands to empty, and unquoted it would let `--json` be swallowed as the `--head` value). On a detached HEAD (CI/automated runs) the branch is empty — fall back to matching by commit: `gh pr list --search "$(git rev-parse HEAD)" --json number,title,url`. Zero matches and no PR specified → surface it. Multiple → ask which.
 - **Cross-repo PRs are allowed** in any natural phrasing (URL, sibling project name + number, `owner/repo#num`). Resolve to `(owner, repo, number)` and pass `--repo` to every `gh` call for that PR. **At least one PR in the run must be in the orchestrator repo** (the current working directory's repo) — if not, ask the user to add one or confirm.
 - **Working tree must be clean** and `gh` authenticated.
 

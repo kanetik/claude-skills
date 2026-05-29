@@ -42,9 +42,11 @@ gh api graphql -F owner=<owner> -F repo=<repo> -F number=<num> -f query='query($
 **Use `--body-file` by default — it sidesteps the mangling entirely:**
 
 ```bash
-# Bash / Git Bash. /tmp exists in Git Bash; elsewhere use $TMPDIR.
-echo '/gemini review' > /tmp/gemini-trigger-<num>.txt
-gh pr comment <num> --body-file /tmp/gemini-trigger-<num>.txt
+# Bash / Git Bash. mktemp gives a collision-free temp file honoring $TMPDIR.
+tmpfile=$(mktemp)
+echo '/gemini review' > "$tmpfile"
+gh pr comment <num> --body-file "$tmpfile"
+rm -f "$tmpfile"
 ```
 
 ```powershell

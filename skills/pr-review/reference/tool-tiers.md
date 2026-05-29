@@ -1,6 +1,8 @@
 # Tool tiers
 
-For each operation, use the best tier your environment supports. The columns denote **availability, not rank**: Tier 1 is the universal baseline that always works, Tier 2 an alternative to use when present, Tier 3 a fallback for when Tier 1 isn't available. Feature-detect; never assume a tier exists. **Waiting is the exception** — its preference is the capability ladder below, where the event-driven subscription (a "when available" option) is the *top* choice when present, ahead of the universal baseline.
+For each operation, use the best tier your environment supports. The columns denote **availability, not rank**: Tier 1 is the universal baseline that always works, Tier 2 an alternative to use when present, Tier 3 a fallback for when Tier 1 isn't available. Feature-detect; never assume a tier exists.
+
+**Waiting is deliberately not in this table.** For the wait step, preference runs *inverse* to availability — the always-available single-pass hand-back is the *least* preferred, while the less-available event-driven subscription is the *most* preferred — so it doesn't fit the universal/when-available/fallback model. It has its own **capability ladder** below.
 
 | Operation | Tier 1 (universal) | Tier 2 (when available) | Tier 3 (fallback) |
 |---|---|---|---|
@@ -16,7 +18,8 @@ For each operation, use the best tier your environment supports. The columns den
 | Create scope-creep issue | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review` | github MCP `create_issue` | — |
 | Push commits | `git push` | — | — |
 | Build verification | Project-detected build tool | — | — |
-| **Wait for new reviewer activity** (preference = ladder below, not column order) | Host loop / scheduling primitive (`/loop`, `ScheduleWakeup`, `CronCreate`) — universal baseline | **event-driven PR-activity subscription** — *top choice when available* (see capability ladder below) | single-pass hand-back / manual prompt-back |
+
+(For **waiting**, see the capability ladder below — it intentionally isn't a row here.)
 
 Defer to host tool primitives for committing (Claude Code `commit-commands:commit` skill if installed; otherwise plain `git commit`) and loop scheduling.
 

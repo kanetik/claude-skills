@@ -38,7 +38,9 @@ cursor=null
 while :; do
   args=(-F owner=<owner> -F repo=<repo> -F number=<num>)
   [ "$cursor" = "null" ] || args+=(-F cursor="$cursor")
-  page=$(gh api graphql "${args[@]}" -f query='<the query above>')
+  if ! page=$(gh api graphql "${args[@]}" -f query='<the query above>'); then
+    echo "GraphQL page fetch failed — aborting pagination" >&2; break
+  fi
   # accumulate nodes from $page here
   has_next=$(echo "$page" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
   [ "$has_next" = "true" ] || break
