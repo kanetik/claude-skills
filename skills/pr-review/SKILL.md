@@ -24,14 +24,14 @@ allowed-tools: Bash, Read, Write, Edit
 
 An iterative loop that drives AI code reviewers (Copilot, Gemini, any bot that posts) to convergence on a pull request: request → wait → evaluate → fix/answer → push → repeat, until every tracked bot is happy.
 
-This skill is self-contained. Config defaults live in `config/defaults.yml`; the heavy mechanics live in `reference/` and are loaded on demand:
+This skill is self-contained. All the files below live **inside this skill's own directory**, alongside this `SKILL.md` — read them from there (paths are relative to this file, not to the current working directory). Config defaults live in [`config/defaults.yml`](config/defaults.yml); the heavy mechanics live in `reference/` and are loaded on demand:
 
-- `reference/configuration.md` — config keys, the layered override model, invocation modifiers, project procedural overrides.
-- `reference/tool-tiers.md` — per-operation tool tiers and the wait capability ladder.
-- `reference/graphql.md` — paginated `reviewThreads` query and the other GraphQL/REST the loop needs (bash + PowerShell).
-- `reference/bot-triggers.md` — Copilot/Gemini request mechanics and the mandatory Gemini verify-and-fix.
-- `reference/evaluation.md` — the step-5 lens/mindset rubric, courses of action, resolve criteria.
-- `reference/waiting.md` — the step-3 wait: capability ladder, re-entrancy, lockstep, timeouts.
+- [`reference/configuration.md`](reference/configuration.md) — config keys, the layered override model, invocation modifiers, project procedural overrides.
+- [`reference/tool-tiers.md`](reference/tool-tiers.md) — per-operation tool tiers and the wait capability ladder.
+- [`reference/graphql.md`](reference/graphql.md) — paginated `reviewThreads` query and the other GraphQL/REST the loop needs (bash + PowerShell).
+- [`reference/bot-triggers.md`](reference/bot-triggers.md) — Copilot/Gemini request mechanics and the mandatory Gemini verify-and-fix.
+- [`reference/evaluation.md`](reference/evaluation.md) — the step-5 lens/mindset rubric, courses of action, resolve criteria.
+- [`reference/waiting.md`](reference/waiting.md) — the step-3 wait: capability ladder, re-entrancy, lockstep, timeouts.
 
 **Requires:** `gh` (authenticated), `git`. Bash forms also use `jq`; PowerShell forms don't. Optional: a github MCP server, and a host loop/scheduling or event-subscription primitive for waits (the loop feature-detects and degrades — see `reference/waiting.md`).
 
@@ -41,7 +41,7 @@ Status updates during iterations and waits are one or two lines. "Iter 3 wait, G
 
 ## Configuration (summary)
 
-Read defaults from `config/defaults.yml`, then merge overrides per key, low → high: bundled defaults < optional `~/.claude/pr-review.config.yml` < orchestrator repo's `.github/pr-review.config.yml`. Defaults: `request_on_pr_open: [copilot]`, `auto_review_grace_seconds: 0`, `wait_check_cadence_seconds: 240`, `max_iterations: 10`. Parse natural-language modifiers from the invocation. Full model and project *procedural* overrides: `reference/configuration.md`.
+Read defaults from this skill's [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < optional `~/.claude/pr-review.config.yml` < orchestrator repo's `.github/pr-review.config.yml`. Defaults: `request_on_pr_open: [copilot]`, `auto_review_grace_seconds: 0`, `wait_check_cadence_seconds: 240`, `max_iterations: 10`. Parse natural-language modifiers from the invocation. Full model and project *procedural* overrides: `reference/configuration.md`.
 
 ## Preconditions
 
