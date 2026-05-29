@@ -36,10 +36,9 @@ query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
 ```bash
 cursor=null
 while :; do
-  page=$(gh api graphql \
-    -F owner=<owner> -F repo=<repo> -F number=<num> \
-    $( [ "$cursor" = "null" ] || echo "-F cursor=$cursor" ) \
-    -f query='<the query above>')
+  args=(-F owner=<owner> -F repo=<repo> -F number=<num>)
+  [ "$cursor" = "null" ] || args+=(-F cursor="$cursor")
+  page=$(gh api graphql "${args[@]}" -f query='<the query above>')
   # accumulate nodes from $page here
   has_next=$(echo "$page" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
   [ "$has_next" = "true" ] || break
@@ -55,9 +54,10 @@ do {
   $cursorArgs = if ($cursor) { @('-F', "cursor=$cursor") } else { @() }
   $page = gh api graphql -F owner=<owner> -F repo=<repo> -F number=<num> @cursorArgs -f query='<the query above>' | ConvertFrom-Json
   # accumulate $page.data.repository.pullRequest.reviewThreads.nodes here
-  $info = $page.data.repository.pullRequest.reviewThreads.pageInfo
-  $cursor = $info.endCursor
-} while ($info.hasNextPage)
+  $info = $null
+  $threads = $page.data.repository.pullRequest.reviewThreads
+  if ($threads) { $info = $threads.pageInfo; $cursor = $info.endCursor }
+} while ($info -and $info.hasNextPage)
 ```
 
 ## Other GraphQL the loop needs

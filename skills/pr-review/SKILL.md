@@ -45,7 +45,7 @@ Read defaults from this skill's [`config/defaults.yml`](config/defaults.yml), th
 
 ## Preconditions
 
-- **Find the target PR(s).** Default: `gh pr list --head $(git branch --show-current) --json number,title,url`. Zero matches and no PR specified → surface it. Multiple → ask which.
+- **Find the target PR(s).** Default: `gh pr list --head "$(git branch --show-current)" --json number,title,url` (quote the substitution — on a detached HEAD it expands to empty, and unquoted it would let `--json` be swallowed as the `--head` value). Zero matches and no PR specified → surface it. Multiple → ask which.
 - **Cross-repo PRs are allowed** in any natural phrasing (URL, sibling project name + number, `owner/repo#num`). Resolve to `(owner, repo, number)` and pass `--repo` to every `gh` call for that PR. **At least one PR in the run must be in the orchestrator repo** (the current working directory's repo) — if not, ask the user to add one or confirm.
 - **Working tree must be clean** and `gh` authenticated.
 
@@ -98,7 +98,7 @@ One commit per logical group of fixes. Build first if any non-doc code was touch
 If this iteration's commits made the description inaccurate, update it — **surgical edits only**, change only affected sections, keep it tight. Use `--body-file` to avoid shell-escaping issues:
 
 ```bash
-gh pr view <num> --json body --jq .body -r > <tmp>/pr-body-<num>.md
+gh pr view <num> --json body --jq .body > <tmp>/pr-body-<num>.md  # gh --jq outputs raw; no -r flag (gh rejects it)
 # edit surgically
 gh pr edit <num> --body-file <tmp>/pr-body-<num>.md
 ```

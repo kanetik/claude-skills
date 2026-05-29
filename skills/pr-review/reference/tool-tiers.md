@@ -1,10 +1,10 @@
 # Tool tiers
 
-For each operation, prefer the highest tier your environment supports. Feature-detect; never assume a tier exists.
+For each operation, use the best tier your environment supports. The columns denote **availability, not rank**: Tier 1 is the universal baseline that always works, Tier 2 an alternative to use when present, Tier 3 a fallback for when Tier 1 isn't available. Feature-detect; never assume a tier exists. **Waiting is the exception** — its preference is the capability ladder below, where the event-driven subscription (a "when available" option) is the *top* choice when present, ahead of the universal baseline.
 
 | Operation | Tier 1 (universal) | Tier 2 (when available) | Tier 3 (fallback) |
 |---|---|---|---|
-| Find PR for current branch | `gh pr list --head $(git branch --show-current) --json number,title,url` | github MCP `list_pull_requests` | — |
+| Find PR for current branch | `gh pr list --head "$(git branch --show-current)" --json number,title,url` (quote the substitution — empty on detached HEAD, and unquoted it lets `--json` be swallowed as the `--head` value) | github MCP `list_pull_requests` | — |
 | Get reviews / requested reviewers / decision | `gh pr view <num> --json reviews,reviewRequests,latestReviews,reviewDecision,comments` (note: `reviewRequests` filters bots out — for bot detection use the GraphQL form, see SKILL.md iteration-1 prelude) | github MCP `get_pull_request`, `list_pull_request_reviews` | — |
 | Get unresolved review threads with `isResolved` | GraphQL via `gh api graphql` (paginated — see `reference/graphql.md`) | github MCP `get_pull_request_review_threads` if it exposes resolution state | — |
 | Get inline + file-level comments per review | REST: `gh api repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` | github MCP `get_pull_request_review_comments` | — |
@@ -16,7 +16,7 @@ For each operation, prefer the highest tier your environment supports. Feature-d
 | Create scope-creep issue | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review` | github MCP `create_issue` | — |
 | Push commits | `git push` | — | — |
 | Build verification | Project-detected build tool | — | — |
-| **Wait for new reviewer activity** | Host loop primitive (`/loop`, `ScheduleWakeup`, `CronCreate`) | **event-driven PR-activity subscription** (preferred — see capability ladder below) | manual prompt-back |
+| **Wait for new reviewer activity** (preference = ladder below, not column order) | Host loop / scheduling primitive (`/loop`, `ScheduleWakeup`, `CronCreate`) — universal baseline | **event-driven PR-activity subscription** — *top choice when available* (see capability ladder below) | single-pass hand-back / manual prompt-back |
 
 Defer to host tool primitives for committing (Claude Code `commit-commands:commit` skill if installed; otherwise plain `git commit`) and loop scheduling.
 
