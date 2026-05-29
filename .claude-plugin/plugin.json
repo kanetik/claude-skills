@@ -3,6 +3,7 @@
   "skills": [
     "./skills/translate-strings",
     "./skills/translate-content",
-    "./skills/whats-new"
+    "./skills/whats-new",
+    "./skills/pr-review"
   ]
 }
