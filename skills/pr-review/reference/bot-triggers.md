@@ -71,13 +71,13 @@ gh api repos/<owner>/<repo>/issues/<num>/comments -X POST -f body="$env:BODY"
 **Mandatory verify-and-fix.** After posting, immediately run:
 
 ```bash
-gh pr view <num> --json comments --jq '.comments[-1].body'
+gh pr view <num> --json comments --jq '.comments[-1].body?'  # ? guards an empty comments array
 ```
 
 The last comment body MUST be exactly `/gemini review` — no path prefix, no quotes, no trailing whitespace. If it shows the mangled form or anything else, the trigger did NOT fire. Delete the bad comment, then re-post via `--body-file`. `gh pr view <num> --json comments` returns each comment's **GraphQL node ID** (`IC_…`), not the integer database ID — so delete via the GraphQL mutation (the REST `DELETE …/issues/comments/{id}` endpoint wants the numeric ID and would 404 on a node ID):
 
 ```bash
-# node ID from: gh pr view <num> --json comments --jq '.comments[-1].id'
+# node ID from: gh pr view <num> --json comments --jq '.comments[-1].id?'
 gh api graphql -f id="<node_id>" -f query='mutation($id:ID!){ deleteIssueComment(input:{id:$id}){ clientMutationId } }'
 ```
 
