@@ -82,7 +82,7 @@ Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (
 4. **Proceed to step 3.**
 
 ### 3. Wait for new reviewer activity
-Pick the highest tier from the wait capability ladder (event-driven subscription → time-based scheduling → single-pass hand-back) and apply lockstep + timeouts. Make each wake idempotent — reconstruct loop state from the PR. Full detail: `reference/waiting.md`. Waiting does NOT count toward `max_iterations`.
+Pick the highest tier from the wait capability ladder (event-driven subscription → time-based scheduling → single-pass hand-back) and apply lockstep + timeouts. Make each wake idempotent — reconstruct loop state from the PR. A wake **resumes here at the wait/evaluate cycle**, applying the carried iteration counter (or PR-derived floor) and any carried invocation modifiers; it does NOT re-run the first-run preamble (arg parse, modifier detection) — that's kickoff-only, so the modifiers' *effects* (a disabled cap, an "only copilot" request set) must ride in the wake payload rather than being re-detected. Full detail: `reference/waiting.md`. Waiting does NOT count toward `max_iterations`.
 
 ### 4. Detect "this reviewer is happy"
 For each tracked bot, ALL must hold:
@@ -98,7 +98,7 @@ Once happy (either path), drop the reviewer for subsequent iterations. **Loop te
 Threads are the unit of evaluation; also check each review's body. Read human replies as input, not a post-hoc check. Hold the weighted project/PR/item lenses + mindset as one integrated judgement. Courses: `Fix-as-suggested`, `Fix-differently`, `Fix-broader`, `Reject-with-explanation`, `Create-issue-and-close`, `Ask-user`. Default to `Ask-user` for security/auth, scope-creep boundaries, conflicting asks, big architectural feedback. Full rubric, issue-creation, and resolve criteria: `reference/evaluation.md`.
 
 ### 6. Commit changes
-One commit per logical group of fixes. Build first if any non-doc code was touched — detect the project's standard verify command. **Never commit red.** Defer commit mechanics to the host (`commit-commands:commit` skill if installed; else plain `git commit`). Keep messages tight: one-line summary, optional one-line detail.
+One commit per logical group of fixes. Build first if any non-doc code was touched — detect the project's standard verify command. **Never commit red.** Defer commit mechanics to the host (`commit-commands:commit` skill if installed; else plain `git commit`). Keep messages tight: one-line summary, optional one-line detail. **Stamp each loop commit with a `PR-Review-Loop: <N>` trailer**, where `<N>` is the current iteration number — a standard `Key: value` git trailer, parseable by `git interpret-trailers`. A context-less wake reads the iteration floor straight off this marker (`reference/waiting.md`); without it the floor can't be derived.
 
 ### 7. Update PR description if it has drifted
 If this iteration's commits made the description inaccurate, update it — **surgical edits only**, change only affected sections, keep it tight. Use `--body-file` to avoid shell-escaping issues:
@@ -114,6 +114,8 @@ gh pr edit <num> --body-file <tmp>/pr-body-<num>.md
 
 ### 9. Iteration counter
 Increment. If `max_iterations` reached, pause and ask the user (skip the cap if invoked with a "no iteration cap" modifier). Then return to step 3.
+
+**The counter must survive the wake** — it's the one piece of loop state with no PR backstop, so a context-less wake that doesn't carry it resets to 0 and the cap never fires. Carry iteration N of max M (plus any effective invocation modifiers — a disabled cap, an "only copilot" request set — which aren't PR-derivable either) in the wake payload via a **continuation prompt that resumes at step 3**, not a bare `/pr-review` re-invocation (which restarts the preamble and loses the count; reserve `/pr-review` for kickoff). If a wake carries no counter, derive a floor from the PR so the cap still engages. Full mechanics, including the floor derivation: `reference/waiting.md`. The single-pass floor tier hands back to the user, so the counter is moot there.
 
 ## Final summary report
 

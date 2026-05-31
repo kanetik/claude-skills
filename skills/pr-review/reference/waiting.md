@@ -17,7 +17,18 @@ Under the event-driven and time-based tiers the loop is **re-entered across wake
 3. Act (evaluate / request / wait).
 4. Re-subscribe (event-driven) or re-schedule (time-based), then yield.
 
+**Resume at step 3, not the top.** A wake re-enters the wait/evaluate cycle (SKILL.md step 3 onward) — it does NOT re-run the first-run preamble (arg parse, modifier/override detection). That kickoff work happened on the initial `/pr-review` invocation; redoing it on every wake is wasted and can re-prompt the user. The catch: anything the preamble *decided* that can't be re-derived from the PR must instead be **carried in the wake payload** — both the iteration counter (below) and the effective invocation modifiers (a disabled cap from "no iteration cap", an "only copilot" request set). Otherwise a context-less wake silently reverts them — re-enabling the cap, re-widening the request set. Iteration-1 branching is still the correct routine for *deriving state* from the PR; the point is that kickoff-only decisions are carried explicitly rather than reset or re-derived from scratch.
+
 Never hold loop-critical state only in turn-local memory — a wakeup may be a fresh context.
+
+### Carrying the iteration counter — and recording it on the PR
+
+Of the carried state above, the **iteration counter** that drives `max_iterations` (SKILL.md step 9) is the one the PR doesn't record on its own — nothing tracks "how many times has this loop run" unless the loop writes it down. Today it survives only because wakes happen to share one persistent context (a persistent web session under the event-driven tier; the same conversation under `/loop`/`ScheduleWakeup`). A truly context-less wake — a detached `CronCreate`, a hand-off that drops the conversation, a compacted/fresh context — would reset it to 0 every wake, so `max_iterations` would never fire and the loop would run unbounded. Handle it two ways:
+
+- **Primary — carry the counter (and modifiers) in the wake/continuation payload.** When yielding to wait, embed iteration N of max M plus any active invocation modifiers in whatever re-wakes you:
+  - **Event-driven tier:** include them in the re-subscription/continuation context as a one-line resume instruction, e.g. `"Resume the PR-review loop at step 3; iteration N of max M; active modifiers: cap disabled, only copilot."`
+  - **Time-based tier:** schedule the wake with a **continuation prompt** stating iteration N of max M, any active modifiers, and "resume at step 3." Do **NOT** *schedule* a bare re-invocation of `/pr-review` as the continuation — a fresh invocation restarts the preamble and loses the count. (This applies to automated continuations only; the single-pass tier's manual "re-invoke `/pr-review`" hand-back is fine — there's no carried counter for it to clobber, and the floor below re-derives one.)
+- **Fallback — read the floor off the loop's commits.** If a wake arrives with no carried counter (context-less), scan the PR's commits for the `PR-Review-Loop: <N>` trailer SKILL.md step 6 stamps, take the highest `<N>`, and resume at **`<N> + 1`** — iteration `<N>`'s commit is already on the PR, so the loop is at least one iteration further. (Resuming at `<N>` would re-stamp `<N>` on the next commit and stick there, so repeated context-less wakes would never advance the counter or reach the cap.) The PR's `commits` connection returns the full message, so this is a direct read: no push-event correlation, no actor guessing, no `HeadRefPushedEvent` window limits. It's a **floor** — later iterations that committed nothing (e.g. one that only posted `Reject-with-explanation` replies) carry no trailer, so it may under-count, which is the safe direction for a cap.
 
 ## Lockstep across all tracked bots
 

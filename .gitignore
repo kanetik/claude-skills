@@ -3,3 +3,6 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Claude Code local runtime state (not part of the deliverable)
+.claude/scheduled_tasks.lock
