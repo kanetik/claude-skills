@@ -82,7 +82,7 @@ Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (
 4. **Proceed to step 3.**
 
 ### 3. Wait for new reviewer activity
-Pick the highest tier from the wait capability ladder (event-driven subscription → time-based scheduling → single-pass hand-back) and apply lockstep + timeouts. Make each wake idempotent — reconstruct loop state from the PR. Full detail: `reference/waiting.md`. Waiting does NOT count toward `max_iterations`.
+Pick the highest tier from the wait capability ladder (event-driven subscription → time-based scheduling → single-pass hand-back) and apply lockstep + timeouts. Make each wake idempotent — reconstruct loop state from the PR. A wake **resumes here at the wait/evaluate cycle**, applying the carried (or PR-derived-floor) iteration counter; it does NOT re-run the first-run preamble (arg parse, modifier detection), which is kickoff-only work. Full detail: `reference/waiting.md`. Waiting does NOT count toward `max_iterations`.
 
 ### 4. Detect "this reviewer is happy"
 For each tracked bot, ALL must hold:
@@ -114,6 +114,8 @@ gh pr edit <num> --body-file <tmp>/pr-body-<num>.md
 
 ### 9. Iteration counter
 Increment. If `max_iterations` reached, pause and ask the user (skip the cap if invoked with a "no iteration cap" modifier). Then return to step 3.
+
+**The counter must survive the wake — it is the one piece of loop state not derivable from the PR.** Don't hold it only in turn-local context, or a context-less wake resets it to 0 and the cap never fires. When yielding to wait, **carry iteration N and cap M in the wake payload**: event-driven → put it in the re-subscription/continuation context; time-based → schedule a **continuation prompt** stating "iteration N of max M, resume at step 3" (NOT a bare `/pr-review` re-invocation, which restarts the preamble and loses the count — reserve `/pr-review` for the initial kickoff). If a wake arrives with no carried counter, **derive a floor from the PR** (count the loop's own push events / fix commits since PR creation) so the cap still engages; it's a floor and may under-count, which is the safe direction. Full mechanics: `reference/waiting.md`. The single-pass floor tier hands back to the user, so the counter is moot there.
 
 ## Final summary report
 
