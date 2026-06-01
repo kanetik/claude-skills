@@ -15,7 +15,7 @@ For each operation, use the best tier your environment supports. The columns den
 | Reply to a review thread | GraphQL `addPullRequestReviewThreadReply` | github MCP equivalent | — |
 | Resolve a review thread | GraphQL `resolveReviewThread` | github MCP equivalent | — |
 | Update PR description | `gh pr edit <num> --body-file <path>` | github MCP `update_pull_request` | — |
-| Create scope-creep issue | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review` | github MCP `create_issue` | — |
+| Create scope-creep issue | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review-loop` | github MCP `create_issue` | — |
 | Push commits | `git push` | — | — |
 | Build verification | Project-detected build tool | — | — |
 
@@ -29,6 +29,6 @@ The "wait" step is the one operation whose best tier is environment-specific, so
 
 1. **Event-driven (preferred).** If the environment exposes a PR-activity subscription — e.g. GitHub-integrated Claude Code on the web, where `subscribe_pr_activity` / `unsubscribe_pr_activity` deliver `<github-webhook-activity>` wake events (review submitted, CI status change, new comment) — subscribe to the PR, **end the turn**, and let the event re-wake the session. No polling. This is the cloud default. It is a *harness capability*, not a guaranteed skill feature: detect it, don't assume it.
 2. **Time-based scheduling.** Where a scheduling primitive exists but no event stream, use it at `wait_check_cadence_seconds` cadence (`/loop <cadence>`, `ScheduleWakeup`, `CronCreate`).
-3. **Single pass + hand-back (floor).** If **neither** an event subscription **nor** a scheduling primitive is detectable, do **one** review pass, then stop with a clear "re-invoke `/pr-review` to continue" note. **Never** busy-wait with `sleep` for external events — it doesn't work and burns the turn.
+3. **Single pass + hand-back (floor).** If **neither** an event subscription **nor** a scheduling primitive is detectable, do **one** review pass, then stop with a clear "re-invoke `/pr-review-loop` to continue" note. **Never** busy-wait with `sleep` for external events — it doesn't work and burns the turn.
 
 Because the loop may be re-entered across wakeups (tier 1) or invocations (tier 3) rather than run as one continuous process, every wake must be **idempotent**: re-pull, re-derive where you are from the PR (the iteration-1 branching does exactly this), act, re-subscribe or re-schedule, yield. Never hold loop-critical state only in turn-local memory.

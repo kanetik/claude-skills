@@ -11,7 +11,7 @@ The skills here are deliberately small and single-purpose. Each one does **one j
 | [`/translate-strings`](skills/translate-strings/SKILL.md) | Translate Android `values/strings.xml` keys into every sibling `values-{locale}/strings.xml`. Preserves placeholders, escapes, plurals, HTML, `translatable="false"`. Always writes locale files alphabetized by key. Supports `--add <locale>` for onboarding and `--retranslate <key>` to force a fresh pass. |
 | [`/translate-content`](skills/translate-content/SKILL.md) | Translate prose — Play Store release notes, app descriptions, FAQs, marketing copy. Reads a per-repo config for output layout, target locales, and char limits. Handles cross-sentence consistency, tone, and the 500-char Play Store limit. |
 | [`/whats-new`](skills/whats-new/SKILL.md) | Author Play Store "What's New" release notes from your commit log (English only). Pulls commits since the last release tag, drafts bullets within Play's 500-char limit, waits for approval, then writes the source-locale file and hands off to `/translate-content` for the other locales. |
-| [`/pr-review`](skills/pr-review/SKILL.md) | Run an iterative PR review loop on a repo's open PR(s): request AI reviewers (Copilot, Gemini, any bot that posts), wait for their reviews, evaluate each thread under a weighted project/PR/item judgement, then fix, push back, or file follow-up issues, and repeat until every tracked bot is satisfied. Self-contained — bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
+| [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop on a repo's open PR(s): request AI reviewers (Copilot, Gemini, any bot that posts), wait for their reviews, evaluate each thread under a weighted project/PR/item judgement, then fix, push back, or file follow-up issues, and repeat until every tracked bot is satisfied. Self-contained — bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
 
 ## Typical workflow
 
@@ -27,7 +27,7 @@ Forgot to translate before merge? *"translate the strings from the last PR"* —
 
 Cutting a release? `/whats-new` drafts the English release notes from your commits, you approve, then `/translate-content` propagates to the other locales.
 
-Just opened a PR? `/pr-review` takes it from there — it requests the AI reviewers, waits for them, works through their feedback (fixing, pushing back, or filing follow-ups), and loops until they're satisfied. Unlike the translation skills, this one *is* about git/PR work, so it drives those operations itself rather than leaving them to you.
+Just opened a PR? `/pr-review-loop` takes it from there — it requests the AI reviewers, waits for them, works through their feedback (fixing, pushing back, or filing follow-ups), and loops until they're satisfied. Unlike the translation skills, this one *is* about git/PR work, so it drives those operations itself rather than leaving them to you.
 
 ## Installation
 
