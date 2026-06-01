@@ -1,5 +1,5 @@
 ---
-name: pr-review
+name: pr-review-loop
 description: >-
   Runs an iterative PR review loop on a repo's open PR(s): requests AI reviewers
   (Copilot, Gemini, and any bot that posts a review), waits for their reviews,
@@ -11,7 +11,7 @@ description: >-
   scheduled polling, or single-pass) and degrades gracefully.
 when_to_use: >-
   Use when the user says "start a PR review", "respond to PR comments", "handle
-  PR feedback", invokes /pr-review, or says they just created/opened a PR. ALSO
+  PR feedback", invokes /pr-review-loop, or says they just created/opened a PR. ALSO
   invoke immediately and automatically right after you yourself create a PR (via
   gh pr create, a commit-push-pr skill, or equivalent) — do NOT ask permission,
   just start with config defaults and auto-detect the PR. Accepts natural-language
@@ -115,7 +115,7 @@ gh pr edit <num> --body-file <tmp>/pr-body-<num>.md
 ### 9. Iteration counter
 Increment. If `max_iterations` reached, pause and ask the user (skip the cap if invoked with a "no iteration cap" modifier). Then return to step 3.
 
-**The counter must survive the wake** — it's the one piece of loop state with no PR backstop, so a context-less wake that doesn't carry it resets to 0 and the cap never fires. Carry iteration N of max M (plus any effective invocation modifiers — a disabled cap, an "only copilot" request set — which aren't PR-derivable either) in the wake payload via a **continuation prompt that resumes at step 3**, not a bare `/pr-review` re-invocation (which restarts the preamble and loses the count; reserve `/pr-review` for kickoff). If a wake carries no counter, derive a floor from the PR so the cap still engages. Full mechanics, including the floor derivation: `reference/waiting.md`. The single-pass floor tier hands back to the user, so the counter is moot there.
+**The counter must survive the wake** — it's the one piece of loop state with no PR backstop, so a context-less wake that doesn't carry it resets to 0 and the cap never fires. Carry iteration N of max M (plus any effective invocation modifiers — a disabled cap, an "only copilot" request set — which aren't PR-derivable either) in the wake payload via a **continuation prompt that resumes at step 3**, not a bare `/pr-review-loop` re-invocation (which restarts the preamble and loses the count; reserve `/pr-review-loop` for kickoff). If a wake carries no counter, derive a floor from the PR so the cap still engages. Full mechanics, including the floor derivation: `reference/waiting.md`. The single-pass floor tier hands back to the user, so the counter is moot there.
 
 ## Final summary report
 
