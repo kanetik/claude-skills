@@ -4,6 +4,6 @@
     "./skills/translate-strings",
     "./skills/translate-content",
     "./skills/whats-new",
-    "./skills/pr-review"
+    "./skills/pr-review-loop"
   ]
 }

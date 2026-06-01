@@ -44,7 +44,7 @@ Config (above) is one mechanism. Project *procedural* instructions are a second,
 - `./CLAUDE.md` (PR-review section)
 - `./AGENTS.md` (PR-review section)
 - `./.cursorrules`
-- `./.claude/commands/pr-review.md` / `./.claude/skills/pr-review/`
+- `./.claude/commands/pr-review-loop.md` / `./.claude/skills/pr-review-loop/`
 
 Classify each difference:
 
