@@ -48,7 +48,7 @@ The first line is a no-op when the label already exists. Issue body links to the
 
 ## Replies, line numbers, resolution
 
-- **Replies should be one line where possible.** Tag the reviewer when the reply needs a response (`@copilot` / `@gemini-code-assist`).
+- **Replies should be one line where possible.** Tag the reviewer when the reply needs a response (`@copilot` / `@codex`).
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
 - **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen).
 - **Do NOT resolve when:** Clarify-needed (waiting on the reviewer); acknowledged-without-fix where discussion is still expected.
