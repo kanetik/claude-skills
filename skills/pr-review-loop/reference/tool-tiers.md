@@ -11,7 +11,7 @@ For each operation, use the best tier your environment supports. The columns den
 | Get unresolved review threads with `isResolved` | GraphQL via `gh api graphql` (paginated — see `reference/graphql.md`) | github MCP `get_pull_request_review_threads` if it exposes resolution state | — |
 | Get inline + file-level comments per review | REST: `gh api repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` | github MCP `get_pull_request_review_comments` | — |
 | Re-request Copilot review | `gh pr edit <num> --add-reviewer @copilot` (gh ≥ 2.85) | github MCP `request_copilot_review` | GraphQL `requestReviews` with `botIds` (gh < 2.85 only — see `reference/bot-triggers.md`) |
-| Trigger Codex review | `gh pr comment <num> --body "@codex review"` (no leading slash, so no shell mangling) | — | `--body-file <path>` writing `@codex review`, or REST via `gh api .../issues/<num>/comments` — see `reference/bot-triggers.md` |
+| Trigger Codex review | `gh pr comment <num> --body "@codex review"` (no leading slash, so no shell mangling) | — | `gh pr comment <num> --body-file <path>` with `@codex review` in the file, or REST via `gh api repos/<owner>/<repo>/issues/<num>/comments -X POST -f body="@codex review"` — see `reference/bot-triggers.md` |
 | Reply to a review thread | GraphQL `addPullRequestReviewThreadReply` | github MCP equivalent | — |
 | Resolve a review thread | GraphQL `resolveReviewThread` | github MCP equivalent | — |
 | Update PR description | `gh pr edit <num> --body-file <path>` | github MCP `update_pull_request` | — |

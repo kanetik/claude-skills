@@ -47,7 +47,7 @@ gh pr comment <num> --body "@codex review"
 gh pr comment <num> --body "@codex review"
 ```
 
-If a shell mangles the body for any reason, fall back to `--body-file` (write `@codex review` to a temp file, pass it with `--body-file`, delete it) or the REST endpoint (`gh api repos/<owner>/<repo>/issues/<num>/comments -X POST -f body="@codex review"`).
+If a shell mangles the body for any reason, fall back to `--body-file` (write `@codex review` to a temp file, then `gh pr comment <num> --body-file <path>`, and delete the file) or the REST endpoint (`gh api repos/<owner>/<repo>/issues/<num>/comments -X POST -f body="@codex review"`).
 
 **Verify after posting:**
 
