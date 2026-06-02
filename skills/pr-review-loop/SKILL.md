@@ -78,7 +78,7 @@ Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (
 
 1. **Wait `auto_review_grace_seconds`** from the baseline: iter 1 = `max(PR createdAt, latest push event)` (some auto-triggers fire on PR open even when the branch was pushed earlier); iter 2+ = the most recent push event. Default `0` = no wait.
 2. **Determine the request set:** iter 1 = `request_on_pr_open`. Iter 2+ = the **tracked bots** not yet "happy". Tracked bots = `request_on_pr_open` ∪ every bot that has posted a review (identified via `__typename: Bot`); once tracked, re-engaged after every push regardless of why it first appeared.
-3. **For each bot, skip if it has already started reviewing the current commit:** Copilot = a `reviewRequests` entry at/after the most recent push (membership implies at-or-after when the loop owns push→request ordering; else derive via `ReviewRequestedEvent.createdAt`). Codex = an `@codex review` comment OR any `chatgpt-codex-connector` post at/after the push. Any bot = a review with `submittedAt` at/after the push. Otherwise request it.
+3. **For each bot, skip if it has already started reviewing the current commit:** Copilot = a `reviewRequests` entry at/after the most recent push (membership implies at-or-after when the loop owns push→request ordering; else derive via `ReviewRequestedEvent.createdAt`). Codex = at/after the most recent push, either a comment whose body contains `@codex review` OR any `chatgpt-codex-connector` post. Any bot = a review with `submittedAt` at/after the push. Otherwise request it.
 4. **Proceed to step 3.**
 
 ### 3. Wait for new reviewer activity
