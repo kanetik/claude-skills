@@ -2,7 +2,7 @@
 name: pr-review-loop
 description: >-
   Runs an iterative PR review loop on a repo's open PR(s): requests AI reviewers
-  (Copilot, Gemini, and any bot that posts a review), waits for their reviews,
+  (Copilot, Codex, and any bot that posts a review), waits for their reviews,
   evaluates each review thread under a weighted project/PR/item judgement, then
   fixes, pushes back, or files follow-up issues, resolves threads, and repeats
   until every tracked bot is satisfied. Self-contained — bundles its config
@@ -26,14 +26,14 @@ allowed-tools:
 
 # PR Review Loop
 
-An iterative loop that drives AI code reviewers (Copilot, Gemini, any bot that posts) to convergence on a pull request: request → wait → evaluate → fix/answer → push → repeat, until every tracked bot is happy.
+An iterative loop that drives AI code reviewers (Copilot, Codex, any bot that posts) to convergence on a pull request: request → wait → evaluate → fix/answer → push → repeat, until every tracked bot is happy.
 
 This skill is self-contained. All the files below live **inside this skill's own directory**, alongside this `SKILL.md` — read them from there (paths are relative to this file, not to the current working directory). Config defaults live in [`config/defaults.yml`](config/defaults.yml); the heavy mechanics live in `reference/` and are loaded on demand:
 
 - [`reference/configuration.md`](reference/configuration.md) — config keys, the layered override model, invocation modifiers, project procedural overrides.
 - [`reference/tool-tiers.md`](reference/tool-tiers.md) — per-operation tool tiers and the wait capability ladder.
 - [`reference/graphql.md`](reference/graphql.md) — paginated `reviewThreads` query and the other GraphQL/REST the loop needs (bash + PowerShell).
-- [`reference/bot-triggers.md`](reference/bot-triggers.md) — Copilot/Gemini request mechanics and the mandatory Gemini verify-and-fix.
+- [`reference/bot-triggers.md`](reference/bot-triggers.md) — Copilot/Codex request mechanics and post-trigger verify.
 - [`reference/evaluation.md`](reference/evaluation.md) — the step-5 lens/mindset rubric, courses of action, resolve criteria.
 - [`reference/waiting.md`](reference/waiting.md) — the step-3 wait: capability ladder, re-entrancy, lockstep, timeouts.
 
@@ -43,7 +43,7 @@ This skill is self-contained. All the files below live **inside this skill's own
 
 ## Reporting style — terse
 
-Status updates during iterations and waits are one or two lines. "Iter 3 wait, Gemini still cooking, back in ~4 min." / "Both bots happy, terminating." / "Iter 2: 1 Copilot fix (terminology). Pushed, re-triggering." Don't restate bot text the user can read on the PR. The final summary is concise too — short bullets, not paragraphs.
+Status updates during iterations and waits are one or two lines. "Iter 3 wait, Codex still cooking, back in ~4 min." / "Both bots happy, terminating." / "Iter 2: 1 Copilot fix (terminology). Pushed, re-triggering." Don't restate bot text the user can read on the PR. The final summary is concise too — short bullets, not paragraphs.
 
 ## Configuration (summary)
 
@@ -59,7 +59,7 @@ Run `git fetch && git pull --ff-only` before each iteration's analysis. For mult
 
 ## Iteration-1 branching
 
-Before iteration 1, gather (see `reference/graphql.md` for exact queries): unresolved review threads (paginated); all reviews with state, submission timestamps, author type (`__typename: Bot`); PR issue comments (for Gemini's "has started" check); the most recent push timestamp (latest of `HeadRefPushedEvent`/`HeadRefForcePushedEvent.createdAt` — force-pushes count; NOT `committedDate`); the PR's `createdAt` (iter-1 grace baseline); and `reviewRequests` via GraphQL (NOT `gh pr view --json reviewRequests`, which filters bots out). For externally-managed PRs, also fetch Copilot's `ReviewRequestedEvent.createdAt`.
+Before iteration 1, gather (see `reference/graphql.md` for exact queries): unresolved review threads (paginated); all reviews with state, submission timestamps, author type (`__typename: Bot`); PR issue comments (for Codex's "has started" check); the most recent push timestamp (latest of `HeadRefPushedEvent`/`HeadRefForcePushedEvent.createdAt` — force-pushes count; NOT `committedDate`); the PR's `createdAt` (iter-1 grace baseline); and `reviewRequests` via GraphQL (NOT `gh pr view --json reviewRequests`, which filters bots out). For externally-managed PRs, also fetch Copilot's `ReviewRequestedEvent.createdAt`.
 
 Then branch:
 
@@ -78,7 +78,7 @@ Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (
 
 1. **Wait `auto_review_grace_seconds`** from the baseline: iter 1 = `max(PR createdAt, latest push event)` (some auto-triggers fire on PR open even when the branch was pushed earlier); iter 2+ = the most recent push event. Default `0` = no wait.
 2. **Determine the request set:** iter 1 = `request_on_pr_open`. Iter 2+ = the **tracked bots** not yet "happy". Tracked bots = `request_on_pr_open` ∪ every bot that has posted a review (identified via `__typename: Bot`); once tracked, re-engaged after every push regardless of why it first appeared.
-3. **For each bot, skip if it has already started reviewing the current commit:** Copilot = a `reviewRequests` entry at/after the most recent push (membership implies at-or-after when the loop owns push→request ordering; else derive via `ReviewRequestedEvent.createdAt`). Gemini = a `/gemini review` comment OR any `gemini-code-assist` post at/after the push. Any bot = a review with `submittedAt` at/after the push. Otherwise request it.
+3. **For each bot, skip if it has already started reviewing the current commit:** Copilot = a `reviewRequests` entry at/after the most recent push (membership implies at-or-after when the loop owns push→request ordering; else derive via `ReviewRequestedEvent.createdAt`). Codex = an `@codex review` comment OR any `chatgpt-codex-connector` post at/after the push. Any bot = a review with `submittedAt` at/after the push. Otherwise request it.
 4. **Proceed to step 3.**
 
 ### 3. Wait for new reviewer activity

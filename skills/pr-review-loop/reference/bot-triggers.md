@@ -33,56 +33,35 @@ mutation($prId: ID!, $botId: ID!) {
 gh api graphql -F owner=<owner> -F repo=<repo> -F number=<num> -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}}}}'
 ```
 
-## Gemini
+## Codex
 
-`requestReviews` with Gemini's bot ID silently no-ops. Trigger via a PR comment whose body is **exactly** `/gemini review` — treat it as a slash command, not a path. Anything else (e.g. `C:/Program Files/Git/gemini review`) does NOT trigger Gemini; it just sits on the PR as noise.
-
-> ⚠️ **DO NOT** run `gh pr comment <num> --body "/gemini review"` from Git Bash / MSYS / MINGW. The shell rewrites the leading `/` into a Windows path BEFORE `gh` sees it. This is the #1 way this step goes wrong.
-
-**Use `--body-file` by default — it sidesteps the mangling entirely:**
+`requestReviews` with Codex's bot ID silently no-ops. Trigger via a PR comment whose body contains the mention **`@codex review`** — it's a bot mention, not a slash command, so there's no leading-slash path-mangling to worry about (the failure mode that plagues other bots). Codex acknowledges with a 👀 reaction, then posts its review (it flags only P0/P1 issues). You can scope a single request inline — `@codex review for security regressions`, `@codex review for performance bottlenecks` — without changing any permanent setting.
 
 ```bash
-# Bash / Git Bash. mktemp gives a collision-free temp file honoring $TMPDIR.
-tmpfile=$(mktemp)
-echo '/gemini review' > "$tmpfile"
-gh pr comment <num> --body-file "$tmpfile"
-rm -f "$tmpfile"
+# Bash / Git Bash. No leading slash, so no MSYS path conversion issue.
+gh pr comment <num> --body "@codex review"
 ```
 
 ```powershell
-# PowerShell (Windows). PowerShell does NOT mangle leading slashes, but --body-file is still the most robust form.
-'/gemini review' | Out-File -Encoding ascii -NoNewline "$env:TEMP\gemini-trigger-<num>.txt"
-gh pr comment <num> --body-file "$env:TEMP\gemini-trigger-<num>.txt"
+# PowerShell (Windows).
+gh pr comment <num> --body "@codex review"
 ```
 
-**Inline fallbacks** (only if you can't write a temp file):
+If a shell mangles the body for any reason, fall back to `--body-file` (write `@codex review` to a temp file, pass it with `--body-file`, delete it) or the REST endpoint (`gh api repos/<owner>/<repo>/issues/<num>/comments -X POST -f body="@codex review"`).
 
-```bash
-# Bash: suppress MSYS path conversion for this one call.
-MSYS_NO_PATHCONV=1 gh pr comment <num> --body "/gemini review"
-```
-
-```powershell
-# PowerShell: pass via env var through the REST API.
-$env:BODY = '/gemini review'
-gh api repos/<owner>/<repo>/issues/<num>/comments -X POST -f body="$env:BODY"
-```
-
-**Mandatory verify-and-fix.** After posting, immediately run:
+**Verify after posting:**
 
 ```bash
 gh pr view <num> --json comments --jq '.comments[-1].body?'  # ? guards an empty comments array
 ```
 
-The last comment body MUST be exactly `/gemini review` — no path prefix, no quotes, no trailing whitespace. If it shows the mangled form or anything else, the trigger did NOT fire. Delete the bad comment, then re-post via `--body-file`. `gh pr view <num> --json comments` returns each comment's **GraphQL node ID** (`IC_…`), not the integer database ID — so delete via the GraphQL mutation (the REST `DELETE …/issues/comments/{id}` endpoint wants the numeric ID and would 404 on a node ID):
+The last comment body must contain `@codex review`. If it doesn't, the trigger didn't fire — re-post. To delete a stray comment, note that `gh pr view <num> --json comments` returns each comment's **GraphQL node ID** (`IC_…`), not the integer database ID, so delete via the GraphQL mutation (the REST `DELETE …/issues/comments/{id}` endpoint wants the numeric ID and would 404 on a node ID):
 
 ```bash
 # node ID from: gh pr view <num> --json comments --jq '.comments[-1].id?'
 gh api graphql -f id="<node_id>" -f query='mutation($id:ID!){ deleteIssueComment(input:{id:$id}){ clientMutationId } }'
 ```
 
-Do not proceed to the wait until verify shows the exact string.
-
 ## Mentions in replies
 
-Tag the reviewer when a reply needs a response from them — `@copilot` for Copilot, `@gemini-code-assist` for Gemini. If Gemini doesn't engage with a mention, the comment is still posted; treat as un-tagged.
+Tag the reviewer when a reply needs a response from them — `@copilot` for Copilot, `@codex` for Codex. If Codex doesn't engage with a mention, the comment is still posted; treat as un-tagged.
