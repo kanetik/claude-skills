@@ -46,9 +46,28 @@ gh issue create --title "..." --body-file <path> --label follow-up-from-pr-revie
 
 The first line is a no-op when the label already exists. Issue body links to the originating thread; the thread reply links back to the issue; then resolve the thread.
 
+## Helpfulness feedback — thumbs-up / thumbs-down
+
+Some reviewers (Copilot especially) end a comment by inviting a reaction on whether it was useful — "React with 👍 or 👎 to indicate if this comment was helpful", "Was this comment useful?", or similar. When a comment carries that invitation, leave a reaction so the bot gets the steering signal, mapped to whether you **accepted or rejected the underlying concern** — NOT whether you took its exact suggestion:
+
+- **Accepted → 👍 (`+1`).** Any `Fix-*` course (`Fix-as-suggested`, `Fix-differently`, `Fix-broader`) or `Create-issue-and-close` — the comment surfaced a real issue worth acting on, even if you addressed it differently than suggested.
+- **Rejected → 👎 (`-1`).** `Reject-with-explanation` — the concern didn't hold up under the lens-weighted view.
+- `Ask-user` / unresolved Clarify-needed — don't react yet; wait until the course settles into an accept or reject.
+
+React on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation in a review summary or a PR-level issue comment uses the issue-comments endpoint:
+
+```bash
+# Inline or file-level review comment (databaseId from the reviewThreads query):
+gh api repos/<owner>/<repo>/pulls/comments/<comment_id>/reactions -X POST -f content=+1   # or -1
+# Review-summary body or PR-level issue comment:
+gh api repos/<owner>/<repo>/issues/comments/<comment_id>/reactions -X POST -f content=+1  # or -1
+```
+
+This reaction is the signal the bot uses to learn what kind of feedback is valued — apply it whenever the invitation is present, in addition to (not instead of) the written reply.
+
 ## Replies, line numbers, resolution
 
-- **Replies should be one line where possible.** Tag the reviewer when the reply needs a response (`@copilot` / `@codex`).
+- **Replies should be one line where possible.** **Always @-mention the bot you're replying to** (`@copilot` / `@codex`, or the bot's login for others) — every reply to a bot leads with its mention.
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
 - **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen).
 - **Do NOT resolve when:** Clarify-needed (waiting on the reviewer); acknowledged-without-fix where discussion is still expected.

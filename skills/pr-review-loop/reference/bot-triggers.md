@@ -64,4 +64,4 @@ gh api graphql -f id="<node_id>" -f query='mutation($id:ID!){ deleteIssueComment
 
 ## Mentions in replies
 
-Tag the reviewer when a reply needs a response from them — `@copilot` for Copilot, `@codex` for Codex. If Codex doesn't engage with a mention, the comment is still posted; treat as un-tagged.
+Always @-mention the bot you're replying to — `@copilot` for Copilot, `@codex` for Codex (for any other bot, its login). Every reply to a bot leads with its mention, not just the ones that need a response back. If Codex doesn't engage with a mention, the comment is still posted; treat as un-tagged.
