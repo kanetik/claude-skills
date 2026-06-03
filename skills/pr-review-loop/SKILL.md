@@ -8,7 +8,11 @@ description: >-
   until every tracked bot is satisfied. Self-contained — bundles its config
   defaults and reference material and reads project overrides from the consuming
   repo. Detects the best available wait mechanism (event-driven subscription,
-  scheduled polling, or single-pass) and degrades gracefully.
+  scheduled polling, or single-pass) and degrades gracefully. Auto-invoke this
+  skill immediately and WITHOUT asking right after a PR is created — via gh pr
+  create, a commit-push-PR flow, or any equivalent — and when the user says
+  "start a PR review", "respond to PR comments", "handle PR feedback", says they
+  just opened a PR, or invokes /pr-review-loop.
 when_to_use: >-
   Use when the user says "start a PR review", "respond to PR comments", "handle
   PR feedback", invokes /pr-review-loop, or says they just created/opened a PR. ALSO
