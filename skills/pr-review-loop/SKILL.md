@@ -67,7 +67,7 @@ Before iteration 1, gather (see `reference/graphql.md` for exact queries): unres
 
 Then branch:
 
-- **If any unresolved feedback exists** — unresolved review threads (inline AND file-level), unaddressed concerns in any review body, OR a tracked bot's issue comment raising concerns not yet addressed → **jump to step 5**. Skip steps 2 and 3.
+- **If any unresolved feedback exists** — unresolved review threads (inline AND file-level), unaddressed concerns in any review body, OR a bot-authored review-style issue comment raising unaddressed concerns (such a comment itself makes the bot tracked, per step 2 — so this covers a bot that first appears via a comment) → **jump to step 5**. Skip steps 2 and 3.
 - **Else** → **step 2** (apply grace window, selectively request bots that haven't auto-triggered) → **step 3** (wait). No push here. Step 2 is self-aware about not re-firing in-flight bots, so this covers both "fresh PR" and "PR with pending bot activity."
 
 Iterations 2+ run the full sequence: 3 → 4 → (5 → 6 → 7 → 8 if any reviewer has comments) → 3.
