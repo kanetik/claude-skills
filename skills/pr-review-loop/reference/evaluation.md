@@ -50,11 +50,13 @@ The first line is a no-op when the label already exists. Issue body links to the
 
 ## Helpfulness feedback — thumbs-up / thumbs-down
 
-Some reviewers (Copilot especially) end a comment by inviting a reaction on whether it was useful — "React with 👍 or 👎 to indicate if this comment was helpful", "Was this comment useful?", or similar. When a comment carries that invitation, leave a reaction so the bot gets the steering signal, mapped to whether you **accepted or rejected the underlying concern** — NOT whether you took its exact suggestion:
+Some reviewers end a comment by inviting a reaction on whether it was useful — "React with 👍 or 👎 to indicate if this comment was helpful", "Was this comment useful?", or similar (Codex is the current example). This applies **only to a bot that both (a) invites the reaction in its comment body and (b) reads standard GitHub reactions** — those are the ones a reaction actually steers. When a comment carries that invitation, leave a reaction so the bot gets the steering signal, mapped to whether you **accepted or rejected the underlying concern** — NOT whether you took its exact suggestion:
 
 - **Accepted → 👍 (`+1`).** Any `Fix-*` course (`Fix-as-suggested`, `Fix-differently`, `Fix-broader`) or `Create-issue-and-close` — the comment surfaced a real issue worth acting on, even if you addressed it differently than suggested.
 - **Rejected → 👎 (`-1`).** `Reject-with-explanation` — the concern didn't hold up under the lens-weighted view.
 - `Ask-user`, or any thread still awaiting reviewer clarification — don't react yet; wait until it settles into an accept or reject.
+
+**Not every 👍/👎 you see is a standard reaction.** Copilot's review comments render their own *"was this helpful"* thumbs widget (beside "Copilot uses AI. Check for mistakes."); that is a closed GitHub-UI control feeding Copilot's own model, with NO public reactions / `addReaction` API — you can't set it, so don't treat a Copilot finding as a reaction-invitation. The reactions this skill uses are the standard emoji-picker reactions on a comment (a different signal), and the invitation must be in the comment body.
 
 When a reaction mechanism is available (the `gh`/REST calls below, or an equivalent reactions API/MCP path), react on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation on a PR-level issue comment uses the issue-comments endpoint. (A review *summary* (`PullRequestReview`) has no REST reactions endpoint, but it IS reactable via GraphQL — `addReaction(input:{subjectId:<review node id>, content: THUMBS_UP|THUMBS_DOWN})` — so when a helpfulness prompt rides only a summary, react via GraphQL/MCP if you have that path, and fall back to the written reply only if you don't.) Both REST endpoints take the comment's numeric `databaseId`, not a GraphQL `IC_…`/`PRRC_…` node ID:
 
