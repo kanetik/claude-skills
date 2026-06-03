@@ -66,6 +66,9 @@ do {
 
 - **Reviews with state, body, comment count, author type** (`__typename: Bot` identifies bot reviewers — the tracked-bots set is dynamic):
   `reviews(last:100){nodes{author{login __typename} state body submittedAt comments{totalCount}}}`
+- **PR issue comments with author type, login, body, timestamp** — a reviewer-state surface in its own right: some bots post findings, or their entire clean verdict, here and never as a `Review`. Union with reviews + threads for ANY state derivation (a reviews-only read misses comment-only verdicts):
+  `comments(first:100, after:$cursor){ pageInfo{ hasNextPage endCursor } nodes{ databaseId author{login __typename} body createdAt } }`
+  This is the `PullRequest.comments` connection (issue-level PR comments), distinct from `reviewThreads` but paginated the same way — drive it with the **same cursor loop** as the `reviewThreads` query above (`pageInfo.hasNextPage`/`endCursor`). Don't assume one page covers it: a tracked bot's verdict isn't necessarily the newest comment, so on a chatty PR later discussion can bury it; page through the full connection (or filter by `author`) until you've captured each not-yet-happy tracked bot's most recent comment. For the numeric `databaseId` that reactions/edits need, read this GraphQL `databaseId` field — `gh pr view <num> --json comments` returns GraphQL node IDs (`IC_…`), NOT the numeric ID, so it's not an equivalent source when you need IDs (github MCP `get_pull_request` also exposes these comments).
 - **`reviewRequests` including bots** — use GraphQL, NOT `gh pr view --json reviewRequests` (which filters bots out):
   `reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}`
 - **Most recent push timestamp** — latest of `HeadRefPushedEvent.createdAt` and `HeadRefForcePushedEvent.createdAt` from the PR timeline (force-pushes count as pushes for staleness). NOT `committedDate`, which can predate the push.

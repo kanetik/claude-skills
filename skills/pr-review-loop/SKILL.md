@@ -8,7 +8,11 @@ description: >-
   until every tracked bot is satisfied. Self-contained — bundles its config
   defaults and reference material and reads project overrides from the consuming
   repo. Detects the best available wait mechanism (event-driven subscription,
-  scheduled polling, or single-pass) and degrades gracefully.
+  scheduled polling, or single-pass) and degrades gracefully. Auto-invoke this
+  skill immediately and WITHOUT asking right after a PR is created — via gh pr
+  create, a commit-push-PR flow, or any equivalent — and when the user says
+  "start a PR review", "respond to PR comments", "handle PR feedback", says they
+  just opened a PR, or invokes /pr-review-loop.
 when_to_use: >-
   Use when the user says "start a PR review", "respond to PR comments", "handle
   PR feedback", invokes /pr-review-loop, or says they just created/opened a PR. ALSO
@@ -59,14 +63,28 @@ Run `git fetch && git pull --ff-only` before each iteration's analysis. For mult
 
 ## Iteration-1 branching
 
-Before iteration 1, gather (see `reference/graphql.md` for exact queries): unresolved review threads (paginated); all reviews with state, submission timestamps, author type (`__typename: Bot`); PR issue comments (for Codex's "has started" check); the most recent push timestamp (latest of `HeadRefPushedEvent`/`HeadRefForcePushedEvent.createdAt` — force-pushes count; NOT `committedDate`); the PR's `createdAt` (iter-1 grace baseline); and `reviewRequests` via GraphQL (NOT `gh pr view --json reviewRequests`, which filters bots out). For externally-managed PRs, also fetch Copilot's `ReviewRequestedEvent.createdAt`.
+Before iteration 1, gather (see `reference/graphql.md` for exact queries): unresolved review threads (paginated); all reviews with state, submission timestamps, author type (`__typename: Bot`); bot-authored PR issue comments with bodies and timestamps (a first-class reviewer-state surface, not just a Codex "has started" check — some bots deliver their whole verdict, clean *or* findings, as an issue comment and never post a formal review; see "Reading reviewer state" below); the most recent push timestamp (latest of `HeadRefPushedEvent`/`HeadRefForcePushedEvent.createdAt` — force-pushes count; NOT `committedDate`); the PR's `createdAt` (iter-1 grace baseline); and `reviewRequests` via GraphQL (NOT `gh pr view --json reviewRequests`, which filters bots out). For externally-managed PRs, also fetch Copilot's `ReviewRequestedEvent.createdAt`.
 
 Then branch:
 
-- **If any unresolved feedback exists** — unresolved review threads (inline AND file-level) OR unaddressed concerns in any review body → **jump to step 5**. Skip steps 2 and 3.
+- **If any unresolved feedback exists** — unresolved review threads (inline AND file-level), unaddressed concerns in any review body, OR a bot-authored review-style issue comment raising unaddressed concerns (such a comment itself makes the bot tracked, per step 2 — so this covers a bot that first appears via a comment) → **jump to step 5**. Skip steps 2 and 3.
 - **Else** → **step 2** (apply grace window, selectively request bots that haven't auto-triggered) → **step 3** (wait). No push here. Step 2 is self-aware about not re-firing in-flight bots, so this covers both "fresh PR" and "PR with pending bot activity."
 
 Iterations 2+ run the full sequence: 3 → 4 → (5 → 6 → 7 → 8 if any reviewer has comments) → 3.
+
+## Reading reviewer state — three surfaces, judged on content
+
+A reviewer's disposition can surface on any of **three** channels, and you must always read all three together and union them — never derive a bot's state from reviews/threads alone:
+
+1. **Formal reviews** — `Review` objects and their bodies.
+2. **Review threads** — inline and file-level comments.
+3. **Bot-authored PR issue comments** — a plain comment on the PR, not attached to a review. Some bots post findings, or their entire clean verdict, only here.
+
+Reviews-only is the specific trap that broke a live run: a bot that had been **happy for minutes** — its clean verdict sitting in an issue comment — was reported as "still reviewing" because the check looked at `Review` objects only.
+
+**Judge disposition from what the bot actually wrote, not from a fixed phrase list.** For a bot's latest signal on the current commit, decide whether it reports unresolved concerns (**has findings**), a clean pass (**happy**), or work-in-progress — reading the *meaning*, the same way a person would. Bots word these differently and the next new bot will word them differently again, so don't pattern-match canned strings. As rough shape: a formal review carrying inline threads is usually "has findings"; an `APPROVED` state, a zero-comment review, or a short "nothing to flag / looks good / no major issues" note (in a review body OR an issue comment) is usually "happy."
+
+**Staleness:** only signals at/after the most recent push count for the current HEAD. A clean verdict from before the latest push is stale — it does NOT make the bot happy for the new commit; re-derive against current HEAD.
 
 ## The loop
 
@@ -77,8 +95,8 @@ Apply the iteration-1 branching above.
 Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (called from step 8). Mechanics: `reference/bot-triggers.md`.
 
 1. **Wait `auto_review_grace_seconds`** from the baseline: iter 1 = `max(PR createdAt, latest push event)` (some auto-triggers fire on PR open even when the branch was pushed earlier); iter 2+ = the most recent push event. Default `0` = no wait.
-2. **Determine the request set:** iter 1 = `request_on_pr_open`. Iter 2+ = the **tracked bots** not yet "happy". Tracked bots = `request_on_pr_open` ∪ every bot that has posted a review (identified via `__typename: Bot`); once tracked, re-engaged after every push regardless of why it first appeared.
-3. **For each bot, skip if it has already started reviewing the current commit:** Copilot = a `reviewRequests` entry at/after the most recent push (membership implies at-or-after when the loop owns push→request ordering; else derive via `ReviewRequestedEvent.createdAt`). Codex = at/after the most recent push, either a comment whose body contains `@codex review` OR any `chatgpt-codex-connector` post. Any bot = a review with `submittedAt` at/after the push. Otherwise request it.
+2. **Determine the request set:** iter 1 = `request_on_pr_open`. Iter 2+ = the **tracked bots** not yet "happy". Tracked bots = `request_on_pr_open` ∪ every bot that has posted a review OR a review-style verdict comment — a bot-authored PR issue comment that reads as a review verdict (findings or a clean pass), judged on content per "Reading reviewer state". A comment-only reviewer (one that signals only via issue comments, never a formal `Review`) is tracked on that basis; routine CI/status/noise comments (build bots, dependabot, and the like) are NOT verdicts and do not make a bot tracked. (All bot authorship via `__typename: Bot`.) Once tracked, re-engaged after every push regardless of why it first appeared.
+3. **For each bot, skip if it has already engaged the current commit** — started reviewing it, or already delivered a verdict for it. Evaluate at/after the most recent push across the three reviewer-state surfaces (above) plus the loop's own trigger: a formal review (`submittedAt`) or new review-thread comments; a bot-authored verdict issue comment (clean or findings); or, for a bot we trigger by mention, our own trigger comment already posted for this commit. Copilot = a `reviewRequests` entry at/after the push (membership implies at-or-after when the loop owns push→request ordering; else derive via `ReviewRequestedEvent.createdAt`). Codex (a comment-style bot) = a `chatgpt-codex-connector` post OR an existing `@codex review` trigger at/after the push. Otherwise request it.
 4. **Proceed to step 3.**
 
 ### 3. Wait for new reviewer activity
@@ -86,9 +104,11 @@ Pick the highest tier from the wait capability ladder (event-driven subscription
 
 ### 4. Detect "this reviewer is happy"
 For each tracked bot, ALL must hold:
-- Zero unresolved review threads attributed to it (threads cover inline AND file-level comments).
-- Its most recent `Review.body` has no unaddressed concerns.
-- AND at least one of: most recent review state `APPROVED`; OR most recent review has zero comments; OR body explicitly says "no issues"/"LGTM"/"no new comments".
+- Zero unresolved review threads attributed to it (inline AND file-level).
+- Its most recent verdict *for the current HEAD* — the latest of a formal review (and its body) or a bot-authored issue comment (its review threads are covered by the first bullet above) — reads as a clean verdict with no unaddressed concerns. Judge this from what the bot wrote per "Reading reviewer state" above, not a fixed phrase list.
+- That clean signal is at/after the most recent push (a pre-push verdict is stale — re-derive against current HEAD).
+
+A bot that posts **no formal review at all** can still be happy on this basis — its clean issue comment is the verdict. This is exactly the case the loop used to miss: a comment-style bot's clean verdict isn't a `Review`, so a reviews-only check wrongly reports it pending.
 
 **All-rejections short-circuit:** if a reviewer's latest comments ALL resolved to `Reject-with-explanation`, treat it as done — further iteration won't help. **`Create-issue-and-close` IS acceptance** (deferred real concern), so any issue creation disqualifies an all-rejections call.
 

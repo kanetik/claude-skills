@@ -6,6 +6,8 @@ Before evaluating anything, fetch unresolved review threads with their full comm
 
 **Also check each review's body separately.** A review's `body` field (the summary written when submitting) is distinct from threads — bots sometimes put high-level findings, approval qualifiers, or "no issues found" there. Fetch via `gh pr view <num> --json reviews` or GraphQL `reviews(...){nodes{body, comments{totalCount}}}`. Treat any unaddressed concern in `Review.body` as a finding even if no thread was created for it.
 
+**And check bot-authored PR issue comments — a third surface.** Some bots deliver findings, or their entire clean verdict, as a plain PR issue comment rather than a formal review or a thread. Any state check — manual or programmatic — MUST union all three surfaces: reviews + review threads + bot issue comments. A reviews-only check is the specific trap that stranded a live run: it reported a bot as "pending" when the bot had been happy for minutes, its clean verdict sitting in an issue comment. Read a comment's disposition from its content (concerns raised vs. clean pass), judged the same way as a review body — not by matching fixed phrases.
+
 The REST endpoint `/repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` is a convenience for one review's inline + file-level comments by review ID — same comments as `reviewThreads` filtered to that review. Use it when you have a specific review ID; for the whole-PR view, paginated `reviewThreads` is canonical.
 
 ## Human replies are evaluation INPUT, not a post-hoc check
@@ -46,9 +48,28 @@ gh issue create --title "..." --body-file <path> --label follow-up-from-pr-revie
 
 The first line is a no-op when the label already exists. Issue body links to the originating thread; the thread reply links back to the issue; then resolve the thread.
 
+## Helpfulness feedback — thumbs-up / thumbs-down
+
+Some reviewers (Copilot especially) end a comment by inviting a reaction on whether it was useful — "React with 👍 or 👎 to indicate if this comment was helpful", "Was this comment useful?", or similar. When a comment carries that invitation, leave a reaction so the bot gets the steering signal, mapped to whether you **accepted or rejected the underlying concern** — NOT whether you took its exact suggestion:
+
+- **Accepted → 👍 (`+1`).** Any `Fix-*` course (`Fix-as-suggested`, `Fix-differently`, `Fix-broader`) or `Create-issue-and-close` — the comment surfaced a real issue worth acting on, even if you addressed it differently than suggested.
+- **Rejected → 👎 (`-1`).** `Reject-with-explanation` — the concern didn't hold up under the lens-weighted view.
+- `Ask-user`, or any thread still awaiting reviewer clarification — don't react yet; wait until it settles into an accept or reject.
+
+When a reaction mechanism is available (the `gh`/REST calls below, or an equivalent reactions API/MCP path), react on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation on a PR-level issue comment uses the issue-comments endpoint. (A review *summary* (`PullRequestReview`) has no REST reactions endpoint, but it IS reactable via GraphQL — `addReaction(input:{subjectId:<review node id>, content: THUMBS_UP|THUMBS_DOWN})` — so when a helpfulness prompt rides only a summary, react via GraphQL/MCP if you have that path, and fall back to the written reply only if you don't.) Both REST endpoints take the comment's numeric `databaseId`, not a GraphQL `IC_…`/`PRRC_…` node ID:
+
+```bash
+# Inline or file-level review comment (numeric databaseId from the reviewThreads query):
+gh api repos/<owner>/<repo>/pulls/comments/<comment_id>/reactions -X POST -f content=+1   # or -1
+# PR-level issue comment (numeric databaseId — NOT a GraphQL IC_ node ID):
+gh api repos/<owner>/<repo>/issues/comments/<comment_id>/reactions -X POST -f content=+1  # or -1
+```
+
+This reaction is the signal the bot uses to learn what kind of feedback is valued — when a reaction path exists, apply it whenever the invitation is present, in addition to (not instead of) the written reply. If your environment has no way to react (no `gh`, no reactions API/MCP path), skip it gracefully: it's an optional steering signal, not a requirement, and the written reply still carries the substance.
+
 ## Replies, line numbers, resolution
 
-- **Replies should be one line where possible.** Tag the reviewer when the reply needs a response (`@copilot` / `@codex`).
+- **Replies should be one line where possible.** **@-mention a bot back only when the mention reaches that reviewer and it acts on mentions.** `@codex` does — Codex re-engages on mention, so lead Codex replies with it. Copilot's *reviewer* does NOT act on reply mentions, and `@copilot` routes to Copilot's separate coding agent (`copilot-swe-agent`), which just misfires — so reply to Copilot **without** an @-mention. General rule for any new bot: mention it only if its handle reaches the reviewing service and that service acts on mentions; if unsure, post the reply unmentioned.
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
 - **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen).
-- **Do NOT resolve when:** Clarify-needed (waiting on the reviewer); acknowledged-without-fix where discussion is still expected.
+- **Do NOT resolve when:** awaiting reviewer clarification (your reply asks the reviewer something); acknowledged-without-fix where discussion is still expected.

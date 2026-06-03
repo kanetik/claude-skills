@@ -13,13 +13,19 @@ The wait is the one step whose best mechanism is environment-specific. Pick the 
 Under the event-driven and time-based tiers the loop is **re-entered across wakeups**, not run as one continuous process. Make each wake idempotent:
 
 1. Re-pull (`git fetch && git pull --ff-only`).
-2. Re-derive where you are from the PR — apply the iteration-1 branching: unresolved threads, review states + timestamps, most recent push timestamp, tracked-bots set. Loop state lives in the PR, not in turn-local memory.
+2. Re-derive where you are from the PR — apply the iteration-1 branching: unresolved threads, review states + timestamps, bot-authored issue comments, most recent push timestamp, tracked-bots set. Loop state lives in the PR, not in turn-local memory.
 3. Act (evaluate / request / wait).
 4. Re-subscribe (event-driven) or re-schedule (time-based), then yield.
 
 **Resume at step 3, not the top.** A wake re-enters the wait/evaluate cycle (SKILL.md step 3 onward) — it does NOT re-run the first-run preamble (arg parse, modifier/override detection). That kickoff work happened on the initial `/pr-review-loop` invocation; redoing it on every wake is wasted and can re-prompt the user. The catch: anything the preamble *decided* that can't be re-derived from the PR must instead be **carried in the wake payload** — both the iteration counter (below) and the effective invocation modifiers (a disabled cap from "no iteration cap", an "only copilot" request set). Otherwise a context-less wake silently reverts them — re-enabling the cap, re-widening the request set. Iteration-1 branching is still the correct routine for *deriving state* from the PR; the point is that kickoff-only decisions are carried explicitly rather than reset or re-derived from scratch.
 
 Never hold loop-critical state only in turn-local memory — a wakeup may be a fresh context.
+
+## Events are a wake hint, not ground truth
+
+Under the event-driven tier, treat every wake event as a *hint to look*, never as the authoritative statement of what changed — and never let the *absence* of an event mean a bot is still pending. Some bots signal completion with a PR issue comment (a clean verdict) rather than a formal review, and that completion may arrive as an event the harness doesn't forward, or one that doesn't match what you were waiting on. So on every wake — and on every "am I still waiting?" decision, including the timeout path below — do a full reconciliation read of **all three surfaces** (reviews + threads + bot issue comments, see SKILL.md "Reading reviewer state") against current HEAD before concluding any bot is still pending (step 4). The PR state is ground truth; events only tell you when to re-read it.
+
+**Backstop against a dropped completion event:** because a comment-only "done" can fail to wake the loop at all, don't rely solely on the next organic event. After subscribing, also arm one lightweight delayed reconciliation — a single scheduled re-check a few minutes out, or fold it into the timeout path — so a missed event can't strand the loop until the full ~20-min timeout.
 
 ### Carrying the iteration counter — and recording it on the PR
 
@@ -32,13 +38,13 @@ Of the carried state above, the **iteration counter** that drives `max_iteration
 
 ## Lockstep across all tracked bots
 
-Wait until every tracked bot (`request_on_pr_open` ∪ any bot that has posted a review on this PR) has either posted a review for the current commit OR been dropped as "happy" (step 4). **Batch-evaluate the combined feedback in one pass** — don't react to one bot's comments, push a fix, then let another bot review the new state. That compounds iteration count: bot B re-reviews your fresh diff and raises tangential comments that would've been weighed differently with both takes side by side. Seeing all tracked bots together also surfaces contradictions (one says X, another ¬X) and overlap (both flag the same issue) before you decide.
+Wait until every tracked bot (`request_on_pr_open` ∪ any bot that has posted a review or a review-style verdict comment on this PR — full definition in SKILL.md step 2) has either delivered a verdict for the current commit — a formal review OR a bot-authored issue comment (clean or findings) — OR been dropped as "happy" (step 4). **Batch-evaluate the combined feedback in one pass** — don't react to one bot's comments, push a fix, then let another bot review the new state. That compounds iteration count: bot B re-reviews your fresh diff and raises tangential comments that would've been weighed differently with both takes side by side. Seeing all tracked bots together also surfaces contradictions (one says X, another ¬X) and overlap (both flag the same issue) before you decide.
 
-**Newly appearing bots count.** If a bot posts a review during the wait that wasn't previously tracked (e.g. an auto-triggering bot whose review lands after the grace window), add it to the tracked set immediately; lockstep then waits for it too.
+**Newly appearing bots count.** If a bot posts a review — or a review-style verdict comment (findings or a clean pass; not CI/noise) — during the wait that wasn't previously tracked (e.g. an auto-triggering bot whose verdict lands after the grace window), add it to the tracked set immediately; lockstep then waits for it too.
 
 ## Timeout for unresponsive bots
 
-If a bot doesn't respond within ~20 minutes of being triggered (or, for auto-triggering bots in the request set, ~20 min after the push that should have triggered them), surface to the user — don't silently hang. The user decides: skip the bot for this iteration, wait longer, or terminate. (A bot service may be down, the trigger may have silently failed, or the bot may have hit a daily quota.)
+If a bot doesn't respond within ~20 minutes of being triggered (or, for auto-triggering bots in the request set, ~20 min after the push that should have triggered them), surface to the user — don't silently hang. **Before declaring a bot unresponsive, reconcile all three surfaces against current HEAD** — its verdict (clean or findings) may have arrived as an issue comment that no event surfaced, in which case it's done, not silent. The user decides: skip the bot for this iteration, wait longer, or terminate. (A bot service may be down, the trigger may have silently failed, or the bot may have hit a daily quota.)
 
 ## External pushes during the wait
 
