@@ -72,4 +72,4 @@ This reaction is the signal the bot uses to learn what kind of feedback is value
 - **Replies should be one line where possible.** **Always @-mention the bot you're replying to** (`@copilot` / `@codex`, or the bot's login for others) — every reply to a bot leads with its mention.
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
 - **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen).
-- **Do NOT resolve when:** Clarify-needed (waiting on the reviewer); acknowledged-without-fix where discussion is still expected.
+- **Do NOT resolve when:** awaiting reviewer clarification (your reply asks the reviewer something); acknowledged-without-fix where discussion is still expected.

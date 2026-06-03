@@ -38,9 +38,9 @@ Of the carried state above, the **iteration counter** that drives `max_iteration
 
 ## Lockstep across all tracked bots
 
-Wait until every tracked bot (`request_on_pr_open` ∪ any bot that has posted a review on this PR) has either delivered a verdict for the current commit — a formal review OR a bot-authored issue comment (clean or findings) — OR been dropped as "happy" (step 4). **Batch-evaluate the combined feedback in one pass** — don't react to one bot's comments, push a fix, then let another bot review the new state. That compounds iteration count: bot B re-reviews your fresh diff and raises tangential comments that would've been weighed differently with both takes side by side. Seeing all tracked bots together also surfaces contradictions (one says X, another ¬X) and overlap (both flag the same issue) before you decide.
+Wait until every tracked bot (`request_on_pr_open` ∪ any bot that has posted a review or a review-style verdict comment on this PR — full definition in SKILL.md step 2) has either delivered a verdict for the current commit — a formal review OR a bot-authored issue comment (clean or findings) — OR been dropped as "happy" (step 4). **Batch-evaluate the combined feedback in one pass** — don't react to one bot's comments, push a fix, then let another bot review the new state. That compounds iteration count: bot B re-reviews your fresh diff and raises tangential comments that would've been weighed differently with both takes side by side. Seeing all tracked bots together also surfaces contradictions (one says X, another ¬X) and overlap (both flag the same issue) before you decide.
 
-**Newly appearing bots count.** If a bot posts a review during the wait that wasn't previously tracked (e.g. an auto-triggering bot whose review lands after the grace window), add it to the tracked set immediately; lockstep then waits for it too.
+**Newly appearing bots count.** If a bot posts a review — or a review-style verdict comment (findings or a clean pass; not CI/noise) — during the wait that wasn't previously tracked (e.g. an auto-triggering bot whose verdict lands after the grace window), add it to the tracked set immediately; lockstep then waits for it too.
 
 ## Timeout for unresponsive bots
 
