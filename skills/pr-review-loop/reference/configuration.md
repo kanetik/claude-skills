@@ -26,6 +26,8 @@ The orchestrator repo is the current working directory's repo. Cross-repo PRs in
 
 `request_on_pr_open` only controls who gets pinged on PR creation. **Bot engagement itself is NOT config-gated** — any bot that posts a review on the PR gets evaluated, tracked, and re-requested after subsequent pushes (the tracked-bots model in SKILL.md step 2). The grace window handles auto-triggering bots (Codex's auto-review on PR open, when enabled in Codex settings; Rulesets that auto-request Copilot): wait briefly, skip the manual request when the bot already started.
 
+A bot's verdict may arrive as a formal review *or* as a plain PR issue comment — some bots only comment when they're happy (Codex is the current example: it posts a formal review when it has findings, but a plain issue comment when it's clean). The loop reads both surfaces and **judges the bot's disposition from what it wrote** (SKILL.md "Reading reviewer state"). There is deliberately **no per-bot "verdict phrase" configuration** — a phrase list would be brittle and break on the next bot that words things differently — so disposition is decided by reading the message's meaning, not by matching configured strings.
+
 ## Invocation modifiers — natural language, not flags
 
 Parse intent from the invocation; don't require precise syntax:

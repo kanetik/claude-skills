@@ -6,6 +6,8 @@ Before evaluating anything, fetch unresolved review threads with their full comm
 
 **Also check each review's body separately.** A review's `body` field (the summary written when submitting) is distinct from threads — bots sometimes put high-level findings, approval qualifiers, or "no issues found" there. Fetch via `gh pr view <num> --json reviews` or GraphQL `reviews(...){nodes{body, comments{totalCount}}}`. Treat any unaddressed concern in `Review.body` as a finding even if no thread was created for it.
 
+**And check bot-authored PR issue comments — a third surface.** Some bots deliver findings, or their entire clean verdict, as a plain PR issue comment rather than a formal review or a thread. Any state check — manual or programmatic — MUST union all three surfaces: reviews + review threads + bot issue comments. A reviews-only check is the specific trap that stranded a live run: it reported a bot as "pending" when the bot had been happy for minutes, its clean verdict sitting in an issue comment. Read a comment's disposition from its content (concerns raised vs. clean pass), judged the same way as a review body — not by matching fixed phrases.
+
 The REST endpoint `/repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` is a convenience for one review's inline + file-level comments by review ID — same comments as `reviewThreads` filtered to that review. Use it when you have a specific review ID; for the whole-PR view, paginated `reviewThreads` is canonical.
 
 ## Human replies are evaluation INPUT, not a post-hoc check
