@@ -64,4 +64,4 @@ gh api graphql -f id="<node_id>" -f query='mutation($id:ID!){ deleteIssueComment
 
 ## Mentions in replies
 
-Always @-mention the bot you're replying to — `@copilot` for Copilot, `@codex` for Codex (for any other bot, its login). Every reply to a bot leads with its mention, not just the ones that need a response back. If Codex doesn't engage with a mention, the comment is still posted; treat as untagged.
+@-mention a bot in a reply only when the mention reaches the reviewing bot AND that bot acts on mentions. `@codex` does — Codex re-engages on `@codex`, so lead Codex replies with it. Copilot's reviewer (`copilot-pull-request-reviewer`) does NOT act on reply mentions, and `@copilot` routes to a *different* bot — Copilot's coding agent (`copilot-swe-agent`) — which misfires (it may post an error comment), so reply to Copilot **without** a mention. For a new bot, default to mentioning it only if you know its handle reaches the reviewer; if unsure, post the reply unmentioned. If Codex doesn't engage with a mention, the comment is still posted; treat as untagged.

@@ -56,7 +56,7 @@ Some reviewers (Copilot especially) end a comment by inviting a reaction on whet
 - **Rejected → 👎 (`-1`).** `Reject-with-explanation` — the concern didn't hold up under the lens-weighted view.
 - `Ask-user`, or any thread still awaiting reviewer clarification — don't react yet; wait until it settles into an accept or reject.
 
-React on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation on a PR-level issue comment uses the issue-comments endpoint. (A review *summary* body isn't a reactable object — there's no reactions endpoint for the `PullRequestReview` itself; if a helpfulness prompt rides only a summary, fall back to the written reply.) Both REST endpoints take the comment's numeric `databaseId`, not a GraphQL `IC_…`/`PRRC_…` node ID:
+When a reaction mechanism is available (the `gh`/REST calls below, or an equivalent reactions API/MCP path), react on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation on a PR-level issue comment uses the issue-comments endpoint. (A review *summary* body isn't a reactable object — there's no reactions endpoint for the `PullRequestReview` itself; if a helpfulness prompt rides only a summary, fall back to the written reply.) Both REST endpoints take the comment's numeric `databaseId`, not a GraphQL `IC_…`/`PRRC_…` node ID:
 
 ```bash
 # Inline or file-level review comment (numeric databaseId from the reviewThreads query):
@@ -65,11 +65,11 @@ gh api repos/<owner>/<repo>/pulls/comments/<comment_id>/reactions -X POST -f con
 gh api repos/<owner>/<repo>/issues/comments/<comment_id>/reactions -X POST -f content=+1  # or -1
 ```
 
-This reaction is the signal the bot uses to learn what kind of feedback is valued — apply it whenever the invitation is present, in addition to (not instead of) the written reply.
+This reaction is the signal the bot uses to learn what kind of feedback is valued — when a reaction path exists, apply it whenever the invitation is present, in addition to (not instead of) the written reply. If your environment has no way to react (no `gh`, no reactions API/MCP path), skip it gracefully: it's an optional steering signal, not a requirement, and the written reply still carries the substance.
 
 ## Replies, line numbers, resolution
 
-- **Replies should be one line where possible.** **Always @-mention the bot you're replying to** (`@copilot` / `@codex`, or the bot's login for others) — every reply to a bot leads with its mention.
+- **Replies should be one line where possible.** **@-mention a bot back only when the mention reaches that reviewer and it acts on mentions.** `@codex` does — Codex re-engages on mention, so lead Codex replies with it. Copilot's *reviewer* does NOT act on reply mentions, and `@copilot` routes to Copilot's separate coding agent (`copilot-swe-agent`), which just misfires — so reply to Copilot **without** an @-mention. General rule for any new bot: mention it only if its handle reaches the reviewing service and that service acts on mentions; if unsure, post the reply unmentioned.
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
 - **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen).
 - **Do NOT resolve when:** awaiting reviewer clarification (your reply asks the reviewer something); acknowledged-without-fix where discussion is still expected.
