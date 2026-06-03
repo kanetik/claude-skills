@@ -67,8 +67,8 @@ do {
 - **Reviews with state, body, comment count, author type** (`__typename: Bot` identifies bot reviewers — the tracked-bots set is dynamic):
   `reviews(last:100){nodes{author{login __typename} state body submittedAt comments{totalCount}}}`
 - **PR issue comments with author type, login, body, timestamp** — a reviewer-state surface in its own right: some bots post findings, or their entire clean verdict, here and never as a `Review`. Union with reviews + threads for ANY state derivation (a reviews-only read misses comment-only verdicts):
-  `comments(last:100){nodes{author{login __typename} body createdAt}}`
-  This is the `PullRequest.comments` connection (issue-level PR comments), distinct from `reviewThreads`. The `gh pr view <num> --json comments` form and github MCP `get_pull_request` expose the same data as fallbacks.
+  `comments(last:100){nodes{databaseId author{login __typename} body createdAt}}`
+  (`last:100` returns the most recent 100, so the latest verdict is always included; `databaseId` is the numeric ID REST reactions/edits need.) This is the `PullRequest.comments` connection (issue-level PR comments), distinct from `reviewThreads`. The `gh pr view <num> --json comments` form and github MCP `get_pull_request` expose the same data as fallbacks.
 - **`reviewRequests` including bots** — use GraphQL, NOT `gh pr view --json reviewRequests` (which filters bots out):
   `reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}`
 - **Most recent push timestamp** — latest of `HeadRefPushedEvent.createdAt` and `HeadRefForcePushedEvent.createdAt` from the PR timeline (force-pushes count as pushes for staleness). NOT `committedDate`, which can predate the push.

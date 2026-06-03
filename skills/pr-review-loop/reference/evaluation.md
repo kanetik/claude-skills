@@ -54,14 +54,14 @@ Some reviewers (Copilot especially) end a comment by inviting a reaction on whet
 
 - **Accepted → 👍 (`+1`).** Any `Fix-*` course (`Fix-as-suggested`, `Fix-differently`, `Fix-broader`) or `Create-issue-and-close` — the comment surfaced a real issue worth acting on, even if you addressed it differently than suggested.
 - **Rejected → 👎 (`-1`).** `Reject-with-explanation` — the concern didn't hold up under the lens-weighted view.
-- `Ask-user` / unresolved Clarify-needed — don't react yet; wait until the course settles into an accept or reject.
+- `Ask-user`, or any thread still awaiting reviewer clarification — don't react yet; wait until it settles into an accept or reject.
 
-React on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation in a review summary or a PR-level issue comment uses the issue-comments endpoint:
+React on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation on a PR-level issue comment uses the issue-comments endpoint. (A review *summary* body isn't a reactable object — there's no reactions endpoint for the `PullRequestReview` itself; if a helpfulness prompt rides only a summary, fall back to the written reply.) Both REST endpoints take the comment's numeric `databaseId`, not a GraphQL `IC_…`/`PRRC_…` node ID:
 
 ```bash
-# Inline or file-level review comment (databaseId from the reviewThreads query):
+# Inline or file-level review comment (numeric databaseId from the reviewThreads query):
 gh api repos/<owner>/<repo>/pulls/comments/<comment_id>/reactions -X POST -f content=+1   # or -1
-# Review-summary body or PR-level issue comment:
+# PR-level issue comment (numeric databaseId — NOT a GraphQL IC_ node ID):
 gh api repos/<owner>/<repo>/issues/comments/<comment_id>/reactions -X POST -f content=+1  # or -1
 ```
 
