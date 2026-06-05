@@ -103,7 +103,7 @@ Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (
 Pick the highest tier from the wait capability ladder (event-driven subscription → time-based scheduling → single-pass hand-back) and apply lockstep + timeouts. Make each wake idempotent — reconstruct loop state from the PR. A wake **resumes here at the wait/evaluate cycle**, applying the carried iteration counter (or PR-derived floor) and any carried invocation modifiers; it does NOT re-run the first-run preamble (arg parse, modifier detection) — that's kickoff-only, so the modifiers' *effects* (a disabled cap, an "only copilot" request set) must ride in the wake payload rather than being re-detected. Full detail: `reference/waiting.md`. Waiting does NOT count toward `max_iterations`.
 
 ### 4. Detect "this reviewer is happy"
-For each tracked bot, ALL must hold:
+For each bot **still in the active set** (already-happy bots are done — don't re-evaluate them, per "Happy is terminal and sticky" below), ALL must hold:
 - Zero unresolved review threads attributed to it (inline AND file-level).
 - Its most recent verdict *for the current HEAD* — the latest of a formal review (and its body) or a bot-authored issue comment (its review threads are covered by the first bullet above) — reads as a clean verdict with no unaddressed concerns. Judge this from what the bot wrote per "Reading reviewer state" above, not a fixed phrase list.
 - That clean signal is at/after the most recent push (a pre-push verdict is stale — re-derive against current HEAD).
