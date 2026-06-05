@@ -48,7 +48,7 @@ If a bot doesn't respond within ~20 minutes of being triggered (or, for auto-tri
 
 ## External pushes during the wait
 
-If `git pull` on wake introduces new commits (e.g. a teammate pushed), pending bot reviews are stale against the new HEAD. Return to step 1 — step 2's per-bot "started reviewing the current commit" check re-triggers any tracked bot whose pending review predates the new HEAD.
+If `git pull` on wake introduces new commits (e.g. a teammate pushed), pending bot reviews are stale against the new HEAD. Return to step 1 — step 2's per-bot "started reviewing the current commit" check re-triggers any tracked bot whose pending review predates the new HEAD. **Bots already dropped as happy stay dropped** — they're out of the tracked set (SKILL.md step 4), so a new HEAD from an external push does not pull them back in. Only the user manually re-requesting one returns it to the loop.
 
 ## Optional self-review — push BEFORE triggering bots, not during the wait
 
