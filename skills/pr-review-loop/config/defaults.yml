@@ -16,9 +16,9 @@ upfront_gate_reviewers: []      # adversarial bots run as a gate BEFORE the loop
                                 # gate (loop starts immediately, as before).
 request_on_pr_open: [copilot]   # bots to manually request on the first pass (iteration 1)
 loop_reviewers: [copilot]       # bots re-requested on every push during the loop. A bot in
-                                # request_on_pr_open but NOT here is "first-pass only": requested
-                                # once for an adversarial pass, its findings triaged like any other,
-                                # then never re-engaged in the loop. Default mirrors request_on_pr_open.
+                                # request_on_pr_open but NOT here is "first-pass only": a structural role
+                                # (requested once, out-of-loop, not necessarily adversarial), its findings
+                                # triaged like any other, then never re-engaged. Mirrors request_on_pr_open.
 final_gate_reviewers: []        # after the loop converges, request these ONCE more as a final
                                 # sanity check (a last confirming look, not an adversarial dig); if they
                                 # raise anything, fix it and re-converge loop_reviewers. Empty = no check.
