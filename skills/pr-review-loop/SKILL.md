@@ -87,7 +87,7 @@ A verdict can carry several findings at once; judge them together. If **any** fi
 
 **Gate-bot role after Phase 0.** Stamp Phase-0 fix commits with a `PR-Review-Loop: 0` trailer (iteration 0 = pre-loop gate) so they read as loop-authored, not external (per step 6 and `reference/waiting.md`); they don't advance the iteration counter. The gate bot is now a **tracked** bot but, unless it's also in `loop_reviewers`, it is out-of-loop — step 8 won't re-request it across the loop's own pushes and it doesn't gate convergence. Its Phase-0 verdict was already triaged, so the loop won't ask about it again. (Put the same bot in `final_gate_reviewers` if you also want it to vet what the fix rounds introduce — the two gates are independent.)
 
-**Re-entrancy.** In the common single-context run Phase 0 just runs inline before the loop, so this is moot. A context-less wake reconstructs "still in Phase 0" primarily from the **carried payload** (note the flag, like the iteration counter — `reference/waiting.md`). Absent a carried flag, fall back conservatively: you're still in Phase 0 only if `upfront_gate_reviewers` is set, not **all** gate bots are clean at/after current HEAD, and the **loop proper hasn't begun** — judged by the two mid-flight signals the gate's *own* sub-loop can't manufacture: a `PR-Review-Loop: N≥1` iteration trailer, or human review participation. (The broader kickoff mid-flight signals — resolved threads, multiple pushes, a `PR-Review-Loop: 0` commit — are deliberately **excluded here**, because the gate sub-loop itself resolves the gate bot's threads and pushes `: 0` fixes, so they'd falsely read as mid-flight mid-gate.) Otherwise the gate has passed (or never applied): resume in the loop.
+**Re-entrancy.** In the common single-context run Phase 0 just runs inline before the loop, so this is moot. A context-less wake reconstructs "still in Phase 0" primarily from the **carried payload** (note the flag, like the iteration counter — `reference/waiting.md`). Absent a carried flag, fall back conservatively: you're still in Phase 0 only if `upfront_gate_reviewers` is non-empty, not **all** gate bots are clean at/after current HEAD, and the **loop proper hasn't begun** — judged by the two mid-flight signals the gate's *own* sub-loop can't manufacture: a `PR-Review-Loop: N≥1` iteration trailer, or human review participation. (The broader kickoff mid-flight signals — resolved threads, multiple pushes, a `PR-Review-Loop: 0` commit — are deliberately **excluded here**, because the gate sub-loop itself resolves the gate bot's threads and pushes `: 0` fixes, so they'd falsely read as mid-flight mid-gate.) Otherwise the gate has passed (or never applied): resume in the loop.
 
 ## Iteration-1 branching
 
@@ -117,7 +117,7 @@ Reviews-only is the specific trap that broke a live run: a bot that had been **h
 ## The loop
 
 ### 1. Initial state check
-When `upfront_gate_reviewers` is set **and the PR is fresh** (per Phase 0's mid-flight test), run **Phase 0 (upfront adversarial gate)** first — it must settle (clean/deferred, or minor fixes applied) before the loop proper begins. With no gate configured, or on a mid-flight PR, skip it. Then apply the iteration-1 branching above.
+When `upfront_gate_reviewers` is non-empty **and the PR is fresh** (per Phase 0's mid-flight test), run **Phase 0 (upfront adversarial gate)** first — it must settle (clean/deferred, or minor fixes applied) before the loop proper begins. With no gate configured, or on a mid-flight PR, skip it. Then apply the iteration-1 branching above.
 
 ### 2. Request reviewers
 Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (called from step 8). Mechanics: `reference/bot-triggers.md`.
@@ -174,4 +174,4 @@ Expect it to be clean most of the time; its value is confirming the converged re
 
 ## Final summary report
 
-When the loop terminates (all `loop_reviewers` happy, and the final sanity check — if `final_gate_reviewers` is set — is clean or only deferred), summarize concisely: commits made (sha + one-liner each), follow-up issues created with reasons, threads acknowledged-without-fix that remain open for discussion, anything left for user attention.
+When the loop terminates (all `loop_reviewers` happy, and the final sanity check — if `final_gate_reviewers` is non-empty — is clean or only deferred), summarize concisely: commits made (sha + one-liner each), follow-up issues created with reasons, threads acknowledged-without-fix that remain open for discussion, anything left for user attention.
