@@ -75,7 +75,7 @@ But first, **only gate a *fresh* PR — never one that's already mid-flight.** T
 
 Otherwise:
 
-1. **Request the gate bot(s)** in `upfront_gate_reviewers` once against current HEAD (step 2 trigger mechanics; `reference/bot-triggers.md`). The grace window applies as in step 2.
+1. **Request the gate bot(s)** in `upfront_gate_reviewers` once against current HEAD (step 2 trigger mechanics; `reference/bot-triggers.md`). The grace window applies as in step 2, using the **iteration-1 baseline** — `max(PR createdAt, latest push event)` — since Phase 0 runs on a fresh PR.
 2. **Wait** for the verdict (step 3 mechanics; the requested set for this wait is `upfront_gate_reviewers`).
 3. **Read the verdict** across all three reviewer-state surfaces ("Reading reviewer state") and **triage it as one integrated judgement** (`reference/evaluation.md` → "Upfront gate triage") into exactly one outcome:
    - **Clean, or all findings deferred** (a clean verdict, or every finding resolved without a code change via `Create-issue-and-close` / `Reject-with-explanation`) → gate passes. Resolve any threads, then fall through to **iteration-1 branching**.

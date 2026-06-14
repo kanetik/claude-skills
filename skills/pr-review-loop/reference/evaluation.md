@@ -39,7 +39,7 @@ Hold three lenses and the mindset below as a **single integrated judgement** —
 
 ## Upfront gate triage (SKILL.md Phase 0)
 
-The upfront adversarial gate reuses everything above — same three surfaces, same lenses, same courses of action — but adds one classification on top, because its job is to decide *what the gate does next*, not just how to handle one thread. Read the whole verdict together (batch judgement) and sort it into one of three outcomes:
+The upfront adversarial gate reuses everything above — same three surfaces, same lenses, same courses of action — but adds one classification on top, because its job is to decide *what the gate does next*, not just how to handle one thread. Read the whole verdict together (batch judgement). A clean verdict — or one whose findings all resolve **without a code change** (`Create-issue-and-close` / `Reject-with-explanation`) — **passes the gate** (SKILL.md Phase 0). When there are actionable findings, sort them into one of three outcomes:
 
 - **Minor.** Localized, low-risk changes — the kind the convergence loop handles every iteration: a rename, a missing guard, a doc fix, a small bug, a narrow refactor. Course is some `Fix-*`, the change is small and self-evidently correct, and it doesn't alter the PR's approach. → Apply, then start the loop. No gate re-review.
 - **Major-clear.** Structural/design-level — changes the approach, touches many files, or alters the PR's intent — **and** you're confident both that there's a real issue *and* what the correct change is (`Fix-broader` / `Fix-differently` with high certainty). → Apply, re-request the gate bot, repeat to clean.
