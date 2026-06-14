@@ -9,22 +9,32 @@
 # Merge is per-key: a layer that sets only one key inherits the rest from below.
 # See reference/configuration.md for the full override model.
 
+upfront_gate_reviewers: []      # adversarial bots run as a gate BEFORE the loop starts (Phase 0). One
+                                # review, triaged minor / major-unclear / major-clear: minor -> fix, then
+                                # start the loop; major-unclear -> pause and ask; major-clear -> fix and
+                                # re-request the same bot, repeating to clean (no cap). Empty = no upfront
+                                # gate (loop starts immediately, as before).
 request_on_pr_open: [copilot]   # bots to manually request on the first pass (iteration 1)
 loop_reviewers: [copilot]       # bots re-requested on every push during the loop. A bot in
-                                # request_on_pr_open but NOT here is "first-pass only": requested
-                                # once for an adversarial pass, its findings triaged like any other,
-                                # then never re-engaged in the loop. Default mirrors request_on_pr_open.
+                                # request_on_pr_open but NOT here is "first-pass only": a structural role
+                                # (requested once, out-of-loop, not necessarily adversarial), its findings
+                                # triaged like any other, then never re-engaged. Mirrors request_on_pr_open.
 final_gate_reviewers: []        # after the loop converges, request these ONCE more as a final
-                                # adversarial gate; if they raise anything, fix it and re-converge the
-                                # loop_reviewers. Empty = no final gate. Typically the first-pass-only bots.
+                                # sanity check (a last confirming look, not an adversarial dig); if they
+                                # raise anything, fix it and re-converge loop_reviewers. Empty = no check.
 auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a Ruleset auto-requests Copilot or similar
 wait_check_cadence_seconds: 240 # how often to check during time-based waits (180-270 keeps each check inside the 5-min prompt cache — faster AND cheaper than longer cadences)
 max_iterations: 10
 
 # Recommended pattern for a rate-limited deep reviewer (e.g. Codex) — set in a project's
 # .github/pr-review.config.yml so it doesn't burn its allotment on redundant middle-of-loop re-raises:
-#   request_on_pr_open: [copilot, codex]   # both review the first pass
+#   request_on_pr_open: [copilot]          # Copilot reviews the first pass
 #   loop_reviewers: [copilot]              # only Copilot drives the convergence loop
-#   final_gate_reviewers: [codex]          # Codex does one final adversarial pass after convergence
+#   upfront_gate_reviewers: [codex]        # Codex gates the design BEFORE the loop (Phase 0)
+#   final_gate_reviewers: [codex]          # Codex does one final sanity check after convergence
 # Empirically the deep reviewer's unique value is its first-look design/correctness catches plus a
-# final gate; it adds little to iterative polish, which Copilot handles well.
+# final sanity check; it adds little to iterative polish, which Copilot handles well. Putting it on the upfront
+# gate catches a wrong-from-the-start approach before Copilot polishes it; the final sanity check then catches
+# what the fix rounds introduced. (Use the gate keys instead of request_on_pr_open for the deep reviewer:
+# request_on_pr_open batches it into iteration 1 alongside the loop, whereas upfront_gate_reviewers makes
+# it a distinct triaged phase that must settle before the loop starts.)
