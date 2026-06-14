@@ -55,7 +55,7 @@ Read defaults from this skill's [`config/defaults.yml`](config/defaults.yml), th
 
 **Reviewer roles.** Three sets, all bot lists: `request_on_pr_open` (requested on the first pass), `loop_reviewers` (re-requested on every push — these *drive convergence*), and `final_gate_reviewers` (requested once after convergence).
 
-"Adversarial" is a **structural** property here, not a vibe: it means a reviewer that sits **outside** `loop_reviewers`. The loop reviewers are the iterative *drivers* (they are not "adversarial"); the **adversarial reviewers** are exactly the bots NOT in `loop_reviewers` — the **first-pass-only** ones (in `request_on_pr_open` but not `loop_reviewers`) and the `final_gate_reviewers`. A first-pass-only bot reviews once, its findings are evaluated like any other, but step 8 never re-requests it — so a rate-limited deep reviewer (e.g. Codex) contributes its first-look design/correctness catches without being dragged through every polish round. Being on the *PR-open* request is not itself adversarial — Copilot is on `request_on_pr_open` too and is a loop driver, not an adversarial reviewer. See `config/defaults.yml` for the recommended Codex pattern.
+"Adversarial" is a **structural** property here, not a vibe: it means any tracked reviewer that sits **outside** `loop_reviewers`. The loop reviewers are the iterative *drivers* (they are not "adversarial"); every other tracked bot is adversarial in this sense. The two **configured** forms are **first-pass-only** bots (in `request_on_pr_open` but not `loop_reviewers`) and `final_gate_reviewers` — and a bot that simply auto-appears unconfigured (tracked because it posted, but in no config list) lands in the same bucket: tracked, evaluated once like any other, but never re-requested by step 8, exactly like a first-pass-only bot. A first-pass-only bot's findings are evaluated like any other, but step 8 never re-requests it — so a rate-limited deep reviewer (e.g. Codex) contributes its first-look design/correctness catches without being dragged through every polish round. Being on the *PR-open* request is not itself adversarial — Copilot is on `request_on_pr_open` too and is a loop driver, not an adversarial reviewer. See `config/defaults.yml` for the recommended Codex pattern.
 
 ## Preconditions
 
@@ -143,8 +143,8 @@ Increment. If `max_iterations` reached, pause and ask the user (skip the cap if 
 
 ### 10. Final adversarial gate
 Runs only when the loop has converged (all `loop_reviewers` happy) **and** `final_gate_reviewers` is non-empty; otherwise skip straight to the summary. Request the gate bots once against the current HEAD and wait (step 3 mechanics), then:
-- **Findings** → evaluate (step 5) and fix/commit/push (steps 6–8). That push re-engages the `loop_reviewers`, so re-converge the loop, then run the gate **once more**. Cap the gate at one re-run to avoid ping-pong with a rate-limited reviewer; if it still has non-deferred findings after that, hand back to the user.
-- **Clean, or only `Create-issue-and-close` / `Reject-with-explanation`** → done; proceed to the Final summary.
+- **Any finding needs a code change** → evaluate (step 5), fix/commit/push (steps 6–8). That push re-engages the `loop_reviewers`, so re-converge the loop, then run the gate **once more**. Cap the gate at one re-run to avoid ping-pong with a rate-limited reviewer; if it still has code-change findings after that, hand back to the user.
+- **Clean, or all findings resolve without a code change** (`Create-issue-and-close` / `Reject-with-explanation`) → resolve the threads, no re-converge; proceed to the Final summary.
 
 This is where a first-pass-only deep reviewer earns its second look: it catches issues the *fix rounds introduced* (which its single iter-1 pass couldn't see) without being spent on every polish iteration.
 
