@@ -33,8 +33,8 @@ max_iterations: 10
 #   upfront_gate_reviewers: [codex]        # Codex gates the design BEFORE the loop (Phase 0)
 #   final_gate_reviewers: [codex]          # Codex does one final sanity check after convergence
 # Empirically the deep reviewer's unique value is its first-look design/correctness catches plus a
-# final gate; it adds little to iterative polish, which Copilot handles well. Putting it on the upfront
-# gate catches a wrong-from-the-start approach before Copilot polishes it; the final gate then catches
+# final sanity check; it adds little to iterative polish, which Copilot handles well. Putting it on the upfront
+# gate catches a wrong-from-the-start approach before Copilot polishes it; the final sanity check then catches
 # what the fix rounds introduced. (Use the gate keys instead of request_on_pr_open for the deep reviewer:
 # request_on_pr_open batches it into iteration 1 alongside the loop, whereas upfront_gate_reviewers makes
 # it a distinct triaged phase that must settle before the loop starts.)
