@@ -22,7 +22,7 @@ bundled defaults  <  ~/.claude/pr-review.config.yml (optional)  <  <orchestrator
 - **Bundled defaults** (`config/defaults.yml`) are always present — the baseline that makes the skill self-sufficient with zero external config.
 - **User-level** `~/.claude/pr-review.config.yml` is optional and additive. Read it *if it exists*; it simply won't exist in a cloud session, which is fine. Never require it.
 - **Project** `.github/pr-review.config.yml` in the orchestrator repo (the current working directory's repo — see SKILL.md "Preconditions") wins. The merged config applies to ALL PRs in the run, including cross-repo PRs.
-- **Merge is per-key, not whole-file replace.** A project file that sets only `max_iterations` inherits the other three keys from the layer(s) below.
+- **Merge is per-key, not whole-file replace.** A project file that sets only `max_iterations` inherits the other keys from the layer(s) below.
 
 The orchestrator repo is the current working directory's repo. Cross-repo PRs in the same run still use the orchestrator repo's merged config — they don't pull config from their own repos.
 
