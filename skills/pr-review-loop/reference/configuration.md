@@ -1,11 +1,12 @@
 # Configuration & override model
 
-The loop is governed by six config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. This file is the full model; `config/defaults.yml` holds the shipped values.
+The loop is governed by seven config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. This file is the full model; `config/defaults.yml` holds the shipped values.
 
 ## Config keys
 
 | Key | Default | Meaning |
 |---|---|---|
+| `upfront_gate_reviewers` | `[]` | Adversarial bots run as a gate **before** the loop (SKILL.md Phase 0). One review, triaged: **minor** → fix then start the loop; **major-unclear** → pause and ask the user; **major-clear** → fix and re-request the same bot, repeating **to clean with no cap**. `[]` = no upfront gate (loop starts immediately). Skipped on a PR that already has unaddressed feedback (it's not fresh). Typically a rate-limited deep reviewer, so a wrong-from-the-start approach is caught before Copilot polishes it. |
 | `request_on_pr_open` | `[copilot]` | Bots to manually request on the first pass (iteration 1). Only controls who gets pinged then — bot *evaluation* is not gated by this (see tracked-bots below). |
 | `loop_reviewers` | `[copilot]` | Bots re-requested on every push during the loop (the convergence drivers; SKILL.md step 8). A bot in `request_on_pr_open` but **not** here is **first-pass-only**: requested once, its findings evaluated like any other, then never re-requested and not gating convergence. Lets a rate-limited deep reviewer (Codex) contribute its first-look catches without running every iteration. |
 | `final_gate_reviewers` | `[]` | Bots requested **once** after the loop converges, as a final adversarial pass (SKILL.md step 10). If they raise non-deferred findings, fix and re-converge `loop_reviewers`, then re-run the gate once. `[]` = no gate. Typically the first-pass-only bots, so a deep reviewer also catches issues the fix rounds introduced. |
@@ -26,6 +27,8 @@ bundled defaults  <  ~/.claude/pr-review.config.yml (optional)  <  <orchestrator
 
 The orchestrator repo is the current working directory's repo. Cross-repo PRs in the same run still use the orchestrator repo's merged config — they don't pull config from their own repos.
 
+**`upfront_gate_reviewers` vs `request_on_pr_open` for a deep reviewer.** Both can put a bot in front of a fresh PR, but they differ in *structure*. Listing the deep reviewer in `request_on_pr_open` batches its first-pass findings into iteration 1 alongside the loop reviewers — one combined evaluation, then the loop runs. Listing it in `upfront_gate_reviewers` instead makes it a **distinct phase that must settle first**: its review is triaged minor/major-unclear/major-clear, a major-clear finding re-runs the gate to clean, and a major-unclear one pauses for the user — all before any loop reviewer is requested. Use the gate when "is this approach even right?" should be answered before polish begins; use `request_on_pr_open` when the deep reviewer's catches can be handled inline with everything else. Don't list the same bot in both (the gate already covers the first look).
+
 `request_on_pr_open` controls who gets pinged on the first pass. **Bot *evaluation* is NOT config-gated** — any bot that posts a review, or a review-style verdict comment (judged on content, not routine CI/noise), gets evaluated and tracked (the tracked-bots model in SKILL.md step 2). What **is** config-gated is *re-requesting*: only `loop_reviewers` are re-pinged after subsequent pushes (step 8). So a first-pass-only bot's iter-1 findings are still triaged, but it isn't dragged through later iterations. The grace window handles auto-triggering bots (Codex's auto-review on PR open, when enabled in Codex settings; Rulesets that auto-request Copilot): wait briefly, skip the manual request when the bot already started.
 
 A bot's verdict may arrive as a formal review *or* as a plain PR issue comment — some bots only comment when they're happy (Codex is the current example: it posts a formal review when it has findings, but a plain issue comment when it's clean). The loop reads both surfaces and **judges the bot's disposition from what it wrote** (SKILL.md "Reading reviewer state"). There is deliberately **no per-bot "verdict phrase" configuration** — a phrase list would be brittle and break on the next bot that words things differently — so disposition is decided by reading the message's meaning, not by matching configured strings.
@@ -37,6 +40,7 @@ Parse intent from the invocation; don't require precise syntax:
 - "no iteration cap" / "until done" / "no max" / "no limit" → disable `max_iterations`.
 - "only copilot" / "without codex" / "skip codex" / "just copilot" → override `request_on_pr_open` (and `loop_reviewers` / `final_gate_reviewers`) to drop the excluded bot for this run. Note: this only changes who the loop *requests*; a bot that shows up anyway via auto-trigger or installation still gets evaluated when it posts (tracked-bots model).
 - "codex first pass only" / "codex once" / "adversarial codex" → set `request_on_pr_open: [copilot, codex]`, `loop_reviewers: [copilot]`, `final_gate_reviewers: [codex]` for this run (the rate-limited-deep-reviewer pattern).
+- "gate the design first" / "adversarial review before the loop" / "have codex gate it first" → set `upfront_gate_reviewers: [<bot>]` for this run, so that bot runs the Phase-0 gate before the loop starts (commonly paired with `final_gate_reviewers: [<bot>]` to bookend).
 - A PR number, URL, or cross-repo reference → target specific PR(s) instead of auto-detecting from the current branch.
 
 Build command is not configured — detect the project's standard verify command at the commit step.

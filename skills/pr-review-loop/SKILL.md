@@ -1,12 +1,13 @@
 ---
 name: pr-review-loop
 description: >-
-  Runs an iterative PR review loop on a repo's open PR(s): requests AI reviewers
-  (Copilot, Codex, and any bot that posts a review), waits for their reviews,
-  evaluates each review thread under a weighted project/PR/item judgement, then
-  fixes, pushes back, or files follow-up issues, resolves threads, and repeats
-  until the loop reviewers are satisfied (with an optional final adversarial-reviewer
-  pass). Self-contained — bundles its config
+  Runs an iterative PR review loop on a repo's open PR(s): optionally opens with an
+  upfront adversarial-gate review (triaged minor / major-unclear / major-clear) that
+  must settle before the loop, then requests AI reviewers (Copilot, Codex, and any
+  bot that posts a review), waits for their reviews, evaluates each review thread under
+  a weighted project/PR/item judgement, then fixes, pushes back, or files follow-up
+  issues, resolves threads, and repeats until the loop reviewers are satisfied (with
+  an optional final adversarial-reviewer pass). Self-contained — bundles its config
   defaults and reference material and reads project overrides from the consuming
   repo. Detects the best available wait mechanism (event-driven subscription,
   scheduled polling, or single-pass) and degrades gracefully. Auto-invoke this
@@ -31,7 +32,7 @@ allowed-tools:
 
 # PR Review Loop
 
-An iterative loop that drives AI code reviewers (Copilot, Codex, any bot that posts) to convergence on a pull request: request → wait → evaluate → fix/answer → push → repeat, until every **loop reviewer** is happy (plus an optional final adversarial-reviewer gate). "Convergence" is gauged on `loop_reviewers`; adversarial reviewers outside that set are triaged but don't gate the loop — see "Reviewer roles" below.
+An iterative loop that drives AI code reviewers (Copilot, Codex, any bot that posts) to convergence on a pull request: request → wait → evaluate → fix/answer → push → repeat, until every **loop reviewer** is happy. It can be bookended by two optional adversarial-reviewer gates: an **upfront gate** (Phase 0) that vets the approach *before* the loop starts, and a **final gate** (step 10) after convergence. "Convergence" is gauged on `loop_reviewers`; adversarial reviewers outside that set are triaged but don't gate the loop — see "Reviewer roles" below.
 
 This skill is self-contained. All the files below live **inside this skill's own directory**, alongside this `SKILL.md` — read them from there (paths are relative to this file, not to the current working directory). Config defaults live in [`config/defaults.yml`](config/defaults.yml); the heavy mechanics live in `reference/` and are loaded on demand:
 
@@ -39,7 +40,7 @@ This skill is self-contained. All the files below live **inside this skill's own
 - [`reference/tool-tiers.md`](reference/tool-tiers.md) — per-operation tool tiers and the wait capability ladder.
 - [`reference/graphql.md`](reference/graphql.md) — paginated `reviewThreads` query and the other GraphQL/REST the loop needs (bash + PowerShell).
 - [`reference/bot-triggers.md`](reference/bot-triggers.md) — Copilot/Codex request mechanics and post-trigger verify.
-- [`reference/evaluation.md`](reference/evaluation.md) — the step-5 lens/mindset rubric, courses of action, resolve criteria.
+- [`reference/evaluation.md`](reference/evaluation.md) — the step-5 lens/mindset rubric, courses of action, resolve criteria, and the Phase-0 upfront-gate triage (minor / major-unclear / major-clear).
 - [`reference/waiting.md`](reference/waiting.md) — the step-3 wait: capability ladder, re-entrancy, lockstep, timeouts.
 
 **Requires:** `gh` (authenticated), `git`. Bash forms also use `jq`; PowerShell forms don't. Optional: a github MCP server, and a host loop/scheduling or event-subscription primitive for waits (the loop feature-detects and degrades — see [`reference/waiting.md`](reference/waiting.md)).
@@ -52,9 +53,9 @@ Status updates during iterations and waits are one or two lines. "Iter 3 wait, C
 
 ## Configuration (summary)
 
-Read defaults from this skill's [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < optional `~/.claude/pr-review.config.yml` < orchestrator repo's `.github/pr-review.config.yml`. Defaults: `request_on_pr_open: [copilot]`, `loop_reviewers: [copilot]`, `final_gate_reviewers: []`, `auto_review_grace_seconds: 0`, `wait_check_cadence_seconds: 240`, `max_iterations: 10`. Parse natural-language modifiers from the invocation. Full model and project *procedural* overrides: `reference/configuration.md`.
+Read defaults from this skill's [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < optional `~/.claude/pr-review.config.yml` < orchestrator repo's `.github/pr-review.config.yml`. Defaults: `upfront_gate_reviewers: []`, `request_on_pr_open: [copilot]`, `loop_reviewers: [copilot]`, `final_gate_reviewers: []`, `auto_review_grace_seconds: 0`, `wait_check_cadence_seconds: 240`, `max_iterations: 10`. Parse natural-language modifiers from the invocation. Full model and project *procedural* overrides: `reference/configuration.md`.
 
-**Reviewer roles.** Three sets, all bot lists: `request_on_pr_open` (requested on the first pass), `loop_reviewers` (re-requested on every push — these *drive convergence*), and `final_gate_reviewers` (requested once after convergence).
+**Reviewer roles.** Four sets, all bot lists: `upfront_gate_reviewers` (run as a gate *before* the loop — Phase 0), `request_on_pr_open` (requested on the first pass), `loop_reviewers` (re-requested on every push — these *drive convergence*), and `final_gate_reviewers` (requested once after convergence). The two gate sets are adversarial reviewers (outside `loop_reviewers`); the upfront gate has its own minor/major triage and may run its own re-review sub-loop before the convergence loop begins.
 
 "Adversarial" is a **structural** property here, not a vibe: it means any tracked reviewer that sits **outside** `loop_reviewers`. The loop reviewers are the iterative *drivers* (they are not "adversarial"); every other tracked bot is adversarial in this sense. The two **configured** forms are **first-pass-only** bots (in `request_on_pr_open` but not `loop_reviewers`) and `final_gate_reviewers` — and a bot that simply auto-appears unconfigured (tracked because it posted, but in no config list) lands in the same bucket: tracked, evaluated once like any other, but never re-requested by step 8, exactly like a first-pass-only bot. A first-pass-only bot's findings are evaluated like any other, but step 8 never re-requests it — so a rate-limited deep reviewer (e.g. Codex) contributes its first-look design/correctness catches without being dragged through every polish round. Being on the *PR-open* request is not itself adversarial — Copilot is on `request_on_pr_open` too and is a loop driver, not an adversarial reviewer. See `config/defaults.yml` for the recommended Codex pattern.
 
@@ -65,6 +66,28 @@ Read defaults from this skill's [`config/defaults.yml`](config/defaults.yml), th
 - **Working tree must be clean** and `gh` authenticated.
 
 Run `git fetch && git pull --ff-only` before each iteration's analysis. For multiple PRs run concurrently only if your scheduling primitive supports it, and each concurrent run MUST use an isolated working directory (separate `git worktree` or clone) to avoid `git` state collisions.
+
+## Phase 0 — upfront adversarial gate
+
+Runs **before** iteration-1 branching, **only when `upfront_gate_reviewers` is non-empty**. Empty (the default) → skip straight to iteration-1 branching; the loop behaves exactly as before. The gate's job is to vet the PR's *approach* once, up front, so the convergence loop doesn't polish a design that's wrong from the start.
+
+But first, **don't gate a PR that already carries unaddressed feedback.** If unresolved feedback already exists (apply the iteration-1 "any unresolved feedback exists" test below — unresolved threads, unaddressed review-body concerns, or a bot-authored review-style verdict comment), skip Phase 0 and go straight to iteration-1 branching: the PR is mid-flight, not fresh, so an upfront design gate is the wrong move and would re-litigate settled ground. Phase 0 is for a *fresh* gate request only.
+
+Otherwise:
+
+1. **Request the gate bot(s)** in `upfront_gate_reviewers` once against current HEAD (step 2 trigger mechanics; `reference/bot-triggers.md`). The grace window applies as in step 2.
+2. **Wait** for the verdict (step 3 mechanics; the requested set for this wait is `upfront_gate_reviewers`).
+3. **Read the verdict** across all three reviewer-state surfaces ("Reading reviewer state") and **triage it as one integrated judgement** (`reference/evaluation.md` → "Upfront gate triage") into exactly one outcome:
+   - **Clean / no concerns** → gate passes. Resolve any threads, then fall through to **iteration-1 branching**.
+   - **Minor changes only** → apply them (evaluate per step 5, commit per step 6, update the description per step 7, push per step 8), then fall through to **iteration-1 branching**. Do **not** re-request the gate bot for minor changes — the convergence loop takes it from here.
+   - **Major, path unclear** (ambiguous, multiple viable approaches, security/auth/data-model/API-contract judgement, or anything you shouldn't decide unilaterally) → **pause and ask the user** (`Ask-user`). Do not proceed to the loop until it's resolved. The user's answer may convert it to a minor/clear fix or a reject.
+   - **Major, path clear** (you're confident what the right change is *and* that it's correct) → apply it (steps 5–8), then **re-request the same gate bot** and return to Phase 0 step 2. **Repeat to clean** — this sub-loop has no iteration cap (it precedes, and does not count toward, `max_iterations`); each pass should converge the design further. If it stops converging or a re-review surfaces a major-unclear finding, fall to the `Ask-user` outcome rather than spinning.
+
+A verdict can carry several findings at once; judge them together. If **any** finding is major-unclear, take the `Ask-user` outcome (the most conservative) — you may still apply the unambiguously-minor/clear fixes in the same push, but the gate does not pass until the unclear question is settled. Only when no finding is major-unclear do the all-minor or major-clear outcomes apply.
+
+**Gate-bot role after Phase 0.** Stamp Phase-0 fix commits with a `PR-Review-Loop: 0` trailer (iteration 0 = pre-loop gate) so they read as loop-authored, not external (per step 6 and `reference/waiting.md`); they don't advance the iteration counter. The gate bot is now a **tracked** bot but, unless it's also in `loop_reviewers`, it is adversarial — step 8 won't re-request it across the loop's own pushes and it doesn't gate convergence. Its Phase-0 verdict was already triaged, so the loop won't ask about it again. (Put the same bot in `final_gate_reviewers` if you also want it to vet what the fix rounds introduce — the two gates are independent.)
+
+**Re-entrancy.** In the common single-context run Phase 0 just runs inline before the loop. A context-less wake that lands mid-gate reconstructs "still in Phase 0" from the carried payload (note it, like the iteration counter — `reference/waiting.md`); absent a carried payload, the fallback is: if `upfront_gate_reviewers` is set and no gate bot has yet posted a clean verdict at/after current HEAD, you're still in Phase 0 — otherwise the gate has passed and you're in the loop.
 
 ## Iteration-1 branching
 
@@ -94,7 +117,7 @@ Reviews-only is the specific trap that broke a live run: a bot that had been **h
 ## The loop
 
 ### 1. Initial state check
-Apply the iteration-1 branching above.
+Run **Phase 0 (upfront adversarial gate)** first when `upfront_gate_reviewers` is set — it must settle (clean, or minor fixes applied) before the loop proper begins. Then apply the iteration-1 branching above.
 
 ### 2. Request reviewers
 Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (called from step 8). Mechanics: `reference/bot-triggers.md`.
