@@ -13,7 +13,7 @@ upfront_gate_reviewers: []      # adversarial bots run as a gate BEFORE the loop
                                 # reviewers review, you apply changes, and they RE-REVIEW until ALL sign off:
                                 # actionable-clear -> fix and re-request the same bot(s), repeating to clean
                                 # (no cap, any size); actionable-unclear (judgement call) -> pause and ask.
-                                # The review must complete this way -- every configured gate bot clean --
+                                # The review completes this way -- every gate bot clean or all-deferred --
                                 # before the loop starts. Empty = no upfront gate (loop starts immediately).
 request_on_pr_open: [copilot]   # bots to manually request on the first pass (iteration 1)
 loop_reviewers: [copilot]       # bots re-requested on every push during the loop. A bot in
