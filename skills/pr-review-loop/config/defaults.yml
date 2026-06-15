@@ -9,10 +9,11 @@
 # Merge is per-key: a layer that sets only one key inherits the rest from below.
 # See reference/configuration.md for the full override model.
 
-upfront_gate_reviewers: []      # adversarial bots run as a gate BEFORE the loop starts (Phase 0). One
-                                # review, triaged minor / major-unclear / major-clear: minor -> fix, then
-                                # start the loop; major-unclear -> pause and ask; major-clear -> fix and
-                                # re-request the same bot, repeating to clean (no cap). Empty = no upfront
+upfront_gate_reviewers: []      # adversarial bots run as a gate BEFORE the loop starts (Phase 0). The gate
+                                # reviewer reviews, you apply changes, and it RE-REVIEWS until it signs off:
+                                # a clear finding -> fix and re-request the same bot, repeating to clean (no
+                                # cap, any size); an unclear/judgement-call finding -> pause and ask. The
+                                # review must complete this way before the loop starts. Empty = no upfront
                                 # gate (loop starts immediately, as before).
 request_on_pr_open: [copilot]   # bots to manually request on the first pass (iteration 1)
 loop_reviewers: [copilot]       # bots re-requested on every push during the loop. A bot in
