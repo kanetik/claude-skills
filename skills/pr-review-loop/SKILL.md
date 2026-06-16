@@ -78,7 +78,7 @@ Runs **before** the loop, only when `upfront_gate_reviewers` is non-empty and th
 
 Otherwise:
 
-1. **Request the gate bot(s)** in `upfront_gate_reviewers` against current HEAD (mechanics: `reference/mechanics.md`); grace window as in step 2, on the iteration-1 baseline `max(PR createdAt, latest push event)`.
+1. **Request the gate bot(s)** in `upfront_gate_reviewers` against current HEAD (mechanics: `reference/mechanics.md`); grace window as in step 2, on the iteration-1 baseline `max(PR createdAt, latest push event)`. **Frame the request adversarially** for any bot whose trigger carries free text (Codex and other comment/mention-triggered bots) — in the trigger body, ask it to challenge the *approach*: design, correctness, security, data-model/API-contract soundness, wrong-from-the-start choices, not just surface polish. E.g. `@codex review — act as an adversarial reviewer: challenge the approach and design and hunt for correctness/security/data-model flaws or anything wrong from the start, not just style.` A request-only reviewer that takes no prompt (Copilot via `--add-reviewer`) can't be steered this way; its gate run is adversarial only by *our* triage, so prefer a comment-triggered deep reviewer for the gate (the recommended Codex pattern).
 2. **Wait** (step 3 mechanics; the requested set for this wait is `upfront_gate_reviewers`).
 3. **Read the verdict across all three surfaces and triage it as one judgement** (`reference/evaluation.md` → "Upfront gate triage"):
    - **Clean, or all findings deferred** (every finding resolved without a code change via `Create-issue-and-close` / `Reject-with-explanation`) → gate satisfied; resolve any threads, fall through to the loop. (Deferred findings need no re-review — nothing new for the bot to see.)
@@ -148,7 +148,7 @@ gh pr edit <num> --body-file <tmp>/pr-body-<num>.md
 Increment. If `max_iterations` reached, pause and ask the user (skip the cap if invoked with "no iteration cap"). Return to step 3. The counter is the one piece of loop state with no PR backstop, so it **must ride in the wake payload** (with any active modifiers); a context-less wake with no carried counter derives a floor from the highest `PR-Review-Loop: <N>` trailer and resumes at `<N>+1`. Mechanics: `reference/waiting.md`.
 
 ### 10. Final sanity check
-Runs only after convergence (all `loop_reviewers` happy) when `final_gate_reviewers` is non-empty — a last confirming look, not an adversarial dig (that's the upfront gate's job). Request the configured bot(s) once against HEAD and wait (step 3), then:
+Runs only after convergence (all `loop_reviewers` happy) when `final_gate_reviewers` is non-empty — a last confirming look, not an adversarial dig (that's the upfront gate's job). Request the configured bot(s) once against HEAD and wait (step 3) — where the trigger carries free text, frame it as a light confirming check (did the converged result hold together, anything the fix rounds regressed?), *not* the adversarial framing of Phase 0 — then:
 - **Any finding needs a code change** → evaluate (step 5), fix/commit/push (6–8). That push re-engages `loop_reviewers`; re-converge, then re-run the check **once**. Still failing after that → hand back to the user.
 - **Clean, or all findings deferred** (`Create-issue-and-close` / `Reject-with-explanation`) → resolve the threads, no re-converge; proceed to the summary.
 
