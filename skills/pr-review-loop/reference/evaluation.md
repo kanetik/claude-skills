@@ -1,37 +1,20 @@
 # Evaluating reviewer feedback (SKILL.md step 5 detail)
 
-## Threads are the unit of evaluation — not individual review comments
+## What to read
 
-Before evaluating anything, fetch unresolved review threads with their full comment lists via paginated GraphQL (`reference/graphql.md`). Threads cover both inline comments and file-level comments (`line: null`). The threads view also gives you the conversation context (human replies) that the per-review REST endpoint does NOT show.
+**Threads are the unit of evaluation.** Fetch unresolved review threads with full comment lists via paginated GraphQL (`reference/mechanics.md`); they cover inline AND file-level comments (`line: null`) and carry the conversation context (human replies) the per-review REST endpoint omits. **Also read each review's `body`** separately — bots sometimes put findings, qualifiers, or "no issues" there with no thread. **And read bot-authored PR issue comments** — the third surface (SKILL.md "Reading reviewer state"); some bots deliver findings or their whole clean verdict only here. Any state check must union all three. (The REST endpoint `/repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` is a convenience for one review's comments by ID; for the whole-PR view, paginated `reviewThreads` is canonical.)
 
-**Also check each review's body separately.** A review's `body` field (the summary written when submitting) is distinct from threads — bots sometimes put high-level findings, approval qualifiers, or "no issues found" there. Fetch via `gh pr view <num> --json reviews` or GraphQL `reviews(...){nodes{body, comments{totalCount}}}`. Treat any unaddressed concern in `Review.body` as a finding even if no thread was created for it.
-
-**And check bot-authored PR issue comments — a third surface.** Some bots deliver findings, or their entire clean verdict, as a plain PR issue comment rather than a formal review or a thread. Any state check — manual or programmatic — MUST union all three surfaces: reviews + review threads + bot issue comments. A reviews-only check is the specific trap that stranded a live run: it reported a bot as "pending" when the bot had been happy for minutes, its clean verdict sitting in an issue comment. Read a comment's disposition from its content (concerns raised vs. clean pass), judged the same way as a review body — not by matching fixed phrases.
-
-The REST endpoint `/repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` is a convenience for one review's inline + file-level comments by review ID — same comments as `reviewThreads` filtered to that review. Use it when you have a specific review ID; for the whole-PR view, paginated `reviewThreads` is canonical.
-
-## Human replies are evaluation INPUT, not a post-hoc check
-
-When a thread has replies from the PR author, maintainers, or other humans, read them BEFORE forming your evaluation. They often contain steering — "we're doing it this way because…", "ignore for now", "fix narrowly, broader cleanup is tracked elsewhere" — and should weigh heavily, often decisively. Don't evaluate the bot's text first and then "check" replies as a sanity step; the reply is part of the comment's context. If a human reply directly conflicts with the lens-weighted evaluation (reply says "ignore" but lenses say it's a real project-breaking bug), surface the conflict to the user — don't silently obey or override.
+**Human replies are evaluation INPUT, not a post-hoc check.** Read replies from the author/maintainers BEFORE forming your evaluation — they often steer ("we're doing it this way because…", "ignore for now", "fix narrowly, broader cleanup is tracked elsewhere") and weigh heavily, often decisively. If a human reply directly conflicts with the lens-weighted evaluation (reply says "ignore" but lenses say it's a real project-breaking bug), surface the conflict — don't silently obey or override.
 
 ## The integrated judgement
 
-Hold three lenses and the mindset below as a **single integrated judgement** — not a sequential rubric. All aspects shape the decision simultaneously, with human replies as additional weighted input.
+Hold three lenses and the mindset as a **single integrated judgement**, not a sequential rubric, with human replies as weighted input.
 
-**Lenses, weighted (most → least important, all in play at once):**
+**Lenses (most → least important, all in play at once):** what's best for the **project as a whole** (most) · the **PR overall**, including its larger intent (slightly less) · the **specific item** on its own (slightly less again).
 
-- What's best for the **project as a whole** (most important).
-- What's best for the **PR overall**, including its larger intent when clear (slightly less).
-- What's best for the **specific item** on its own (slightly less again).
+**Mindset:** Steelman the reviewer's underlying concern — their suggested fix is one possible response, not necessarily the best; separate "is there a real issue?" from "is their fix the right one?" The decision space is broader than {accept their fix, reject}. Don't get into pissing contests or be defensive about prior choices; equally, don't capitulate to taste asks when the lens-weighted view says the code is correct. `Reject-with-explanation` is for "concern understood AND lenses support the current code" — not stylistic disagreement.
 
-**Mindset (woven into the lens evaluation):**
-
-- Steelman the reviewer's underlying concern. Their suggested fix is ONE possible response — it may not be the best one. Separate "is there a real issue?" from "is their proposed fix the right one?"
-- The decision space is broader than {accept their fix, reject}. Pick the BEST course under the lens-weighted view.
-- Don't get into pissing contests; don't be defensive about prior choices. Equally, don't capitulate to taste/preference asks when the lens-weighted evaluation says the current code is correct.
-- "Reject-with-explanation" is reserved for cases where the concern is understood AND the lens-weighted view supports the current code — not stylistic disagreement.
-
-## Possible courses of action
+## Courses of action
 
 `Fix-as-suggested` · `Fix-differently` (better way to address the same concern) · `Fix-broader` (the real issue is bigger) · `Reject-with-explanation` · `Create-issue-and-close` (real but genuine scope-creep — NOT "broken, fix later") · `Ask-user` (genuinely uncertain).
 
@@ -39,48 +22,48 @@ Hold three lenses and the mindset below as a **single integrated judgement** —
 
 ## Upfront gate triage (SKILL.md Phase 0)
 
-The upfront adversarial gate reuses everything above — same three surfaces, same lenses, same courses of action — but adds one decision on top, because its job is to decide *what the gate does next*, not just how to handle one thread. Read the whole verdict together (batch judgement). A clean verdict — or one whose findings all resolve **without a code change** (`Create-issue-and-close` / `Reject-with-explanation`) — **satisfies the gate** (SKILL.md Phase 0); deferred findings need no re-review, since there's nothing new for the bot to see. When there are actionable findings, sort them into one of two outcomes:
+The gate reuses everything above — same surfaces, lenses, courses — but adds one decision, because its job is to decide *what the gate does next*. Read the whole verdict together. A clean verdict, or one whose findings all resolve **without a code change** (`Create-issue-and-close` / `Reject-with-explanation`), **satisfies the gate** — deferred findings need no re-review. For actionable findings, sort into:
 
-- **Actionable-clear.** You're confident both that there's a real issue *and* what the correct change is — some `Fix-*` course you'd stand behind. **Size is irrelevant:** a one-line rename and a structural `Fix-broader` redesign are the same outcome as long as you're sure of the path. → Apply, re-request the gate bot(s), and **repeat to clean** — the gate's re-review sub-loop runs until every configured gate bot signs off on what you changed.
-- **Actionable-unclear.** A genuine judgement call: multiple viable approaches, the reviewer's concern is real but the fix is contestable, or it's security/auth/data-model/API-contract-adjacent. This is the existing `Ask-user` default for "big-impact architectural feedback," surfaced at gate time. → Pause and ask the user before the loop runs; their answer may turn it into an actionable-clear fix (which then re-reviews to clean) or a reject.
+- **Actionable-clear.** Confident there's a real issue *and* what the correct change is — some `Fix-*` you'd stand behind. **Size is irrelevant** (one-line rename = structural redesign here). → Apply, re-request the gate bot(s), and **repeat to clean**: the gate's re-review sub-loop runs until every gate bot signs off on what you changed.
+- **Actionable-unclear.** A genuine judgement call: multiple viable approaches, the concern is real but the fix is contestable, or it's security/auth/data-model/API-contract-adjacent (the `Ask-user` default, surfaced at gate time). → Pause and ask the user before the loop runs; their answer may turn it into a clear fix (then re-review to clean) or a reject.
 
-The split is **certainty of the path forward, not size.** The old minor/major-clear distinction is gone: every actionable-clear finding — trivial or structural — is applied *and re-reviewed by the gate bot* before the loop, because the gate's contract is that the adversarial reviewer completes its review (sees and signs off on every change it prompted) before the convergence loop starts. When a verdict mixes findings, the most conservative present outcome wins: any actionable-unclear finding routes the whole gate to `Ask-user` (you may still apply the unambiguous fixes in the same push), and the gate isn't satisfied until both the unclear question is settled and the bot has re-reviewed the result clean. `Reject-with-explanation` (a gate finding that doesn't hold up under the lenses) and `Create-issue-and-close` (real but genuine scope-creep) behave as everywhere else and don't block the gate.
+The split is **certainty of the path, not size.** When a verdict mixes findings, the most conservative present outcome wins: any actionable-unclear routes the whole gate to `Ask-user` (you may still apply the unambiguous fixes in the same push), and the gate isn't satisfied until both the unclear question is settled and the bot has re-reviewed the result clean.
 
 ## Issue creation (when choosing `Create-issue-and-close`)
 
-Auto-create only if you're confident; otherwise ask. Ensure the label exists, then create:
+Auto-create only if confident; else ask. Ensure the label exists, then create:
 
 ```bash
 gh label create follow-up-from-pr-review --color 0E8A16 --description "Follow-up from AI PR review" 2>/dev/null || true
 gh issue create --title "..." --body-file <path> --label follow-up-from-pr-review
 ```
 
-The first line is a no-op when the label already exists. Issue body links to the originating thread; the thread reply links back to the issue; then resolve the thread.
+The first line is a no-op when the label exists. The issue body links to the originating thread; the thread reply links back to the issue; then resolve the thread.
 
-## Helpfulness feedback — thumbs-up / thumbs-down
+## Helpfulness reactions — thumbs-up / thumbs-down
 
-Some reviewers end a comment by inviting a reaction on whether it was useful — "React with 👍 or 👎 to indicate if this comment was helpful", "Was this comment useful?", or similar (Codex is the current example). This applies **only to a bot that both (a) invites the reaction in its comment body and (b) reads standard GitHub reactions** — those are the ones a reaction actually steers. When a comment carries that invitation, leave a reaction so the bot gets the steering signal, mapped to whether you **accepted or rejected the underlying concern** — NOT whether you took its exact suggestion:
+Some reviewers invite a 👍/👎 reaction on whether a comment was useful (Codex is the current example). This applies **only** to a bot that both (a) invites the reaction in its comment body and (b) reads standard GitHub reactions. When present, react — mapped to whether you **accepted or rejected the underlying concern**, not whether you took its exact suggestion:
 
-- **Accepted → 👍 (`+1`).** Any `Fix-*` course (`Fix-as-suggested`, `Fix-differently`, `Fix-broader`) or `Create-issue-and-close` — the comment surfaced a real issue worth acting on, even if you addressed it differently than suggested.
-- **Rejected → 👎 (`-1`).** `Reject-with-explanation` — the concern didn't hold up under the lens-weighted view.
-- `Ask-user`, or any thread still awaiting reviewer clarification — don't react yet; wait until it settles into an accept or reject.
+- **Accepted → 👍 (`+1`):** any `Fix-*` course or `Create-issue-and-close` (a real issue worth acting on, however addressed).
+- **Rejected → 👎 (`-1`):** `Reject-with-explanation`.
+- `Ask-user` or a thread still awaiting clarification → don't react yet.
 
-**Not every 👍/👎 you see is a standard reaction.** Copilot's review comments render their own *"was this helpful"* thumbs widget (beside "Copilot uses AI. Check for mistakes."); that is a closed GitHub-UI control feeding Copilot's own model: it isn't wired to standard GitHub reactions and has no API of its own, so you can't set it. (You *can* still add a normal emoji reaction to a Copilot comment via the reactions/`addReaction` API — it just doesn't touch the widget.) So don't treat a Copilot finding as a reaction-invitation. The reactions this skill uses are the standard emoji-picker reactions on a comment (a different signal), and the invitation must be in the comment body.
+**Not every 👍/👎 is a standard reaction.** Copilot's review comments render their own "was this helpful" widget (a closed Copilot-UI control, no API) — that is not a reaction invitation, so don't treat a Copilot finding as one. The reactions this skill uses are the standard emoji-picker reactions, and the invitation must be in the comment body.
 
-When a reaction mechanism is available (the `gh`/REST calls below, or an equivalent reactions API/MCP path), react on whichever comment the invitation is attached to. Inline/file-level review comments use the pulls-comments reactions endpoint; an invitation on a PR-level issue comment uses the issue-comments endpoint. (A review *summary* (`PullRequestReview`) has no REST reactions endpoint, but it IS reactable via GraphQL — `addReaction(input:{subjectId:<review node id>, content: THUMBS_UP|THUMBS_DOWN})` — so when a helpfulness prompt rides only a summary, react via GraphQL/MCP if you have that path, and fall back to the written reply only if you don't.) Both REST endpoints take the comment's numeric `databaseId`, not a GraphQL `IC_…`/`PRRC_…` node ID:
+React on whichever comment carries the invitation. Both REST endpoints take the comment's numeric `databaseId` (not a GraphQL `IC_…`/`PRRC_…` node ID):
 
 ```bash
-# Inline or file-level review comment (numeric databaseId from the reviewThreads query):
+# Inline / file-level review comment:
 gh api repos/<owner>/<repo>/pulls/comments/<comment_id>/reactions -X POST -f content=+1   # or -1
-# PR-level issue comment (numeric databaseId — NOT a GraphQL IC_ node ID):
+# PR-level issue comment:
 gh api repos/<owner>/<repo>/issues/comments/<comment_id>/reactions -X POST -f content=+1  # or -1
 ```
 
-This reaction is the signal the bot uses to learn what kind of feedback is valued — when a reaction path exists, apply it whenever the invitation is present, in addition to (not instead of) the written reply. If your environment has no way to react (no `gh`, no reactions API/MCP path), skip it gracefully: it's an optional steering signal, not a requirement, and the written reply still carries the substance.
+A review *summary* (`PullRequestReview`) has no REST reactions endpoint but is reactable via GraphQL — `addReaction(input:{subjectId:<review node id>, content: THUMBS_UP|THUMBS_DOWN})` — so when a helpfulness prompt rides only a summary, react via GraphQL/MCP, falling back to the written reply if you have no such path. The reaction is in addition to (not instead of) the reply. No reactions path at all → skip gracefully; it's an optional steering signal, the reply carries the substance.
 
 ## Replies, line numbers, resolution
 
-- **Replies should be one line where possible.** **@-mention a bot back only when the mention reaches that reviewer and it acts on mentions.** `@codex` does — Codex re-engages on mention, so lead Codex replies with it. Copilot's *reviewer* does NOT act on reply mentions, and `@copilot` routes to Copilot's separate coding agent (`copilot-swe-agent`), which just misfires — so reply to Copilot **without** an @-mention. General rule for any new bot: mention it only if its handle reaches the reviewing service and that service acts on mentions; if unsure, post the reply unmentioned.
+- **Replies should be one line where possible.** @-mention a bot back only when the mention reaches that reviewer and it acts on mentions (`@codex` yes; Copilot's reviewer no — reply unmentioned). See `reference/mechanics.md`.
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
 - **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen).
 - **Do NOT resolve when:** awaiting reviewer clarification (your reply asks the reviewer something); acknowledged-without-fix where discussion is still expected.

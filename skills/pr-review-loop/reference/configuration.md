@@ -1,62 +1,47 @@
 # Configuration & override model
 
-The loop is governed by seven config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. This file is the full model; `config/defaults.yml` holds the shipped values.
+The loop is governed by seven config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
 
 ## Config keys
 
 | Key | Default | Meaning |
 |---|---|---|
-| `upfront_gate_reviewers` | `[]` | Adversarial bots run as a gate **before** the loop (SKILL.md Phase 0). The review runs to **completion**: an **actionable-clear** finding (any size) → fix and re-request the same gate bot(s), repeating **to clean with no cap**; an **actionable-unclear** finding → pause and ask the user. The gate isn't satisfied until **every** configured gate bot's verdict is clean or all-deferred at/after the final gate change, so the gate reviewers sign off on every change they prompted before the loop starts. `[]` = no upfront gate (loop starts immediately). Runs only on a **fresh** PR (per Phase 0's fresh/mid-flight test) — an initial bot auto-review on PR open does **not** suppress it; it's skipped only on a genuinely mid-flight PR. Typically a rate-limited deep reviewer, so a wrong-from-the-start approach is caught before Copilot polishes it. |
-| `request_on_pr_open` | `[copilot]` | Bots to manually request on the first pass (iteration 1). Only controls who gets pinged then — bot *evaluation* is not gated by this (see tracked-bots below). |
-| `loop_reviewers` | `[copilot]` | Bots re-requested on every push during the loop (the convergence drivers; SKILL.md step 8). A bot in `request_on_pr_open` but **not** here is **first-pass-only**: requested once, its findings evaluated like any other, then never re-requested and not gating convergence. Lets a rate-limited deep reviewer (Codex) contribute its first-look catches without running every iteration. |
-| `final_gate_reviewers` | `[]` | Bots requested **once** after the loop converges, as a final **sanity check** (SKILL.md step 10) — a last confirming look, not an adversarial dig. If it raises non-deferred findings, fix and re-converge `loop_reviewers`, then re-run it once. `[]` = no check. Often the same deep reviewer as the upfront gate, so it also catches anything the fix rounds introduced. |
-| `auto_review_grace_seconds` | `0` | After a push, wait this long for an auto-trigger to land before manually requesting. `0` = no wait (correct when nothing auto-triggers). Bump to ~60 where a Ruleset auto-requests Copilot, or to give Codex's auto-review on PR open time to start. |
-| `wait_check_cadence_seconds` | `240` | How often to check during a **time-based** wait. Stay in 180-270s: that band stays inside the 5-minute prompt-cache window (each wake is cheap), and >300s incurs a full context replay per wake. Does not apply to event-driven waits (those are push, not poll). |
+| `upfront_gate_reviewers` | `[]` | Adversarial bots run as a gate **before** the loop (SKILL.md Phase 0). The review runs to **completion**: actionable-clear (any size) → fix and re-request the same bot(s), repeating to clean with no cap; actionable-unclear → pause and ask the user. Not satisfied until **every** gate bot is clean/all-deferred at/after the final gate change. `[]` = no gate. Runs only on a **fresh** PR — an initial bot auto-review doesn't suppress it; skipped only on a genuinely mid-flight PR. Typically a rate-limited deep reviewer, catching a wrong-from-the-start approach before Copilot polishes it. |
+| `request_on_pr_open` | `[copilot]` | Bots to manually request on the first pass (iteration 1). Controls who gets pinged then — bot *evaluation* is not gated by this (see below). |
+| `loop_reviewers` | `[copilot]` | Bots re-requested on every push (the convergence drivers; SKILL.md step 8). A bot in `request_on_pr_open` but **not** here is **first-pass-only**: requested once, findings triaged like any other, then never re-requested and not gating convergence. |
+| `final_gate_reviewers` | `[]` | Bots requested **once** after convergence, as a final **sanity check** (SKILL.md step 10) — a confirming look, not an adversarial dig. Non-deferred findings → fix, re-converge `loop_reviewers`, re-run once. `[]` = no check. Often the same deep reviewer as the upfront gate, to catch what the fix rounds introduced. |
+| `auto_review_grace_seconds` | `0` | After a push, wait this long for an auto-trigger to land before manually requesting. `0` = no wait. Bump to ~60 where a Ruleset auto-requests Copilot, or to give Codex's auto-review time to start. |
+| `wait_check_cadence_seconds` | `240` | Self-wake cadence for the poll baseline (SKILL.md step 3, `reference/waiting.md`). Stay in 180-270s: that band stays inside the 5-minute prompt-cache window (each wake cheap); >300s incurs a full context replay per wake. |
 | `max_iterations` | `10` | Iteration cap before pausing to ask the user. Waiting does NOT count toward it. |
 
-## Config precedence (low → high)
+## Precedence (low → high)
 
 ```
 bundled defaults  <  ~/.claude/pr-review.config.yml (optional)  <  <orchestrator-repo>/.github/pr-review.config.yml (project)
 ```
 
-- **Bundled defaults** (`config/defaults.yml`) are always present — the baseline that makes the skill self-sufficient with zero external config.
-- **User-level** `~/.claude/pr-review.config.yml` is optional and additive. Read it *if it exists*; it simply won't exist in a cloud session, which is fine. Never require it.
-- **Project** `.github/pr-review.config.yml` in the orchestrator repo (the current working directory's repo — see SKILL.md "Preconditions") wins. The merged config applies to ALL PRs in the run, including cross-repo PRs.
-- **Merge is per-key, not whole-file replace.** A project file that sets only `max_iterations` inherits the other keys from the layer(s) below.
+Bundled defaults are always present (the self-sufficient baseline). User-level is optional and additive — read it *if it exists*; it simply won't in a cloud session, which is fine, never require it. Project `.github/pr-review.config.yml` in the orchestrator repo (the working directory's repo) wins. **Merge is per-key**, not whole-file replace — a project file setting only `max_iterations` inherits the rest from below. The merged config applies to ALL PRs in the run, including cross-repo ones (they don't pull config from their own repos).
 
-The orchestrator repo is the current working directory's repo. Cross-repo PRs in the same run still use the orchestrator repo's merged config — they don't pull config from their own repos.
+**Gate vs `request_on_pr_open` for a deep reviewer.** Both put a bot in front of a fresh PR, but differ in structure. `request_on_pr_open` batches its first-pass findings into iteration 1 alongside the loop reviewers — one combined evaluation, then the loop runs. `upfront_gate_reviewers` makes it a **distinct phase that must complete first** (actionable-clear re-runs to clean, actionable-unclear pauses for the user) before any loop reviewer is requested. Use the gate when "is this approach even right?" should be answered before polish; use `request_on_pr_open` when the catches can be handled inline. Don't list the same bot in both (the gate already covers the first look).
 
-**`upfront_gate_reviewers` vs `request_on_pr_open` for a deep reviewer.** Both can put a bot in front of a fresh PR, but they differ in *structure*. Listing the deep reviewer in `request_on_pr_open` batches its first-pass findings into iteration 1 alongside the loop reviewers — one combined evaluation, then the loop runs. Listing it in `upfront_gate_reviewers` instead makes it a **distinct phase that must complete first**: an actionable-clear finding (any size) re-runs the gate to clean, and an actionable-unclear one pauses for the user — and the gate doesn't pass until the bot signs off on every change it prompted, all before any loop reviewer is requested. Use the gate when "is this approach even right?" should be answered before polish begins; use `request_on_pr_open` when the deep reviewer's catches can be handled inline with everything else. Don't list the same bot in both (the gate already covers the first look).
-
-`request_on_pr_open` controls who gets pinged on the first pass. **Bot *evaluation* is NOT config-gated** — any bot that posts a review, or a review-style verdict comment (judged on content, not routine CI/noise), gets evaluated and tracked (the tracked-bots model in SKILL.md step 2). What **is** config-gated is *re-requesting*: only `loop_reviewers` are re-pinged after subsequent pushes (step 8). So a first-pass-only bot's iter-1 findings are still triaged, but it isn't dragged through later iterations. The grace window handles auto-triggering bots (Codex's auto-review on PR open, when enabled in Codex settings; Rulesets that auto-request Copilot): wait briefly, skip the manual request when the bot already started.
-
-A bot's verdict may arrive as a formal review *or* as a plain PR issue comment — some bots only comment when they're happy (Codex is the current example: it posts a formal review when it has findings, but a plain issue comment when it's clean). The loop reads both surfaces and **judges the bot's disposition from what it wrote** (SKILL.md "Reading reviewer state"). There is deliberately **no per-bot "verdict phrase" configuration** — a phrase list would be brittle and break on the next bot that words things differently — so disposition is decided by reading the message's meaning, not by matching configured strings.
+**Evaluation is NOT config-gated.** Any bot that posts a review, or a review-style verdict comment (judged on content, not CI/noise), is evaluated and tracked. What *is* config-gated is **re-requesting**: only `loop_reviewers` are re-pinged after later pushes. A bot's verdict may arrive as a formal review *or* a plain issue comment (some bots only comment when happy — Codex posts a review with findings, an issue comment when clean); the loop reads both and **judges disposition from what was written** (SKILL.md "Reading reviewer state"). There is deliberately **no per-bot verdict-phrase configuration** — a phrase list would break on the next bot.
 
 ## Invocation modifiers — natural language, not flags
 
-Parse intent from the invocation; don't require precise syntax:
+Parse intent; don't require precise syntax:
 
-- "no iteration cap" / "until done" / "no max" / "no limit" → disable `max_iterations`.
-- "only copilot" / "without codex" / "skip codex" / "just copilot" → override `request_on_pr_open` (and `upfront_gate_reviewers` / `loop_reviewers` / `final_gate_reviewers`) to drop the excluded bot for this run. Note: this only changes who the loop *requests*; a bot that shows up anyway via auto-trigger or installation still gets evaluated when it posts (tracked-bots model).
-- "codex first pass only" / "codex once" / "adversarial codex" → the rate-limited-deep-reviewer bookend for this run: `upfront_gate_reviewers: [codex]`, `request_on_pr_open: [copilot]`, `loop_reviewers: [copilot]`, `final_gate_reviewers: [codex]` (Codex runs the adversarial upfront gate and the final sanity check; Copilot drives the loop). Set `request_on_pr_open` explicitly so Codex is dropped from the first pass — otherwise a project config that already lists Codex there would gate it *and* re-request it in iteration 1, violating "don't list the same bot in both".
-- "gate the design first" / "adversarial review before the loop" / "have codex gate it first" → set `upfront_gate_reviewers: [<bot>]` for this run, so that bot runs the Phase-0 gate before the loop starts (commonly paired with `final_gate_reviewers: [<bot>]` to bookend).
-- A PR number, URL, or cross-repo reference → target specific PR(s) instead of auto-detecting from the current branch.
+- "no iteration cap" / "until done" / "no max" → disable `max_iterations`.
+- "only copilot" / "without codex" / "skip codex" → override `request_on_pr_open` (and the gate/loop/final lists) to drop the excluded bot for this run. Only changes who the loop *requests*; a bot that shows up via auto-trigger is still evaluated.
+- "codex first pass only" / "adversarial codex" → the rate-limited-deep-reviewer bookend: `upfront_gate_reviewers: [codex]`, `request_on_pr_open: [copilot]`, `loop_reviewers: [copilot]`, `final_gate_reviewers: [codex]` (set `request_on_pr_open` explicitly so Codex is dropped from the first pass — else a project config listing Codex there would gate *and* re-request it, violating "don't list the same bot in both").
+- "gate the design first" / "have codex gate it first" → `upfront_gate_reviewers: [<bot>]` for this run (commonly paired with `final_gate_reviewers: [<bot>]`).
+- A PR number, URL, or cross-repo reference → target specific PR(s) instead of auto-detecting.
 
-Build command is not configured — detect the project's standard verify command at the commit step.
+Build command is not configured — detect the project's verify command at the commit step.
 
 ## Project-level *procedural* overrides (separate from config)
 
-Config (above) is one mechanism. Project *procedural* instructions are a second, complementary one. If the orchestrator repo has its own PR-review instructions and they **contradict** this skill, defer to the project — assume the override is intentional. Sources to check:
+If the orchestrator repo has its own PR-review instructions that **contradict** this skill, defer to the project — assume the override is intentional. Check: `./.github/PR_REVIEW_LOOP.md`, `./CLAUDE.md` (PR-review section), `./AGENTS.md` (PR-review section), `./.cursorrules`, `./.claude/commands/pr-review-loop.md` / `./.claude/skills/pr-review-loop/`. Classify each difference:
 
-- `./.github/PR_REVIEW_LOOP.md`
-- `./CLAUDE.md` (PR-review section)
-- `./AGENTS.md` (PR-review section)
-- `./.cursorrules`
-- `./.claude/commands/pr-review-loop.md` / `./.claude/skills/pr-review-loop/`
-
-Classify each difference:
-
-- **Contradiction** = procedural disagreement (different reply templates, escalation rules, evaluation rubric, resolve criteria). **Project wins.**
-- **Addition** = non-contradicting delta (project-specific build command, an extra lint rule, a preferred reply style for one case). **Apply both** — this skill's baseline plus the project delta. (Bot selection is config, not a procedural addition.)
-- **Unclear** = can't tell whether the project intends to override or just hasn't been updated. **Ask the user** before proceeding; don't silently pick.
+- **Contradiction** = procedural disagreement (reply templates, escalation rules, rubric, resolve criteria). **Project wins.**
+- **Addition** = non-contradicting delta (project build command, an extra lint rule, a preferred reply style). **Apply both.** (Bot selection is config, not a procedural addition.)
+- **Unclear** = can't tell whether it's an intended override or just stale. **Ask the user.**
