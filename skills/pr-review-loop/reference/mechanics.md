@@ -124,7 +124,13 @@ gh api graphql -F prId="$PR_ID" -F botId="$COPILOT_ID" -f query='
 mutation($prId: ID!, $botId: ID!) { requestReviews(input: {pullRequestId: $prId, botIds: [$botId], union: true}) { clientMutationId } }'
 ```
 
-**Verify (Tier 1/2):** `reviewRequests` must show `Bot:copilot-pull-request-reviewer` (use the GraphQL `reviewRequests` query above — `gh pr view --json reviewRequests` drops bots).
+**Verify (Tier 1/2):** `reviewRequests` must show `Bot:copilot-pull-request-reviewer`. Query it by dropping the `reviewRequests` field from "Other queries the loop needs" (above) into a `gh api graphql` call:
+
+```bash
+gh api graphql -F owner=<owner> -F repo=<repo> -F number=<num> -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}}}}'
+```
+
+(`gh pr view --json reviewRequests` drops bots, so it can't confirm this.)
 
 ### Codex
 
