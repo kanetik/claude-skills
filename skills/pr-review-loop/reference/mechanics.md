@@ -8,7 +8,7 @@ For each operation use the best tier your environment supports. Columns denote *
 
 | Operation | Tier 1 (universal) | Tier 2 (when available) | Tier 3 (fallback) |
 |---|---|---|---|
-| Find PR for current branch | `gh pr list --head "$(git branch --show-current)" --json number,title,url` (quote the substitution — empty on detached HEAD) | github MCP `list_pull_requests` | — |
+| Find PR for current branch | `gh pr list --head "$(git branch --show-current)" --json number,title,url` (quote the substitution; on detached HEAD it's empty — don't run `--head ""`, use the commit-search fallback in SKILL.md "Preconditions": `gh pr list --search "$(git rev-parse HEAD)"`) | github MCP `list_pull_requests` | — |
 | Get reviews / requested reviewers / decision | `gh pr view <num> --json reviews,reviewRequests,latestReviews,reviewDecision,comments` (`reviewRequests` drops bots — use the GraphQL form below for bot detection) | github MCP `get_pull_request`, `list_pull_request_reviews` | — |
 | Unresolved review threads with `isResolved` | GraphQL via `gh api graphql` (paginated — below) | github MCP `get_pull_request_review_threads` if it exposes resolution state | — |
 | Inline + file-level comments per review | REST `gh api repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` | github MCP `get_pull_request_review_comments` | — |
