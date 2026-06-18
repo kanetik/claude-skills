@@ -9,7 +9,7 @@ The wait is **not** an either/or between polling and events. The invariant: **ne
 **Backstop ladder — feature-detect, take the highest available:**
 
 (a) **Host scheduling / self-check-in** — a recurring scheduler or self-scheduled message (`/loop <cadence>`, `ScheduleWakeup`, `CronCreate`, `send_later` — often absent in cloud sessions). Wake at `wait_check_cadence_seconds` (default 240s) carrying the continuation payload; reconcile on the tick.
-(b) **Background polling monitor** — a *background* task that fingerprints the PR's review/comment/CI/merge state and emits only on change (snippet below), waking you to reconcile. It runs in the background and the agent **ends its turn** — it is not a foreground `sleep` busy-wait. Harness-dependent (background output must actually wake the agent), so feature-detect first; an MCP-only GitHub with no shell `gh` can use a bare heartbeat here and reconcile through its in-agent tools.
+(b) **Background polling monitor** — a *background* task that fingerprints the PR's head-commit/review/comment/CI/merge state and emits on change plus a periodic floor (snippet below), waking you to reconcile. It runs in the background and the agent **ends its turn** — it is not a foreground `sleep` busy-wait. Harness-dependent (background output must actually wake the agent), so feature-detect first; an MCP-only GitHub with no shell `gh` can use a bare heartbeat here and reconcile through its in-agent tools.
 (c) **Single-pass hand-back** — do one reconciliation pass, then stop with "re-invoke `/pr-review-loop` to continue." Never **foreground**-busy-wait with `sleep` for external events — that blocks the turn instead of yielding.
 
 When (a) is unavailable, (b) is **required** before ending the turn — fall to (c) only when both are genuinely unavailable. A subscription, when present, layers on top: an event short-circuits the interval so you react sooner, never so you skip the backstop. **Re-arm on every wake** (re-schedule / restart / re-subscribe) until the PR is merged or closed; do it silently.
@@ -20,13 +20,14 @@ End the turn. On **any** wake — tick, event, or monitor emission — re-pull a
 
 ### Backstop fingerprint poll (ladder rung b)
 
-Fingerprints the state a webhook won't reliably forward — reviews, comments, CI rollup, merge state. It wakes you on any change, **plus an initial tick and a periodic floor** so a terminal event that landed *before* the baseline was captured (the gap between your last reconciliation and the monitor starting) can't be silently absorbed. Run it in the background.
+Fingerprints the state a webhook won't reliably forward — the head commit (so any push flips the hash, even in a repo with no CI), reviews, comments, CI rollup, merge state. It wakes you on any change, **plus an initial tick and a periodic floor** so a terminal event that landed *before* the baseline was captured (the gap between your last reconciliation and the monitor starting) can't be silently absorbed. Run it in the background.
 
 ```bash
 fp() {
   gh pr view <num> --repo <owner>/<repo> \
-    --json reviews,comments,statusCheckRollup,mergeStateStatus \
-    --jq '[(.reviews[]?  | .author.login+":"+.state)]|sort,
+    --json headRefOid,reviews,comments,statusCheckRollup,mergeStateStatus \
+    --jq '.headRefOid,
+          [(.reviews[]?  | .author.login+":"+.state)]|sort,
           [(.comments[]? | .author.login+"@"+.createdAt)]|sort,
           [((.statusCheckRollup//[])[] | (.name//.context)+":"+(.conclusion//.status//.state//"?"))]|sort,
           .mergeStateStatus' | sha256sum | cut -d' ' -f1
