@@ -20,7 +20,7 @@ End the turn. On **any** wake — tick, event, or monitor emission — re-pull a
 
 ### Backstop fingerprint poll (ladder rung b)
 
-Fingerprints the state a webhook won't reliably forward — reviews, comments, CI rollup, merge state — and emits only on change. Run in the background so its output wakes you.
+Fingerprints the state a webhook won't reliably forward — reviews, comments, CI rollup, merge state. It wakes you on any change, **plus an initial tick and a periodic floor** so a terminal event that landed *before* the baseline was captured (the gap between your last reconciliation and the monitor starting) can't be silently absorbed. Run it in the background.
 
 ```bash
 fp() {
@@ -28,13 +28,20 @@ fp() {
     --json reviews,comments,statusCheckRollup,mergeStateStatus \
     --jq '[(.reviews[]?  | .author.login+":"+.state)]|sort,
           [(.comments[]? | .author.login+"@"+.createdAt)]|sort,
-          [((.statusCheckRollup//[])[] | .name+":"+(.conclusion//.status//"?"))]|sort,
+          [((.statusCheckRollup//[])[] | (.name//.context)+":"+(.conclusion//.status//.state//"?"))]|sort,
           .mergeStateStatus' | sha256sum | cut -d' ' -f1
 }
-prev=$(fp); while :; do cur=$(fp); [ "$cur" != "$prev" ] && { echo "pr <num> changed"; prev=$cur; }; sleep <cadence>; done
+prev=""; i=0                                  # empty baseline => the first tick always emits
+while :; do
+  cur=$(fp)
+  # wake on any change, and on a periodic floor (every <floor>th tick) so a terminal
+  # event that landed before the baseline was captured still reaches you
+  { [ "$cur" != "$prev" ] || [ $((i % <floor>)) -eq 0 ]; } && echo "pr <num>: $cur"
+  prev=$cur; i=$((i + 1)); sleep <cadence>
+done
 ```
 
-`statusCheckRollup` and `mergeStateStatus` are in the fingerprint precisely because those are the non-events above. **Gotcha:** when the git remote is a proxy or other unrecognized host, bare `gh pr view` fails with *"none of the git remotes ... point to a known GitHub host"* — even for the orchestrator repo — so the `--repo <owner>/<repo>` here is mandatory, as is explicit owner/repo/number on the `gh api graphql` thread queries/mutations (the convention `reference/mechanics.md` already uses).
+`statusCheckRollup` and `mergeStateStatus` are in the fingerprint precisely because those are the non-events above; the rollup entry reads **both** check shapes — CheckRuns (`name`/`status`/`conclusion`) and legacy commit statuses (`context`/`state`) — so a pending→success/failure flip changes the hash either way. **Gotcha:** when the git remote is a proxy or other unrecognized host, bare `gh pr view` fails with *"none of the git remotes ... point to a known GitHub host"* — even for the orchestrator repo — so the `--repo <owner>/<repo>` here is mandatory, as is explicit owner/repo/number on the `gh api graphql` thread queries/mutations (the convention `reference/mechanics.md` already uses).
 
 ## Re-entrancy — build for it
 
