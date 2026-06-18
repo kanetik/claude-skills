@@ -20,7 +20,7 @@ End the turn. On **any** wake — tick, event, or monitor emission — re-pull a
 
 ### Backstop fingerprint poll (ladder rung b)
 
-Fingerprints the state a webhook won't reliably forward — the head commit (so any push flips the hash, even in a repo with no CI), reviews, comments, CI rollup, merge state. It wakes you on any change, **plus an initial tick and a periodic floor** so a terminal event that landed *before* the baseline was captured (the gap between your last reconciliation and the monitor starting) can't be silently absorbed. Run it in the background.
+Fingerprints the state a webhook won't reliably forward — the head commit (so any push flips the hash, even in a repo with no CI), reviews, comments, CI rollup, merge state. It wakes you on any change, plus a periodic floor. **Seed its baseline from the fingerprint you captured at your last reconciliation** (not an empty value): a terminal event that landed in the gap before the monitor started still differs from that baseline and emits within one cadence, while a re-arm with no change stays quiet instead of spinning on an immediate re-emit. Run it in the background.
 
 ```bash
 fp() {
@@ -32,13 +32,14 @@ fp() {
           [((.statusCheckRollup//[])[] | (.name//.context)+":"+(.conclusion//.status//.state//"?"))]|sort,
           .mergeStateStatus' | sha256sum | cut -d' ' -f1
 }
-prev=""; i=0                                  # empty baseline => the first tick always emits
+prev="<baseline>"; i=0     # <baseline> = the fingerprint from your last reconciliation
 while :; do
+  sleep <cadence>; i=$((i + 1))
   cur=$(fp)
-  # wake on any change, and on a periodic floor (every <floor>th tick) so a terminal
-  # event that landed before the baseline was captured still reaches you
-  { [ "$cur" != "$prev" ] || [ $((i % <floor>)) -eq 0 ]; } && echo "pr <num>: $cur"
-  prev=$cur; i=$((i + 1)); sleep <cadence>
+  # emit on any change, and on a periodic floor (every <floor>th tick) as a liveness check.
+  # neither fires before the first sleep, so a re-arm with no change honors <cadence>
+  # instead of spinning; a gap event differs from <baseline> and emits within one cadence.
+  { [ "$cur" != "$prev" ] || [ $((i % <floor>)) -eq 0 ]; } && { echo "pr <num>: $cur"; prev=$cur; }
 done
 ```
 
