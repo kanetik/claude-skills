@@ -2,17 +2,41 @@
 
 ## Poll always; let events short-circuit
 
-The wait is **not** an either/or between polling and events. The invariant: **never depend on an event arriving** — a terminal verdict (often a clean issue comment) may produce no forwarded event, so an event-only wait can hang forever. Always keep a time-based re-check running; layer events on top as an accelerator.
+The wait is **not** an either/or between polling and events. The invariant: **never depend on an event arriving as your only wake.** An event subscription is an *accelerator* layered on a backstop — **never the sole wait mechanism.** Whenever the chosen mechanism can't itself deliver the terminal/quiet transitions that signal progress, a backstop is **mandatory**; the two run together.
 
-1. **Establish a time-based baseline at `wait_check_cadence_seconds`** (default 240s) using whatever timer the environment offers — feature-detect, don't hard-depend on any one: a recurring scheduler (`/loop <cadence>`, `ScheduleWakeup`, `CronCreate`), a self-scheduled message (`send_later` where present — but it's often absent in cloud sessions), or a background poll that wakes you on PR-state change. **The timer needn't reach the API itself** — when the only timer is a shell-background primitive and the API is reachable only through in-agent tools (e.g. an MCP-only GitHub with no shell `gh`), a bare heartbeat (a *background* task emitting one line per interval) can wake the agent, which then reconciles through its own tools. This is **not** the forbidden foreground busy-wait of item 5 below: the heartbeat runs in the background and the agent **ends its turn** rather than blocking on a `sleep`. It is harness-dependent, so feature-detect that background-task output actually wakes the agent before relying on it. This baseline fires whether or not any event arrives.
-2. **Also subscribe to PR activity if a subscription exists** (e.g. `subscribe_pr_activity` on GitHub-integrated web). An event wakes you *before* the next tick — short-circuiting the interval so you react sooner, not so you skip the baseline.
-3. **Subscription present but NO recurring timer? Still arm at least one delayed reconciliation** — a single self-scheduled re-check a few minutes out (or fold it into the timeout path), re-armed on each wake. This is the cloud events-only case: events plus a self-armed re-check, **never events alone**, so a missed terminal event can't strand the loop until the ~20-min timeout.
-4. End the turn. On **any** wake — tick, event, or armed re-check — re-pull and reconcile (below), then act.
-5. **Only if neither events nor any timer is available**, fall to the floor: do one review pass, then stop with "re-invoke `/pr-review-loop` to continue." Never **foreground**-busy-wait with `sleep` for external events — that blocks the turn instead of yielding (distinct from the background heartbeat in item 1 above, which ends the turn and wakes you via task output).
+**Why a subscription alone strands the loop — the non-events it misses.** A PR-activity subscription (`subscribe_pr_activity`, webhooks) forwards review *findings* but does **not** wake you for the transitions that actually end a wait: a **clean/approving verdict** (an APPROVE, or a clean verdict in an issue comment), a **"no new comments" review** (e.g. Copilot's), **CI completion — success *and* failure** (`statusCheckRollup` going green or red), **new pushes**, and **merge-conflict transitions** (`mergeStateStatus` → `DIRTY`/`BEHIND`). These are exactly the "reviewer went green, move on" signals — so on the subscription alone the loop stalls the instant a reviewer goes clean, and a human has to say "it's done" to un-stick it. The backstop catches every one within one cadence.
 
-**Why both, not just events.** Some bots signal completion — including a terminal *clean* verdict — with a PR issue comment rather than a formal review, and that completion may arrive as an event the harness never forwards (or one that doesn't match what you were waiting on). Relying on events alone strands the loop: the bot has been happy for a while, but no wake ever fired. The always-on poll guarantees that verdict is seen within one cadence regardless. Stay in the 180-270s band: ≤270s keeps each wake inside the 5-minute prompt-cache window (cheap); >300s incurs a full context replay per wake. The `/loop` idle default of 1200-1800s is too slow for a review loop.
+**Backstop ladder — feature-detect, take the highest available:**
+
+(a) **Host scheduling / self-check-in** — a recurring scheduler or self-scheduled message (`/loop <cadence>`, `ScheduleWakeup`, `CronCreate`, `send_later` — often absent in cloud sessions). Wake at `wait_check_cadence_seconds` (default 240s) carrying the continuation payload; reconcile on the tick.
+(b) **Background polling monitor** — a *background* task that fingerprints the PR's head-commit/review/comment/CI/merge state and emits on change (snippet below), waking you to reconcile. It runs in the background and the agent **ends its turn** — it is not a foreground `sleep` busy-wait. Harness-dependent (background output must actually wake the agent), so feature-detect first; an MCP-only GitHub with no shell `gh` can use a bare heartbeat here and reconcile through its in-agent tools.
+(c) **Single-pass hand-back** — do one reconciliation pass, then stop with "re-invoke `/pr-review-loop` to continue." Never **foreground**-busy-wait with `sleep` for external events — that blocks the turn instead of yielding.
+
+When (a) is unavailable, (b) is **required** before ending the turn — fall to (c) only when both are genuinely unavailable. A subscription, when present, layers on top: an event short-circuits the interval so you react sooner, never so you skip the backstop. **Re-arm on every wake** (re-schedule / restart / re-subscribe) until the PR is merged or closed; do it silently.
+
+End the turn. On **any** wake — tick, event, or monitor emission — re-pull and reconcile (below), then act. Stay in the 180-270s band: ≤270s keeps each wake inside the 5-minute prompt-cache window (cheap); >300s incurs a full context replay per wake. The `/loop` idle default of 1200-1800s is too slow for a review loop.
 
 **Events are a wake hint, not ground truth.** Treat every event as "look now," never as the authoritative statement of what changed — and never let the *absence* of an event mean a bot is still pending. The PR state is ground truth; reconcile it on every wake.
+
+### Backstop fingerprint poll (ladder rung b)
+
+An illustrative starting point — adapt it. Hash the PR state a webhook won't reliably forward, and wake when the hash changes; run it in the background.
+
+```bash
+fp() {
+  gh pr view <num> --repo <owner>/<repo> \
+    --json headRefOid,reviews,comments,statusCheckRollup,mergeStateStatus \
+    --jq '[.headRefOid, (.reviews//[]|sort), (.comments//[]|sort),
+           (.statusCheckRollup//[]|sort), .mergeStateStatus]' | sha256sum | cut -d' ' -f1
+}
+prev="<baseline>"                  # the fingerprint from your last reconciliation
+while :; do
+  sleep <cadence>
+  cur=$(fp); [ "$cur" != "$prev" ] && { echo "pr <num> changed"; prev=$cur; }
+done
+```
+
+When you adapt it: keep `headRefOid` so pushes register even in a repo with no CI; `sort` each array so result-ordering noise (and either CI shape — CheckRun or legacy commit status) doesn't fake a change; seed `<baseline>` from the fingerprint you took at your last reconciliation (and `sleep` before the first check) so a re-arm doesn't immediately re-emit; add a periodic floor emit if you also want a liveness signal. **Gotcha:** when the git remote is a proxy or other unrecognized host, bare `gh pr view` fails with *"none of the git remotes ... point to a known GitHub host"* — pass `--repo <owner>/<repo>`, and use explicit owner/repo/number on `gh api graphql` (the convention `reference/mechanics.md` already uses).
 
 ## Re-entrancy — build for it
 
