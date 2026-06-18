@@ -9,7 +9,7 @@ The wait is **not** an either/or between polling and events. The invariant: **ne
 **Backstop ladder — feature-detect, take the highest available:**
 
 (a) **Host scheduling / self-check-in** — a recurring scheduler or self-scheduled message (`/loop <cadence>`, `ScheduleWakeup`, `CronCreate`, `send_later` — often absent in cloud sessions). Wake at `wait_check_cadence_seconds` (default 240s) carrying the continuation payload; reconcile on the tick.
-(b) **Background polling monitor** — a *background* task that fingerprints the PR's head-commit/review/comment/CI/merge state and emits on change plus a periodic floor (snippet below), waking you to reconcile. It runs in the background and the agent **ends its turn** — it is not a foreground `sleep` busy-wait. Harness-dependent (background output must actually wake the agent), so feature-detect first; an MCP-only GitHub with no shell `gh` can use a bare heartbeat here and reconcile through its in-agent tools.
+(b) **Background polling monitor** — a *background* task that fingerprints the PR's head-commit/review/comment/CI/merge state and emits on change (snippet below), waking you to reconcile. It runs in the background and the agent **ends its turn** — it is not a foreground `sleep` busy-wait. Harness-dependent (background output must actually wake the agent), so feature-detect first; an MCP-only GitHub with no shell `gh` can use a bare heartbeat here and reconcile through its in-agent tools.
 (c) **Single-pass hand-back** — do one reconciliation pass, then stop with "re-invoke `/pr-review-loop` to continue." Never **foreground**-busy-wait with `sleep` for external events — that blocks the turn instead of yielding.
 
 When (a) is unavailable, (b) is **required** before ending the turn — fall to (c) only when both are genuinely unavailable. A subscription, when present, layers on top: an event short-circuits the interval so you react sooner, never so you skip the backstop. **Re-arm on every wake** (re-schedule / restart / re-subscribe) until the PR is merged or closed; do it silently.
@@ -20,30 +20,23 @@ End the turn. On **any** wake — tick, event, or monitor emission — re-pull a
 
 ### Backstop fingerprint poll (ladder rung b)
 
-Fingerprints the state a webhook won't reliably forward — the head commit (so any push flips the hash, even in a repo with no CI), reviews, comments, CI rollup, merge state. It wakes you on any change, plus a periodic floor. **Seed its baseline from the fingerprint you captured at your last reconciliation** (not an empty value): a terminal event that landed in the gap before the monitor started still differs from that baseline and emits within one cadence, while a re-arm with no change stays quiet instead of spinning on an immediate re-emit. Run it in the background.
+An illustrative starting point — adapt it. Hash the PR state a webhook won't reliably forward, and wake when the hash changes; run it in the background.
 
 ```bash
 fp() {
   gh pr view <num> --repo <owner>/<repo> \
     --json headRefOid,reviews,comments,statusCheckRollup,mergeStateStatus \
-    --jq '.headRefOid,
-          [(.reviews[]?  | .author.login+":"+.state)]|sort,
-          [(.comments[]? | .author.login+"@"+.createdAt)]|sort,
-          [((.statusCheckRollup//[])[] | (.name//.context)+":"+(.conclusion//.status//.state//"?"))]|sort,
-          .mergeStateStatus' | sha256sum | cut -d' ' -f1
+    --jq '[.headRefOid, (.reviews//[]|sort), (.comments//[]|sort),
+           (.statusCheckRollup//[]|sort), .mergeStateStatus]' | sha256sum | cut -d' ' -f1
 }
-prev="<baseline>"; i=0     # <baseline> = the fingerprint from your last reconciliation
+prev="<baseline>"                  # the fingerprint from your last reconciliation
 while :; do
-  sleep <cadence>; i=$((i + 1))
-  cur=$(fp)
-  # emit on any change, and on a periodic floor (every <floor>th tick) as a liveness check.
-  # neither fires before the first sleep, so a re-arm with no change honors <cadence>
-  # instead of spinning; a gap event differs from <baseline> and emits within one cadence.
-  { [ "$cur" != "$prev" ] || [ $((i % <floor>)) -eq 0 ]; } && { echo "pr <num>: $cur"; prev=$cur; }
+  sleep <cadence>
+  cur=$(fp); [ "$cur" != "$prev" ] && { echo "pr <num> changed"; prev=$cur; }
 done
 ```
 
-`statusCheckRollup` and `mergeStateStatus` are in the fingerprint precisely because those are the non-events above; the rollup entry reads **both** check shapes — CheckRuns (`name`/`status`/`conclusion`) and legacy commit statuses (`context`/`state`) — so a pending→success/failure flip changes the hash either way. **Gotcha:** when the git remote is a proxy or other unrecognized host, bare `gh pr view` fails with *"none of the git remotes ... point to a known GitHub host"* — even for the orchestrator repo — so the `--repo <owner>/<repo>` here is mandatory, as is explicit owner/repo/number on the `gh api graphql` thread queries/mutations (the convention `reference/mechanics.md` already uses).
+When you adapt it: keep `headRefOid` so pushes register even in a repo with no CI; `sort` each array so result-ordering noise (and either CI shape — CheckRun or legacy commit status) doesn't fake a change; seed `<baseline>` from the fingerprint you took at your last reconciliation (and `sleep` before the first check) so a re-arm doesn't immediately re-emit; add a periodic floor emit if you also want a liveness signal. **Gotcha:** when the git remote is a proxy or other unrecognized host, bare `gh pr view` fails with *"none of the git remotes ... point to a known GitHub host"* — pass `--repo <owner>/<repo>`, and use explicit owner/repo/number on `gh api graphql` (the convention `reference/mechanics.md` already uses).
 
 ## Re-entrancy — build for it
 
