@@ -142,7 +142,9 @@ gh pr edit <num> --body-file <tmp>/pr-body-<num>.md
 ```
 
 ### 8. Push + re-request reviewers
-`git push`, then run the step 2 trigger flow against the **not-yet-happy** `loop_reviewers` (waits the grace window, skips bots already reviewing the new commit, requests the rest). First-pass-only bots aren't re-requested here.
+`git push`, then run the step 2 trigger flow to re-request **every** not-yet-happy `loop_reviewer` (`active ∩ loop_reviewers`) — *all* of them, not just the ones whose feedback you addressed this round. This is mandatory on every round that changes HEAD: a loop reviewer converges only by re-reviewing the new HEAD, so re-requesting the unsatisfied ones is exactly what lets the loop reach "all `loop_reviewers` happy" (step 4) — skip it and the loop strands, waiting forever on a bot that was never asked to look again. It's the in-loop analog of Phase 0's gate re-review sub-loop: fix → push → re-request the unsatisfied reviewers → wait → re-evaluate, repeating until every loop reviewer goes happy.
+
+The step 2 flow waits the grace window, then skips a bot **only** when it has already engaged *this* new commit — started reviewing it, or delivered a verdict **at/after this push**. A verdict sitting on the pre-push commit is **stale and does not count** (per "Reading reviewer state"); that bot still needs to see the new HEAD, so request it. First-pass-only bots aren't re-requested here, and already-happy bots stay dropped (sticky — step 4).
 
 ### 9. Iteration counter
 Increment. If `max_iterations` reached, pause and ask the user (skip the cap if invoked with "no iteration cap"). Return to step 3. The counter is the one piece of loop state with no PR backstop, so it **must ride in the wake payload** (with any active modifiers); a context-less wake with no carried counter derives a floor from the highest `PR-Review-Loop: <N>` trailer and resumes at `<N>+1`. Mechanics: `reference/waiting.md`.
