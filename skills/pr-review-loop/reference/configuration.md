@@ -17,10 +17,10 @@ The loop is governed by seven config keys, plus natural-language invocation modi
 ## Precedence (low → high)
 
 ```
-bundled defaults  <  ~/.claude/pr-review.config.yml (optional)  <  <orchestrator-repo>/.github/pr-review.config.yml (project)
+bundled defaults  <  ~/.claude/pr-review-loop.config.yml (optional)  <  <orchestrator-repo>/.github/pr-review-loop.config.yml (project)
 ```
 
-Bundled defaults are always present (the self-sufficient baseline). User-level is optional and additive — read it *if it exists*; if it doesn't, that's fine, never require it. Project `.github/pr-review.config.yml` in the orchestrator repo (the working directory's repo) wins. **Merge is per-key**, not whole-file replace — a project file setting only `max_iterations` inherits the rest from below. The merged config applies to ALL PRs in the run, including cross-repo ones (they don't pull config from their own repos).
+Bundled defaults are always present (the self-sufficient baseline). User-level is optional and additive — read it *if it exists*; if it doesn't, that's fine, never require it. Project `.github/pr-review-loop.config.yml` in the orchestrator repo (the working directory's repo) wins. **Merge is per-key**, not whole-file replace — a project file setting only `max_iterations` inherits the rest from below. The merged config applies to ALL PRs in the run, including cross-repo ones (they don't pull config from their own repos).
 
 **Gate vs `request_on_pr_open` for a deep reviewer.** Both put a bot in front of a fresh PR, but differ in structure. `request_on_pr_open` batches its first-pass findings into iteration 1 alongside the loop reviewers — one combined evaluation, then the loop runs. `upfront_gate_reviewers` makes it a **distinct phase that must complete first** (actionable-clear re-runs to clean, actionable-unclear pauses for the user) before any loop reviewer is requested. Use the gate when "is this approach even right?" should be answered before polish; use `request_on_pr_open` when the catches can be handled inline. Don't list the same bot in both (the gate already covers the first look).
 
