@@ -4,7 +4,7 @@
 
 A local terminal can't receive GitHub webhooks or push events, so the loop **drives its own wakes by polling**: schedule a self-wake on a fixed cadence and reconcile the PR on each tick. Polling is the mechanism here, not a fallback.
 
-**What each poll must catch.** Reconciling the full PR state every tick covers the transitions that actually end a wait — none of which a webhook would deliver even if you had one: a **clean/approving verdict** (an APPROVE, or a clean verdict in an issue comment), a **"no new comments" review** (e.g. Copilot's), **CI completion — success *and* failure** (`statusCheckRollup` going green or red), **new pushes**, and **merge-conflict transitions** (`mergeStateStatus` → `DIRTY`/`BEHIND`). These are the "reviewer went green, move on" signals; the poll catches every one within one cadence.
+**What each poll must catch.** Reconciling the full PR state every tick covers every transition that ends a wait — including the quiet ones a reviewer never announces: a **clean/approving verdict** (an APPROVE, or a clean verdict in an issue comment), a **"no new comments" review** (e.g. Copilot's), **CI completion — success *and* failure** (`statusCheckRollup` going green or red), **new pushes**, and **merge-conflict transitions** (`mergeStateStatus` → `DIRTY`/`BEHIND`). These are the "reviewer went green, move on" signals; the poll catches every one within one cadence.
 
 **Wake ladder — feature-detect, take the highest available:**
 

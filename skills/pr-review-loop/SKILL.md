@@ -31,7 +31,7 @@ This skill is self-contained. The files below live in this skill's own directory
 - [`reference/evaluation.md`](reference/evaluation.md) — the step-5 lens rubric, courses of action, issue creation, reactions, resolve criteria, and Phase-0 triage.
 - [`reference/waiting.md`](reference/waiting.md) — the step-3 wait: the polling model, re-entrancy, carried state, timeouts.
 
-**Requires:** `gh` (authenticated), `git`. Bash forms also use `jq` (PowerShell forms don't). Optional: a github MCP server; a scheduling primitive (`/loop`, `ScheduleWakeup`, `CronCreate`) for self-paced polling waits (feature-detected — degrades gracefully).
+**Requires:** `gh` (authenticated), `git`. Bash forms also use `jq` (PowerShell forms don't). Optional: a GitHub MCP server; a scheduling primitive (`/loop`, `ScheduleWakeup`, `CronCreate`) for self-paced polling waits (feature-detected — degrades gracefully).
 
 **Snippet convention:** `<...>` tokens (`<num>`, `<owner>`, `<repo>`, `<path>`, `<tmp>`) are placeholders you substitute with real values, not literal shell tokens.
 
