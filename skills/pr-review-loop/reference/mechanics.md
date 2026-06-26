@@ -4,7 +4,7 @@ Requires `gh` (authenticated). Bash forms also use `jq`; PowerShell forms use `C
 
 ## Tool tiers
 
-For each operation use the best tier your environment supports. Columns denote **availability, not rank**: Tier 1 is the universal baseline, Tier 2 an alternative when present, Tier 3 a fallback. Feature-detect; never assume a tier exists. (The **wait** step is the exception — it has its own poll-plus-events model in `reference/waiting.md`, not a row here.)
+For each operation use the best tier your environment supports. Columns denote **availability, not rank**: Tier 1 is the universal baseline, Tier 2 an alternative when present, Tier 3 a fallback. Feature-detect; never assume a tier exists. (The **wait** step is the exception — it has its own timer-based polling model in `reference/waiting.md`, not a row here.)
 
 | Operation | Tier 1 (universal) | Tier 2 (when available) | Tier 3 (fallback) |
 |---|---|---|---|
