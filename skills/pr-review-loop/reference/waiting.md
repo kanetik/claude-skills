@@ -18,7 +18,7 @@ End the turn. On every wake, re-pull and reconcile (below), then act. Stay in th
 
 ### Background fingerprint poll (ladder rung b)
 
-An illustrative starting point — adapt it. Hash the PR state, and wake when the hash changes; run it in the background.
+An illustrative starting point — adapt it. Hash the PR state, and emit when the hash changes; run it in the background (whether that emit auto-wakes you or only notifies a human is the host-dependent question rung (b) covers).
 
 ```bash
 fp() {
