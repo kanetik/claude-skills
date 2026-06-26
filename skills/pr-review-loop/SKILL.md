@@ -6,7 +6,7 @@ description: >-
   project/PR/item judgement, then fixes, pushes back, or files follow-up issues,
   resolves threads, and repeats until every loop reviewer is satisfied. Optional
   adversarial gate before the loop and a sanity-check pass after. Self-contained
-  and auto-detects the best wait mechanism. Auto-invoke immediately and WITHOUT
+  and self-paces its polling waits. Auto-invoke immediately and WITHOUT
   asking right after a PR is created (gh pr create, a commit-push-PR flow, or
   equivalent), and when the user says "start a PR review", "respond to PR
   comments", "handle PR feedback", says they just opened a PR, or invokes
@@ -29,9 +29,9 @@ This skill is self-contained. The files below live in this skill's own directory
 - [`reference/configuration.md`](reference/configuration.md) — config keys, override model, invocation modifiers, project procedural overrides.
 - [`reference/mechanics.md`](reference/mechanics.md) — tool tiers, the GraphQL/REST queries the loop needs, and Copilot/Codex trigger mechanics.
 - [`reference/evaluation.md`](reference/evaluation.md) — the step-5 lens rubric, courses of action, issue creation, reactions, resolve criteria, and Phase-0 triage.
-- [`reference/waiting.md`](reference/waiting.md) — the step-3 wait: the poll-plus-events model, re-entrancy, carried state, timeouts.
+- [`reference/waiting.md`](reference/waiting.md) — the step-3 wait: the polling model, re-entrancy, carried state, timeouts.
 
-**Requires:** `gh` (authenticated), `git`. Bash forms also use `jq` (PowerShell forms don't). Optional: a github MCP server; a scheduling and/or event-subscription primitive for waits (feature-detected — degrades gracefully).
+**Requires:** `gh` (authenticated), `git`. Bash forms also use `jq` (PowerShell forms don't). Optional: a github MCP server; a scheduling primitive (`/loop`, `ScheduleWakeup`, `CronCreate`) for self-paced polling waits (feature-detected — degrades gracefully).
 
 **Snippet convention:** `<...>` tokens (`<num>`, `<owner>`, `<repo>`, `<path>`, `<tmp>`) are placeholders you substitute with real values, not literal shell tokens.
 
@@ -41,7 +41,7 @@ Status during iterations and waits is one or two lines: "Iter 3 wait, Codex stil
 
 ## Configuration (summary)
 
-Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < optional `~/.claude/pr-review.config.yml` < orchestrator repo's `.github/pr-review.config.yml`. Defaults: `upfront_gate_reviewers: []`, `request_on_pr_open: [copilot]`, `loop_reviewers: [copilot]`, `final_gate_reviewers: []`, `auto_review_grace_seconds: 0`, `wait_check_cadence_seconds: 240`, `max_iterations: 10`. Parse natural-language modifiers from the invocation. Full model: `reference/configuration.md`.
+Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < optional `~/.claude/pr-review.config.yml` < orchestrator repo's `.github/pr-review.config.yml`. Defaults: `upfront_gate_reviewers: []`, `request_on_pr_open: [copilot]`, `loop_reviewers: [copilot]`, `final_gate_reviewers: []`, `auto_review_grace_seconds: 0`, `wait_check_cadence_seconds: 180`, `max_iterations: 10`. Parse natural-language modifiers from the invocation. Full model: `reference/configuration.md`.
 
 **Reviewer roles.** Four bot lists: `upfront_gate_reviewers` (gate before the loop — Phase 0), `request_on_pr_open` (requested on the first pass), `loop_reviewers` (re-requested on every push — these *drive convergence*), and `final_gate_reviewers` (requested once after convergence). **Only `loop_reviewers` run *inside* the loop**: they alone are re-requested on the loop's own pushes (step 8) and they alone gate convergence (step 4). Every other tracked bot is **out-of-loop** — requested only in its own phase and never dragged through the iterations: `upfront_gate_reviewers` in Phase 0 (before), `final_gate_reviewers` in step 10 (after), and a **first-pass-only** bot (in `request_on_pr_open` but not `loop_reviewers`) once on iteration 1. An out-of-loop bot's findings are triaged like any other, but it is never re-requested by step 8 and never gates convergence. The recommended pattern for a rate-limited deep reviewer (Codex) puts it on the two gates while Copilot drives the loop — see `config/defaults.yml`.
 
@@ -110,7 +110,7 @@ Humans are never auto-re-pinged. Same flow on iteration 1 and after every push (
 4. Proceed to step 3.
 
 ### 3. Wait for new reviewer activity
-**Poll always; let events short-circuit.** A PR-activity subscription is an accelerator, never the sole wait mechanism — webhooks don't wake you for the transitions that end a wait (clean/approving verdicts, CI completion, new pushes, merge-conflict flips), so a backstop runs alongside it and is **mandatory**. Arm the best available: (a) host scheduling / self-check-in at `wait_check_cadence_seconds`, else (b) a background polling monitor that emits on any change to head-commit/reviews/comments/CI/merge state, else (c) a single-pass hand-back — and when (a) is absent, (b) is required: never end a wait with no backstop armed, and re-arm it on each wake until the PR is merged or closed. End the turn. On **any** wake — tick, event, or monitor emission — re-pull and do a full three-surface reconciliation against HEAD before concluding anything; events are a hint to look, never ground truth, and an event's *absence* never means a bot is still pending. Make every wake idempotent — reconstruct loop state from the PR plus the carried payload. Waiting does NOT count toward `max_iterations`. Full model, ladder, polling snippet, the `--repo` gotcha, lockstep, re-entrancy, and carried state: `reference/waiting.md`.
+**Poll on a timer — there are no push events to wait on.** A local terminal can't receive GitHub webhooks, so the loop drives itself: schedule a self-wake every `wait_check_cadence_seconds` (2-4 min) and reconcile on each tick. Arm the best self-wake available: (a) a scheduling primitive — `/loop <cadence>`, `ScheduleWakeup`, `CronCreate` — carrying the continuation payload, else (b) a background polling monitor that fingerprints head-commit/reviews/comments/CI/merge state and wakes on any change, else (c) a single-pass hand-back ("re-invoke `/pr-review-loop` to continue"). Never **foreground**-`sleep` busy-wait — that blocks the turn instead of yielding. Re-arm on every wake until the PR is merged or closed. End the turn. On every wake, re-pull and do a full three-surface reconciliation against HEAD before concluding anything — the PR state is ground truth. Make every wake idempotent — reconstruct loop state from the PR plus the carried payload. Waiting does NOT count toward `max_iterations`. Full model, ladder, polling snippet, the `--repo` gotcha, lockstep, re-entrancy, and carried state: `reference/waiting.md`.
 
 ### 4. Detect "this reviewer is happy"
 For each bot **still in the active set** (already-happy bots are done — don't re-evaluate them), all must hold:

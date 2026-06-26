@@ -1,26 +1,24 @@
 # Waiting for reviewer activity (SKILL.md step 3 detail)
 
-## Poll always; let events short-circuit
+## Poll on a timer — there are no push events to wait on
 
-The wait is **not** an either/or between polling and events. The invariant: **never depend on an event arriving as your only wake.** An event subscription is an *accelerator* layered on a backstop — **never the sole wait mechanism.** Whenever the chosen mechanism can't itself deliver the terminal/quiet transitions that signal progress, a backstop is **mandatory**; the two run together.
+A local terminal can't receive GitHub webhooks or push events, so the loop **drives its own wakes by polling**: schedule a self-wake on a fixed cadence and reconcile the PR on each tick. Polling is the mechanism here, not a fallback.
 
-**Why a subscription alone strands the loop — the non-events it misses.** A PR-activity subscription (`subscribe_pr_activity`, webhooks) forwards review *findings* but does **not** wake you for the transitions that actually end a wait: a **clean/approving verdict** (an APPROVE, or a clean verdict in an issue comment), a **"no new comments" review** (e.g. Copilot's), **CI completion — success *and* failure** (`statusCheckRollup` going green or red), **new pushes**, and **merge-conflict transitions** (`mergeStateStatus` → `DIRTY`/`BEHIND`). These are exactly the "reviewer went green, move on" signals — so on the subscription alone the loop stalls the instant a reviewer goes clean, and a human has to say "it's done" to un-stick it. The backstop catches every one within one cadence.
+**What each poll must catch.** Reconciling the full PR state every tick covers the transitions that actually end a wait — none of which a webhook would deliver even if you had one: a **clean/approving verdict** (an APPROVE, or a clean verdict in an issue comment), a **"no new comments" review** (e.g. Copilot's), **CI completion — success *and* failure** (`statusCheckRollup` going green or red), **new pushes**, and **merge-conflict transitions** (`mergeStateStatus` → `DIRTY`/`BEHIND`). These are the "reviewer went green, move on" signals; the poll catches every one within one cadence.
 
-**Backstop ladder — feature-detect, take the highest available:**
+**Wake ladder — feature-detect, take the highest available:**
 
-(a) **Host scheduling / self-check-in** — a recurring scheduler or self-scheduled message (`/loop <cadence>`, `ScheduleWakeup`, `CronCreate`, `send_later` — often absent in cloud sessions). Wake at `wait_check_cadence_seconds` (default 240s) carrying the continuation payload; reconcile on the tick.
-(b) **Background polling monitor** — a *background* task that fingerprints the PR's head-commit/review/comment/CI/merge state and emits on change (snippet below), waking you to reconcile. It runs in the background and the agent **ends its turn** — it is not a foreground `sleep` busy-wait. Harness-dependent (background output must actually wake the agent), so feature-detect first; an MCP-only GitHub with no shell `gh` can use a bare heartbeat here and reconcile through its in-agent tools.
-(c) **Single-pass hand-back** — do one reconciliation pass, then stop with "re-invoke `/pr-review-loop` to continue." Never **foreground**-busy-wait with `sleep` for external events — that blocks the turn instead of yielding.
+(a) **Self-scheduled wake** — a scheduling primitive (`/loop <cadence>`, `ScheduleWakeup`, `CronCreate`) that re-invokes you at the cadence carrying the continuation payload; reconcile on the tick. Preferred in a local terminal — cheapest and simplest.
+(b) **Background polling monitor** — a *background* task that fingerprints the PR's head-commit/review/comment/CI/merge state and emits on change (snippet below), waking you to reconcile. It runs in the background and the agent **ends its turn** — it is not a foreground `sleep` busy-wait. Use when no scheduling primitive is available.
+(c) **Single-pass hand-back** — do one reconciliation pass, then stop with "re-invoke `/pr-review-loop` to continue." Last resort, only when (a) and (b) are both unavailable.
 
-When (a) is unavailable, (b) is **required** before ending the turn — fall to (c) only when both are genuinely unavailable. A subscription, when present, layers on top: an event short-circuits the interval so you react sooner, never so you skip the backstop. **Re-arm on every wake** (re-schedule / restart / re-subscribe) until the PR is merged or closed; do it silently.
+Never **foreground**-busy-wait with `sleep` for reviewer activity — that blocks the turn instead of yielding. **Re-arm on every wake** (re-schedule / restart) until the PR is merged or closed; do it silently.
 
-End the turn. On **any** wake — tick, event, or monitor emission — re-pull and reconcile (below), then act. Stay in the 180-270s band: ≤270s keeps each wake inside the 5-minute prompt-cache window (cheap); >300s incurs a full context replay per wake. The `/loop` idle default of 1200-1800s is too slow for a review loop.
+End the turn. On every wake, re-pull and reconcile (below), then act. Stay in the **120-240s band (2-4 minutes)**: frequent enough to react promptly, and ≤270s keeps each wake inside the 5-minute prompt-cache window (cheap); >300s incurs a full context replay per wake. The `/loop` idle default of 1200-1800s is far too slow for a review loop — set the cadence explicitly.
 
-**Events are a wake hint, not ground truth.** Treat every event as "look now," never as the authoritative statement of what changed — and never let the *absence* of an event mean a bot is still pending. The PR state is ground truth; reconcile it on every wake.
+### Background fingerprint poll (ladder rung b)
 
-### Backstop fingerprint poll (ladder rung b)
-
-An illustrative starting point — adapt it. Hash the PR state a webhook won't reliably forward, and wake when the hash changes; run it in the background.
+An illustrative starting point — adapt it. Hash the PR state, and wake when the hash changes; run it in the background.
 
 ```bash
 fp() {
@@ -40,12 +38,12 @@ When you adapt it: keep `headRefOid` so pushes register even in a repo with no C
 
 ## Re-entrancy — build for it
 
-Under polling and events the loop is **re-entered across wakes**, not run as one process. Make each wake idempotent:
+Under polling the loop is **re-entered across wakes**, not run as one process. Make each wake idempotent:
 
 1. Re-pull (`git fetch && git pull --ff-only`).
 2. Re-derive where you are from the PR (SKILL.md step 1 gathering): unresolved threads, review states + timestamps, bot issue comments, latest push timestamp, tracked-bots set — **read all three surfaces against current HEAD** (SKILL.md "Reading reviewer state") before concluding any bot is still pending.
 3. Act (evaluate / request / wait).
-4. Re-schedule the poll (and re-subscribe if event-driven), then yield.
+4. Re-schedule the poll, then yield.
 
 **Resume at step 3, not the top.** A wake re-enters the wait/evaluate cycle — it does NOT re-run the first-run preamble (arg parse, modifier/override detection); that was kickoff work, and redoing it wastes effort and can re-prompt the user. The catch: anything the preamble *decided*, or run-scoped state the PR doesn't record, must instead ride in the **wake payload** (next section). Never hold loop-critical state only in turn-local memory — a wake may be a fresh context.
 
@@ -76,7 +74,7 @@ If `git pull` on wake brings in commits the loop didn't author (a teammate or au
 
 ## Timeout for unresponsive bots
 
-If a bot doesn't respond within ~20 minutes of being triggered (or ~20 min after the push that should have auto-triggered it), surface to the user — don't silently hang. **Before declaring it unresponsive, reconcile all three surfaces against HEAD** — its verdict may have arrived as an issue comment no event surfaced, in which case it's done. The user decides: skip it this iteration, wait longer, or terminate.
+If a bot doesn't respond within ~20 minutes of being triggered (or ~20 min after the push that should have auto-triggered it), surface to the user — don't silently hang. **Before declaring it unresponsive, reconcile all three surfaces against HEAD** — its verdict may have arrived as an issue comment a prior poll didn't catch, in which case it's done. The user decides: skip it this iteration, wait longer, or terminate.
 
 ## Optional self-review — push BEFORE triggering, not during the wait
 

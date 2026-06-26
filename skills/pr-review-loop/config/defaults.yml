@@ -1,7 +1,7 @@
 # Bundled default config for the pr-review skill.
 #
 # This file is the always-present baseline. It is overridden, per key, by:
-#   1. ~/.claude/pr-review.config.yml   (optional; absent in cloud — harmless)
+#   1. ~/.claude/pr-review.config.yml   (optional)
 #   2. <orchestrator-repo>/.github/pr-review.config.yml   (project; wins)
 #
 # Precedence, low -> high:
@@ -24,7 +24,7 @@ final_gate_reviewers: []        # after the loop converges, request these ONCE m
                                 # sanity check (a last confirming look, not an adversarial dig); if they
                                 # raise anything, fix it and re-converge loop_reviewers. Empty = no check.
 auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a Ruleset auto-requests Copilot or similar
-wait_check_cadence_seconds: 240 # how often to check during time-based waits (180-270 keeps each check inside the 5-min prompt cache — faster AND cheaper than longer cadences)
+wait_check_cadence_seconds: 180 # how often the loop polls during waits (3 min; stay in 120-240 = every 2-4 min; ≤270 keeps each check inside the 5-min prompt cache — faster AND cheaper than longer cadences)
 max_iterations: 10
 
 # Recommended pattern for a rate-limited deep reviewer (e.g. Codex) — set in a project's
