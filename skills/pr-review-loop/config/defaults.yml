@@ -1,4 +1,4 @@
-# Bundled default config for the pr-review skill.
+# Bundled default config for the pr-review-loop skill.
 #
 # This file is the always-present baseline. It is overridden, per key, by:
 #   1. ~/.claude/pr-review.config.yml   (optional)
