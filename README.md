@@ -85,16 +85,52 @@ The skills are project-agnostic — they don't hardcode any paths, brand names, 
 
 No config needed. The skill operates on standard Android resource layout (`app/src/main/res/values/strings.xml` and sibling `values-{locale}/strings.xml`). Project-specific brand names (the things that should *not* be translated) belong in your project's `CLAUDE.md` so the conversation can pass them through as guidance.
 
-### For `/translate-content` and `/whats-new`
+### For `/whats-new`
 
-Add a `.claude/whats-new.config.md` (or `.claude/translate-content.config.md`) at your repo root with:
+Add a `.claude/whats-new.config.md` at your repo root. Keys:
+
+| Key | Required | Purpose |
+|---|---|---|
+| `output_dir` | yes | Directory holding the per-locale files (e.g. `app/src/main/play/release-notes` for gradle-play-publisher, `playstore/whatsnew` for r0adkll/upload-google-play) |
+| `file_pattern` | yes | Filename template with `{locale}` — `{locale}/default.txt` (subdir layout) or `whatsnew-{locale}` (flat layout) |
+| `locales` | yes | Play Store locale codes; exactly one marked `(default)`, matching the English source |
+| `since_ref_rule` | yes | How to find the previous release, e.g. the last version tag |
+| `skip_topics` | no | Commit topics to omit from the notes (has sensible defaults: analytics, crash logging, A/B tests, refactors, dependency bumps, docs/tests/CI) |
+| `notes` | no | Anything else the skill should know (CI contract, etc.) |
 
 ```yaml
-output_dir: app/src/main/play/release-notes      # gradle-play-publisher layout
+output_dir: app/src/main/play/release-notes
 file_pattern: "{locale}/default.txt"
-# or for r0adkll/upload-google-play layout:
-# output_dir: playstore/whatsnew
-# file_pattern: whatsnew-{locale}
+locales:
+  - en-US (default)
+  - de-DE
+  - es-ES
+  - fr-FR
+  # ... etc
+since_ref_rule: "last tag matching ^[0-9]+\\.[0-9]+\\.[0-9]+$"
+skip_topics:
+  - analytics
+  - crash logging
+  - A/B tests
+```
+
+The 500-character Play Store limit is baked into the skill — you don't configure it. If the config is missing, `/whats-new` asks for these values and offers to write the file.
+
+### For `/translate-content`
+
+Add a `.claude/translate-content.config.md` at your repo root. Note the keys differ from `/whats-new` — this skill uses `source_path`/`output_pattern`, not `output_dir`/`file_pattern`:
+
+| Key | Required | Purpose |
+|---|---|---|
+| `source_path` | yes | Path to the default-locale source file (e.g. `app/src/main/play/release-notes/en-US/default.txt`, `playstore/whatsnew/whatsnew-en-US`, `docs/faq-en.md`) |
+| `output_pattern` | yes | Template for each locale's output, with `{locale}` substituted |
+| `locales` | yes | Target locale codes; one marked `(default)`, matching the source |
+| `char_limit` | no | Per-locale codepoint limit (500 for Play Store release notes; omit for unlimited prose) |
+| `skip_locales_with_content` | no | If `true` (the default), skip locales whose output file already exists with content; set `false` to always overwrite |
+
+```yaml
+source_path: app/src/main/play/release-notes/en-US/default.txt
+output_pattern: app/src/main/play/release-notes/{locale}/default.txt
 locales:
   - en-US (default)
   - de-DE
@@ -102,10 +138,14 @@ locales:
   - fr-FR
   # ... etc
 char_limit: 500
-since_ref_rule: "last tag matching ^[0-9]+\\.[0-9]+\\.[0-9]+$"
+skip_locales_with_content: true
 ```
 
-The skills read this once per invocation and use it to find the source file, list the target locales, and enforce the char limit.
+You can also skip the config entirely and drive `/translate-content` ad-hoc: *"translate `docs/faq-en.md` into de-DE, es-ES, fr-FR, write to `docs/faq-{locale}.md`, no char limit."*
+
+### One file or two?
+
+**Two.** `/whats-new` and `/translate-content` read separate config files with non-overlapping keys — `/whats-new` never reads `source_path`/`output_pattern`, and `/translate-content` never reads `since_ref_rule`. Keep them as two files. (`/translate-content` will fall back to reading `whats-new.config.md` if that's your project's convention, but it only picks up the keys it recognizes, so a dedicated `translate-content.config.md` is clearer.) When a config is missing, the skill asks for the values and offers to write the file for you.
 
 ## Design principles
 
