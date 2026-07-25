@@ -119,7 +119,15 @@ For the cross-check stage only.
 gh pr view <num> --json body,reviews,comments,commits
 ```
 
-`commits` is what separates a concern that was *changed* in response from one that was only argued about — the `unfixed` / `re-raised` split in [`cross-check.md`](cross-check.md) turns on it, and neither bucket can be judged from thread text alone. Pass it through with the threads.
+`commits` alone carries no paths — only `oid`, dates, and messages — so it cannot answer the question the `unfixed` bucket asks. Get the paths too, and pass those through with the threads:
+
+```bash
+for oid in $(gh pr view <num> --json commits --jq '.commits[].oid'); do
+  git -C "$REPO" show --name-only --format='%H %cI' "$oid"
+done
+```
+
+That pairing — which commit touched which path, and when — is what separates a concern that was *changed* in response from one that was only argued about. Without it every genuinely unfixed defect falls through to `re-raised`, which keeps its severity, so the bucket [`cross-check.md`](cross-check.md) calls the strongest signal this review produces is unreachable.
 
 Thread resolution state needs GraphQL:
 
@@ -130,7 +138,7 @@ query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
     pullRequest(number:$num){
       reviewThreads(first:100,after:$cursor){
         pageInfo{hasNextPage endCursor}
-        nodes{ isResolved isOutdated path line
+        nodes{ isResolved isOutdated path line originalLine originalStartLine
                comments(first:50){nodes{databaseId author{login} body url createdAt}} }
       }}}}' -F owner=<owner> -F repo=<repo> -F num=<num>
 ```
@@ -138,6 +146,8 @@ query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
 Paginate on `hasNextPage`. A thread's resolution plus its replies is what separates `settled` from `re-raised` — a thread closed after the author explained why they chose otherwise reads very differently from one closed by a commit.
 
 `databaseId` is the id the replies endpoint needs, and it is how a run recognises its own earlier comments: every comment this skill posts ends with the marker line `<!-- pr-review-skeptic -->`. Without it there is nothing to recognise — these reviews are authored by the user's own account, indistinguishable from a hand-written one.
+
+`line` comes back **null on any outdated thread**, so match on `originalLine` when it does. Outdated is the common case here, not the rare one: a rebase or a formatting push marks every thread in the PR outdated at once, and the run that follows is exactly the one that needs to find its own earlier comment. Matching on path alone instead posts a second thread beside the first and notifies everyone twice for one defect.
 
 ## Post the review
 
