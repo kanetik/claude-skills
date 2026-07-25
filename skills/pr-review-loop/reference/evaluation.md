@@ -22,13 +22,13 @@ Hold three lenses and the mindset as a **single integrated judgement**, not a se
 
 ## Writing the fix without causing the next finding
 
-A fix written against the *finding* rather than the *invariant* closes the path the reviewer described and leaves its siblings open. This is the loop's characteristic failure — the defect arrives in the fix, so the round that introduced it looks like progress — and it is why iteration counts climb. Before pushing any fix to a correctness finding, three checks:
+**Applies to fixes for correctness, concurrency and data-handling findings** — not to typos, formatting or doc wording, where being approximately right costs nothing.
+
+For those, a fix written against the *finding* rather than the *invariant* closes the path the reviewer described and leaves its siblings open. This is the loop's characteristic failure — the defect arrives in the fix, so the round that introduced it looks like progress — and it is why iteration counts climb. Three checks before pushing one:
 
 - **Name the invariant, not the scenario.** State in one line the property that must hold ("a viewing never lands on an episode the user didn't watch"), then check the fix against *that*. The reviewer's scenario is one route to violating it; fixing only that route is how the second route survives. Reach for this hardest on data-correctness findings — where the lenses above say the project-level cost of being wrong is high.
 - **Ask what already does this.** Before writing a predicate, a dispatcher, a null check — look for the seam that exists. Re-implementing a rule the codebase already encodes (a `Ref.isEmpty`, a project `ioDispatcher`) means the copy drifts from the original the first time either changes. A hand-rolled duplicate of an existing rule is a defect with a delay fuse.
 - **Check the fix didn't weaken the tests.** A test edited while fixing a finding can end up asserting less than it did before, and it still passes — that is what makes it invisible. If a guard is added, disable it and confirm its test fails; if a fixture is changed, confirm the assertion still depends on what it claims to prove.
-
-None of this applies to typos, formatting, or doc wording. It is for fixes to correctness, concurrency and data-handling findings, where being approximately right is what produced the finding in the first place.
 
 ## Upfront gate triage (SKILL.md Phase 0)
 
