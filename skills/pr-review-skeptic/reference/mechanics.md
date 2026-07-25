@@ -16,9 +16,16 @@ Zero matches and no PR named in the invocation → say so and stop; this skill r
 
 ```bash
 gh pr view <num> --json number,title,headRefOid,baseRefName,files
-git fetch origin "<baseRefName>" "pull/<num>/head"        # the head is not local for a fork, or for any PR you didn't open here
-BASE=$(git merge-base origin/<baseRefName> <headRefOid>)
-git cat-file -e "<headRefOid>^{commit}"                   # both shas must resolve before a reviewer diffs them
+
+# The PR lives in its base repo, which is NOT `origin` in a fork clone -- there `origin`
+# is the fork, and fetching pull/<num>/head from it either 404s or, worse, resolves to
+# the fork's own PR of that number and reviews the wrong commits.
+BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
+
+git fetch "$BASEREPO" "pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
+git fetch "$BASEREPO" "<baseRefName>"                          # base tip -> FETCH_HEAD
+BASE=$(git merge-base FETCH_HEAD "<headRefOid>")
+git cat-file -e "<headRefOid>^{commit}"                        # both shas must resolve before a reviewer diffs them
 ```
 
 `files[].path` is the change's file list — the input to partitioning. `BASE` and `headRefOid` are the `{{BASE}}` and `{{HEAD}}` slots; reviewers diff with `git diff $BASE...<head>`.
@@ -27,8 +34,10 @@ Staging the checkout (`SKILL.md` stage 1) where the current tree isn't already a
 
 ```bash
 git worktree add <tmp>/pr-<num> <headRefOid>       # review here
-git worktree remove <tmp>/pr-<num>                 # when the run ends
+git worktree remove --force <tmp>/pr-<num>         # when the run ends
 ```
+
+`--force` because `git worktree remove` refuses outright on any untracked file, and a reviewer that wrote a scratch file would otherwise strand the worktree. Nothing the run needs to keep lives there — the config file from stage 2 is written to the primary checkout, never here.
 
 ## CI status
 
@@ -69,29 +78,32 @@ Paginate on `hasNextPage`. A thread's resolution plus its replies is what separa
 
 One review carries the summary body and every inline comment. Build a JSON payload and post it:
 
+Finding bodies are free prose, routinely carrying quotes, backslashes, and fenced code. **Let a JSON encoder encode them** — one hand-written `"` in a comment body makes the payload malformed, and this call is all-or-nothing, so the summary and every other comment fail with it.
+
 ```bash
-cat > <tmp>/review.json <<'JSON'
-{
-  "commit_id": "<head-sha>",
-  "event": "COMMENT",
-  "body": "<summary body: verdict, coverage, observations, settled>",
-  "comments": [
-    { "path": "data/sync/Merge.kt", "line": 118, "side": "RIGHT",
-      "body": "**CRITICAL** — Local edits are dropped when...\n\n**Consequence:** ...\n\n**Fix:** ..." }
-  ]
-}
-JSON
+printf '%s' "$summary" > <tmp>/body.md
+# one compact JSON object per inline comment, appended as you build them:
+jq -nc --arg p "data/sync/Merge.kt" --argjson l 118 --arg b "$comment" \
+  '{path:$p, line:$l, side:"RIGHT", body:$b}' >> <tmp>/comments.jsonl
+
+jq -s '{comments: .}' <tmp>/comments.jsonl > <tmp>/comments.json
+jq -n --arg sha "<head-sha>" --rawfile body <tmp>/body.md --slurpfile c <tmp>/comments.json \
+  '{commit_id:$sha, event:"COMMENT", body:$body, comments:$c[0].comments}' > <tmp>/review.json
+
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input <tmp>/review.json
 ```
 
-PowerShell, where a heredoc is a parse error:
+PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding:
 
 ```powershell
-@{ commit_id = '<head-sha>'; event = 'COMMENT'; body = $summary
-   comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $comment })
-} | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 <tmp>/review.json
+$payload = @{ commit_id = '<head-sha>'; event = 'COMMENT'; body = $summary
+  comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $comment })
+} | ConvertTo-Json -Depth 5
+[System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input <tmp>/review.json
 ```
+
+Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows PowerShell 5.1, and `gh api --input` forwards it verbatim for GitHub to reject as unparseable JSON — after every reviewer has already run, and with a file that looks correct in any editor.
 
 `event` is always `COMMENT`. `APPROVE` would let this review satisfy branch protection and admit a merge on an agent's judgement, which is not a call this skill makes; the verdict goes in the body where a person reads it and decides.
 

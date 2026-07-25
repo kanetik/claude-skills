@@ -32,7 +32,7 @@ This skill is self-contained. The files below live in this skill's own directory
 - [`reference/cross-check.md`](reference/cross-check.md) — the brief for the one stage that reads the PR's history.
 - [`reference/mechanics.md`](reference/mechanics.md) — the `gh` calls: resolving the PR, scoping the diff, CI status, review history, posting the review.
 
-**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`).
+**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`). The Bash form of the posting step also uses `jq` to build its JSON payload (the PowerShell form uses `ConvertTo-Json` instead).
 
 ## Reporting style — terse
 
@@ -66,7 +66,7 @@ Reviewers read the code at the PR's head, so the run needs a **clean working tre
 
 ## 2. Load configuration
 
-Merge the config layers. When the five project keys are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md`, confirm them with the user, and offer to write `.github/pr-review-skeptic.config.yml` ([`reference/configuration.md`](reference/configuration.md)).
+Merge the config layers. When the five project keys are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md`, confirm them with the user, and offer to write `.github/pr-review-skeptic.config.yml` ([`reference/configuration.md`](reference/configuration.md)). Write it into the PR repo's primary checkout, on a real branch — a staged review worktree from stage 1 is deleted when the run ends, taking the answers to five questions with it.
 
 **Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
 
@@ -78,7 +78,7 @@ Partition the changed files into **units** a single reviewer can hold at once. C
 
 Where the partition yields more than one unit, spend one of those reviewers on a **composition unit**: it takes the whole file list and the seams between the other units, and asks how the pieces behave together. Functions that are each correct alone and wrong in the arrangement production actually uses are invisible to every reviewer holding only one of them. A single-unit partition has no seams, so it gets no composition reviewer.
 
-**Done when** every changed file belongs to exactly one unit, the unit count is within `max_reviewers`, and the partition is recorded for the report.
+**Done when** every changed file belongs to exactly one content unit, the composition unit (where there is one) spans all of them, the total reviewer count is within `max_reviewers`, and the partition is recorded for the report.
 
 ## 4. Blind pass
 
@@ -113,7 +113,11 @@ Post one review, `event: COMMENT`, carrying ([`reference/mechanics.md`](referenc
 
 The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
 
-Show the review and wait for a go-ahead when `confirm_before_posting` is set, when the invocation said "don't post" or "show me first", or when **another skill or agent invoked this one** rather than a user message asking for it. Posting a review notifies every collaborator on the PR and cannot be unsent, so a caller that isn't a person gets a preview rather than a post.
+Posting notifies every collaborator on the PR and cannot be unsent, so it happens only when a person asked for a review to be posted. Three cases fall short of that:
+
+- `confirm_before_posting` is set, or the invocation said "show me first" → show the review and wait for the user's go-ahead.
+- The invocation said "don't post" / "just tell me", or it was a **question** about the change ("is this ready to merge?") rather than a request to review it → answer in the terminal, post nothing, and offer to post.
+- **Another skill or agent invoked this one** → return the drafted review to the caller and post nothing. A reply from an agent caller is not a go-ahead; the decision to publish belongs to the person whose account signs it.
 
 ## 8. Report
 
