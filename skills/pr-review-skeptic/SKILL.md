@@ -108,7 +108,9 @@ Where the PR has prior review activity, dispatch one subagent with the merged fi
 
 Where the PR has no prior review activity, every finding is `new`. Skip the stage. Where "ignore the review history" was asked for, dispatch the marker-only variant at the end of that file instead — a duplicate thread posted beside this skill's own earlier one is not something the user opted into.
 
-**Done when** every finding carries a bucket, and every `unfixed`, `re-raised`, and `settled` one carries the thread that decided it.
+This is the largest single prompt the skill builds — every finding plus the whole history payload — so it is the one most likely to come back truncated or unusable. Re-dispatch once. Still unusable, fall back to the marker-only variant, which needs the threads and the marker string and nothing else. If even that fails, treat every finding as `new` and **say the cross-check did not run**, in the terminal report and in the posted summary body: without the marker pass a second run opens a fresh thread beside each of its own earlier comments, and the user should hear that from the report rather than from the notifications.
+
+**Done when** every finding carries a bucket — or the cross-check is recorded as not run — and every `unfixed`, `re-raised`, and `settled` one carries the thread that decided it.
 
 ## 7. Verdict and post
 
@@ -154,12 +156,14 @@ The verdict belongs in the body, where a person reads it and decides. Report cov
 
 One short block to the user: the verdict, counts by severity, the PR URL, what the reviewers confirmed sound, and anything the run could not cover.
 
-Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands — and taking that offer up **re-enters the checks at the top of "The review"**: state and head sha are re-read before anything is sent, because a preview can sit for an hour while the PR is merged or force-pushed out from under it. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
+Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands — and taking that offer up **re-enters the run at stage 1**, re-staging and re-reading state and head sha before anything is sent, because a preview can sit for an hour while the PR is merged or force-pushed out from under it. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
 
 ## 9. Tear down
 
 Remove the staged worktree, delete `refs/prskeptic/<num>`, and drop the temp clone where the run made one ([`reference/mechanics.md`](reference/mechanics.md)). None of it is anything to keep: left behind, the ref pins the PR's objects alive and the worktree shows up in the user's `git worktree list` and `git status` forever, at paths they were never told.
 
-Run this once the review is **posted**, or once the user declines the offer or moves on to something else. A live offer holds it open — accepting it needs `$REPO` for the state and force-push checks, and on the cross-repo path `$REPO` is the temp clone. An offer nobody ever answers is not a leak: the next run on that PR clears these same paths before it stages anything (stage 1).
+Run it as soon as the review is **posted** — or, on a previewed run, as soon as the preview is shown. Do not hold it open for an answer that may never come: the phrasings that preview are the ones this skill most often arrives on, a user with their answer usually closes the session rather than replying, and what is left behind is a ref pinning the PR's objects and a worktree registration in the user's own repository, at paths they were never told and in a `refs/prskeptic/*` namespace nothing surfaces. Accepting the offer later re-stages through stage 1, which costs one fetch.
 
-**Done when** `git -C "$REPO" worktree list` shows no `pr-skeptic` entry and `refs/prskeptic/<num>` is gone.
+The exception is the **cross-repo** path, where `$REPO` is the temp clone and the accept path needs it for the state and force-push checks. Hold that one open until the offer resolves or the user moves on.
+
+**Done when** `git -C "$REPO" worktree list` shows no worktree at `<tmp>/pr-<num>` and `refs/prskeptic/<num>` is gone — or, cross-repo, once the clone itself is gone, which settles both.
