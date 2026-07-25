@@ -4,7 +4,9 @@
 
 `<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<owner>-<repo>-<num>"`, in that POSIX form, in every **Bash** snippet on this page including on Windows (the PowerShell posting block takes the native form — see there) — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Keyed on the repository as well as the number, because PR numbers are small integers and any user with two repos has a `#7` in both — sharing one staging directory means the second run's opening `rm -rf` deletes the worktree eight live reviewers are reading. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
 
-**The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`, and `$LASTID` from the posting block) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
+**The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`, `$REVIEWED`, and `$LASTID` from the posting block) live only inside their own invocation.**
+
+`$REVIEWED` deserves its own note: it is the head sha **the blind reviewers actually read**, and it survives a re-staging where a freshly-read `headRefOid` does not. Every staleness question — has the head moved, was it a force-push, which sha does the review post at — is asked against `$REVIEWED`. Re-deriving it instead makes those questions compare a value against itself and answer "unchanged" forever. Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
 
 The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live — `jq` does not ship with it and has to be installed separately. Only the posting step needs a standalone `jq` (the `--jq` flags elsewhere are `gh`'s own), and its PowerShell alternative uses `ConvertTo-Json`, so that block is the route to take where `jq` is missing rather than only where the shell is PowerShell.
 
@@ -40,11 +42,17 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # worktree those reviewers are reading, and their teardown later deletes this run's payload
 # files. On LIVE-RUN-SUSPECTED, ask the user whether the other run is still going rather than
 # continuing through this block. Older than that, the lock is a crashed run's leaving: sweep it.
+#
+# The window only works if the lock keeps moving, so `: > "<tmp>/run.lock"` again at every
+# stage boundary -- after staging, after the stage-2 interview (which waits on a human and can
+# outlast 30 minutes by itself), and once per reviewer dispatch. A lock that ages out under a
+# live run is worse than none: the second run stops asking and clears the worktree the first
+# run's reviewers are mid-read of.
 if [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
   echo "LIVE-RUN-SUSPECTED"; exit 1     # stop here and ask; do NOT clear
 fi
 rm -rf "<tmp>/pr-<num>" "<tmp>/repo-<num>"
-mkdir -p "<tmp>" && : > "<tmp>/run.lock"
+mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # and touch it again at every stage boundary below
 
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
@@ -92,7 +100,8 @@ git -C "$REPO" cat-file -e "<headRefOid>^{commit}"                       # both 
 
 git -C "$REPO" worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
 
-echo "REPO=$REPO REMOTE=$REMOTE BASE=$BASE BASETIP=$BASETIP TMP=<tmp>"   # later shells will not have these
+REVIEWED=<headRefOid>          # the sha the reviewers actually read -- fixed for the life of the review
+echo "REPO=$REPO REMOTE=$REMOTE BASE=$BASE BASETIP=$BASETIP REVIEWED=$REVIEWED TMP=<tmp>"
 ```
 
 `$BASETIP` is also what the project's config layer is read from ([`configuration.md`](configuration.md)) — `git show <baseRefName>:…` would need a local branch of that name, which a fresh clone or an integration-branch base does not have.
@@ -262,7 +271,7 @@ A bad anchor is the usual cause of a 422 but not the only one: a `commit_id` the
 ```bash
 git -C "$REPO" fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>-new"
 git -C "$REPO" rev-parse --verify "refs/prskeptic/<num>-new"   # the fetch above exits 0 on an empty $REMOTE
-git -C "$REPO" merge-base --is-ancestor "<headRefOid>" "refs/prskeptic/<num>-new"
+git -C "$REPO" merge-base --is-ancestor "$REVIEWED" "refs/prskeptic/<num>-new"
 ```
 
 Verify the ref before trusting the test: `git fetch "" <refspec>` **exits 0 and creates nothing**, so a `$REMOTE` lost between shells produces a missing ref, then a 128 from `--is-ancestor`, then a post at a sha the force-pushed PR no longer contains — a 422, a retry that 422s identically, and a review lost after every reviewer has run. A missing ref means unanswered, not fast-forward.
