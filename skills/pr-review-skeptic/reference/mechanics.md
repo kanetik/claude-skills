@@ -29,7 +29,14 @@ gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
 # the fallback for the fork/cross-repo case. `git fetch https://...` on a repo whose remote
 # is SSH has no credential helper unless `gh auth setup-git` was run, and a private repo
 # then fails or blocks on a credential prompt with no TTY.
-REMOTE=$(git remote -v | awk -v r="$BASEREPO" '$2 ~ r {print $1; exit}'); REMOTE=${REMOTE:-$BASEREPO}
+#
+# Compare on owner/repo, normalised out of each remote URL: an SSH remote never matches an
+# https string, and a substring test would match sibling repos (acme/widget ~ acme/widget-android).
+OWNERREPO=$(gh pr view <num> --json url --jq '.url | capture("[^/]+/(?<or>[^/]+/[^/]+)/pull").or')
+REMOTE=$(git remote -v | awk '$3=="(fetch)"{u=$2; sub(/\.git$/,"",u); sub(/^git@[^:]+:/,"",u);
+           sub(/^[a-z]+:\/\/[^\/]+\//,"",u); print $1, u}' \
+         | awk -v r="$OWNERREPO" '$2==r {print $1; exit}')
+REMOTE=${REMOTE:-$BASEREPO}
 
 git fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
 git fetch "$REMOTE" "<baseRefName>"                           # base tip -> FETCH_HEAD
@@ -64,10 +71,12 @@ rm -rf "<tmp>/repo-<num>"                  # only where this run cloned it
 From inside the staged worktree:
 
 ```bash
-git diff --name-only "$BASE...<headRefOid>"      # the file list -- the input to partitioning
+git diff --name-status "$BASE...<headRefOid>"    # the file list -- the input to partitioning
 ```
 
 Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `BASE` and `<headRefOid>` fill the `{{BASE}}` and `{{HEAD}}` slots.
+
+`--name-status` rather than `--name-only` because the status matters downstream: a `D` path is in the change but not in the worktree, and a reviewer sent to open it finds nothing and — following the brief's report-what's-missing rule — turns a deletion into a finding about an absent file. Mark deleted paths as deleted when they reach `{{FILES}}`; they are reviewed through the diff.
 
 ## CI status
 

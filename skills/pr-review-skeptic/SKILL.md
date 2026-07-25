@@ -114,20 +114,22 @@ None → the change is good to go, and the verdict says so **plainly only when t
 - Units carried forward unreviewed from stage 4 → "no blocking findings in the N of M units reviewed, U unreviewed".
 - Findings at a blocking severity that stage 6 bucketed `settled` → say how many. A CRITICAL that a prior thread weighed and accepted is still a CRITICAL somebody decided to live with, and burying it in a list under an unqualified good-to-go is how the decision stops being visible.
 
-Post one review, `event: COMMENT`, carrying ([`reference/mechanics.md`](reference/mechanics.md)):
+### Does this run post at all?
+
+Settle this before drafting anything, because posting notifies every collaborator on the PR and cannot be unsent. **A run posts when it was told to post** — the user invoked `/pr-review-skeptic`, or asked for the review on the PR ("post a review", "review it on the PR", "leave comments on #42").
+
+Everything else is answered in the terminal, the drafted review shown, with an offer to post it. That includes the phrasings this skill most often arrives on — "second opinion on #42", "is this ready to merge?", "take a look at this PR" — which read as a question about the change rather than an instruction to publish under the user's name. The cost of being wrong runs one way only: an unwanted preview costs a turn, an unwanted review cannot be taken back.
+
+Two cases post nothing at all, whatever the phrasing: **"don't post" / "just tell me"** in the invocation, and **another skill or agent invoking this one** — that caller gets the drafted review returned, and its reply is not a go-ahead, because the decision to publish belongs to the person whose account signs it. `confirm_before_posting: true` turns even an explicit posting instruction into a preview.
+
+### The review
+
+Whether it is posted or shown, the review is one `event: COMMENT` review carrying ([`reference/mechanics.md`](reference/mechanics.md)):
 
 - **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed. Every comment ends with the marker line `<!-- pr-review-skeptic -->`, which is how a later run recognises its own work: these reviews post under the user's account and are otherwise indistinguishable from a hand-written one. A finding whose prior thread carries that marker and is still open is a reply on that thread, not a new one — a second run otherwise posts every unfixed finding beside its own original and notifies everyone twice for one defect.
 - **A summary body** — the verdict; the coverage (files reviewed, units, how many reviewers, whether the cap forced larger units, and any unit left unreviewed); non-blocking observations, one line each; the `settled` list with the threads that decided them; and, when a run was narrowed by a modifier, what it did not cover.
 
 The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
-
-Posting notifies every collaborator on the PR and cannot be unsent, so **a run posts when it was told to post**, and reports in the terminal otherwise. It was told to post when the user invoked `/pr-review-skeptic`, or asked for the review on the PR ("post a review", "review it on the PR", "leave comments on #42").
-
-Everything else — "second opinion on #42", "is this ready to merge?", "take a look at this PR" — is answered in the terminal, with the drafted review shown and an offer to post it. Those phrasings read as a question about the change rather than an instruction to publish under the user's name, and the cost of being wrong runs one way only: an unwanted preview costs a turn, an unwanted review cannot be taken back.
-
-Two cases post nothing at all, whatever the phrasing: **"don't post" / "just tell me"** in the invocation, and **another skill or agent invoking this one** — that caller gets the drafted review returned, and its reply is not a go-ahead, because the decision to publish belongs to the person whose account signs it.
-
-`confirm_before_posting: true` turns even an explicit posting instruction into a preview.
 
 ## 8. Report
 
