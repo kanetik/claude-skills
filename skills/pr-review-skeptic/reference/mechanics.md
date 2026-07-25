@@ -2,7 +2,9 @@
 
 `gh` incantations for the steps in `SKILL.md`. `<num>`, `<owner>`, `<repo>` are placeholders. Add `--repo <owner>/<repo>` to every call when the PR is not in the working directory's repo.
 
-`<tmp>` is the one placeholder you create rather than derive, so create it explicitly and **outside any git repository** — `TMP=$(mktemp -d)`, or `$env:TEMP\pr-skeptic-<num>` under PowerShell. Resolved to the working directory instead, `git worktree add` plants a second full checkout of the PR head inside the user's own repo, where it shows up in `git status` and can be swept into a commit — and teardown then aims an `rm -rf` at a path inside that repo.
+`<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository** — `"${TMPDIR:-/tmp}/pr-skeptic-<num>"`, or `"$env:TEMP\pr-skeptic-<num>"` under PowerShell. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because resolved to the working directory instead, `git worktree add` plants a second full checkout of the PR head inside the user's own repo, where it shows up in `git status` and can be swept into a commit — and teardown then aims an `rm -rf` at a path inside that repo.
+
+**The shell variables below (`$BASE`, `$BASETIP`, `$REMOTE`, `$TMP`) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried.
 
 The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live. Only the posting step carries a PowerShell alternative.
 
@@ -54,6 +56,8 @@ git worktree remove --force "<tmp>/pr-<num>" 2>/dev/null; rm -rf "<tmp>/pr-<num>
 git worktree prune
 
 git worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
+
+echo "BASE=$BASE BASETIP=$BASETIP TMP=<tmp>"                  # record these -- later shells will not have them
 ```
 
 `$BASETIP` is also what the project's config layer is read from ([`configuration.md`](configuration.md)) — `git show <baseRefName>:…` would need a local branch of that name, which a fresh clone or an integration-branch base does not have.

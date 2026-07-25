@@ -42,7 +42,17 @@ Files, each marked with what the change did to it (`A` added, `M` modified, `D` 
 
 A `D` path is gone from the tree — read it in the diff, where it still exists.
 
-Everything is checked out at {{HEAD}} in `{{REPO_PATH}}`. Work there. Read the change with `git diff {{BASE}}...{{HEAD}} -- <path>`, and read whatever else you need — callers, types, tests, adjacent code — to judge it. A diff alone rarely shows enough to tell correct from incorrect.
+Everything is checked out at {{HEAD}} in `{{REPO_PATH}}`. **Every command and every file path is anchored there** — your shell starts somewhere else and forgets where it was between calls, so a bare `git diff` or a relative path silently reads a different repository that happens to have files by the same names.
+
+Start by confirming you are looking at the right tree:
+
+```
+git -C "{{REPO_PATH}}" rev-parse HEAD      # must print {{HEAD}}
+```
+
+If it prints anything else, stop and report that instead of reviewing.
+
+Then read the change with `git -C "{{REPO_PATH}}" diff {{BASE}}...{{HEAD}} -- <path>`, and open files as `{{REPO_PATH}}/<path>` — never as `<path>` alone. Read whatever else you need beyond the diff — callers, types, tests, adjacent code — to judge it. A diff alone rarely shows enough to tell correct from incorrect.
 
 **Judge the tree as it stands, not the story of how it got here.** Your evidence is exactly two things: the working tree at {{HEAD}}, and `git diff {{BASE}}...{{HEAD}}`. Everything written *about* this change — its commit log, its pull-request description, the threads on it — is out of scope for you, by every route: no `git log`, `git blame`, or `git show` of a commit in this range, and no `gh` command at all. That material is where the author's reasoning and the earlier reviewers' arguments live, and reading it is how a reviewer ends up checking the account rather than the code. Someone else handles what has already been said; you are the one person looking at this cold, and that is the whole of your value here. If you want to know what the change is for, the code is the specification.
 
@@ -92,3 +102,13 @@ verified: Cancellation propagates on every branch; backoff is bounded; the WorkM
 A slice with nothing wrong in it is a real and useful result. Report it as one. Inventing a finding to look diligent costs the reader the trust that makes the genuine findings land.
 
 Return only `FINDING` and `SOUND` blocks.
+
+---
+
+## The composition variant
+
+The reviewer that takes the seams rather than a slice gets the same brief with **"Your slice" replaced by the paragraph below**, and `{{FILES}}` holding the whole change. Everything else — the claims posture, the priorities, the test rule, the reporting bar, the severities, the output format — is unchanged.
+
+> **Your slice is the joins.** Every other reviewer on this change is holding one part of it and cannot see past their own edges. You are holding all of it, so read for the things that are only visible from here: a caller and a callee that each look right but disagree about what may be null, or about units, ordering, or who owns a lock; a contract changed on one side of a boundary and not the other; two functions that are each tested in isolation and never in the arrangement production actually composes them in; state written by one part and read by another under different assumptions about when it exists.
+>
+> Read the parts as deeply as you need to judge how they meet, and leave defects wholly inside one part to the reviewer holding it. A change where every piece is correct alone and wrong together is the kind that survives every other kind of review.

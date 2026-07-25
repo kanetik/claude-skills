@@ -2,9 +2,10 @@
 name: pr-review-skeptic
 description: >-
   Independent skeptical review of a pull request by reviewers that took no part
-  in writing it: blind subagents read the changes at HEAD, treat comments, docs,
-  and commit messages as claims to verify against the code, and post inline
-  findings plus a go/no-go verdict to the PR. Use when the user asks for a second
+  in writing it: blind subagents read the changes at HEAD, treat comments and
+  docs as claims to verify against the code, and produce inline findings plus a
+  go/no-go verdict — posted to the PR when asked to post, shown in the terminal
+  otherwise. Use when the user asks for a second
   opinion or an independent skeptical review of a PR, or asks whether a PR is
   really ready to merge. Requires an existing PR; accepts a PR number, URL, or
   owner/repo#num, and modifiers like "don't post", "one reviewer", or
@@ -77,7 +78,9 @@ Where the run was started by another skill or agent there is nobody to confirm w
 
 ## 3. Scope and partition
 
-Collect the merge-base, the head sha, CI status, and the changed file list ([`reference/mechanics.md`](reference/mechanics.md)). Take the file list from `git diff --name-only` in the staged worktree, not from `gh pr view --json files`, which returns at most 100 files and says nothing when it truncates — a partition built from a truncated list reviews part of the change and reports full coverage.
+Collect the merge-base, the head sha, CI status, and the changed file list ([`reference/mechanics.md`](reference/mechanics.md)). Take the file list from `git diff --name-status` in the staged worktree, not from `gh pr view --json files`, which returns at most 100 files and says nothing when it truncates — a partition built from a truncated list reviews part of the change and reports full coverage.
+
+**A PR with commits cannot have an empty file list.** Zero entries means the diff ran against the wrong revisions, not that there is nothing to review — and an empty partition satisfies every condition below vacuously, produces no findings, and ends in a posted "no blocking findings". Treat it as an error and stop.
 
 Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
 
@@ -87,7 +90,7 @@ Where the partition yields more than one unit, spend one of those reviewers on a
 
 ## 4. Blind pass
 
-For each unit, fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) and dispatch a subagent with the filled brief as its entire prompt — see **Context discipline** above. Dispatch all units concurrently; they are independent.
+For each unit, fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) and dispatch a subagent with the filled brief as its entire prompt — see **Context discipline** above. The composition unit gets the same brief with its slice paragraph swapped for the composition variant at the end of that file. Dispatch all units concurrently; they are independent.
 
 Each reviewer returns `FINDING` and `SOUND` blocks. A reviewer that returns neither has not reviewed its unit — dispatch it again rather than recording silence as a clean unit, up to twice. Still nothing after that, the unit is **unreviewed**: carry it forward, name it in the coverage line at stage 7 and in the report at stage 8, and keep going. An unreviewed unit is a hole in the review that the user has to know about; retrying it forever posts nothing at all.
 
@@ -103,7 +106,7 @@ Keep the `SOUND` blocks. They are what lets the summary say what was checked rat
 
 Where the PR has prior review activity, dispatch one subagent with the merged findings and the PR's review history, per [`reference/cross-check.md`](reference/cross-check.md). It buckets each finding as `new`, `unfixed` (raised before, changed, still present — severity rises), `re-raised` (raised before, dismissed, found independently), or `settled` (the same consequence was weighed and accepted).
 
-Where the PR has no prior review activity, every finding is `new`. Skip the stage.
+Where the PR has no prior review activity, every finding is `new`. Skip the stage. Where "ignore the review history" was asked for, skip the bucketing but keep the marker pass — a duplicate thread posted beside this skill's own earlier one is not something the user opted into.
 
 **Done when** every finding carries a bucket, and every `unfixed`, `re-raised`, and `settled` one carries the thread that decided it.
 
