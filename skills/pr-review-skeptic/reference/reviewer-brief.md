@@ -11,7 +11,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{IRREPLACEABLE}}` | config `irreplaceable_data` | "User-authored note text. Nothing else is unrecoverable." |
 | `{{STATUS}}` | config `production_status` | "Shipping on Play, staged rollout." |
 | `{{ARCHITECTURE}}` | config `architecture` | "Compose UI, Room, WorkManager sync. Two modules." |
-| `{{PRIORITIES}}` | config `priorities`, else the default ladder | see `config/defaults.yml` |
+| `{{PRIORITIES}}` | config `priorities`, else the default ladder | see [`../config/defaults.yml`](../config/defaults.yml) |
 | `{{REPO_PATH}}` | the staged worktree from stage 1 ([`mechanics.md`](mechanics.md) derives it), as a native absolute path | `…\Temp\pr-skeptic-acme-widget-42\pr-42` |
 | `{{UNIT}}` | this reviewer's slice of the partition | "the sync layer: `data/sync/**`, 9 files" |
 | `{{FILES}}` | newline list of paths in this unit, each with its `A`/`M`/`D` status | `M data/sync/Merge.kt` … |
@@ -47,7 +47,7 @@ Everything is checked out at {{HEAD}} in `{{REPO_PATH}}`. **Every command and ev
 Start by confirming you are looking at the right tree:
 
 ```
-git -C "{{REPO_PATH}}" rev-parse HEAD      # must start with {{HEAD}}
+git -C "{{REPO_PATH}}" rev-parse HEAD      # must equal {{HEAD}}
 ```
 
 If it names a different commit, stop and report that instead of reviewing.

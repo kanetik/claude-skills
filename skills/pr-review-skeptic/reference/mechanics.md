@@ -51,8 +51,9 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 if [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
   echo "LIVE-RUN-SUSPECTED"; exit 1     # stop here and ask; do NOT clear
 fi
-rm -rf "<tmp>/pr-<num>" "<tmp>/repo-<num>"
-mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # and touch it again at every stage boundary below
+rm -rf "<tmp>"                               # the whole staging dir: a crashed run's payload files
+mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # sit here too, and hold review text quoting user code
+                                             # touch the lock again at every stage boundary below
 
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"

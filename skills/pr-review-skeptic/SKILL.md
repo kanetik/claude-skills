@@ -1,7 +1,7 @@
 ---
 name: pr-review-skeptic
 description: >-
-  Independent skeptical review of a pull request by reviewers that took no part
+  Independent skeptical review of a pull request by reviewers who took no part
   in writing it: blind subagents read the changes at HEAD, treat comments and
   docs as claims to verify against the code, and produce inline findings plus a
   go/no-go verdict — posted to the PR when asked to post, shown in the terminal
@@ -41,7 +41,7 @@ Progress is a line per stage: "6 units, 6 reviewers out." / "14 findings, cross-
 
 ## Configuration (summary)
 
-Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < `~/.claude/pr-review-skeptic.config.yml` < the PR repo's `.github/pr-review-skeptic.config.yml`. Five keys describe the project (`project`, `users`, `irreplaceable_data`, `production_status`, `architecture`); the rest shape the review (`priorities`, `files_per_unit`, `max_reviewers`, `blocking_severities`, `confirm_before_posting`). Parse invocation modifiers. Full model: [`reference/configuration.md`](reference/configuration.md).
+Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < an optional user-level `pr-review-skeptic.config.yml` in your Claude config directory < the PR repo's `.github/pr-review-skeptic.config.yml`. Only the bundled layer is required; the skill runs with nothing else present. Five keys describe the project (`project`, `users`, `irreplaceable_data`, `production_status`, `architecture`); the rest shape the review (`priorities`, `files_per_unit`, `max_reviewers`, `blocking_severities`, `confirm_before_posting`). Parse invocation modifiers. Full model: [`reference/configuration.md`](reference/configuration.md).
 
 ## Context discipline
 
