@@ -12,6 +12,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{STATUS}}` | config `production_status` | "Shipping on Play, staged rollout." |
 | `{{ARCHITECTURE}}` | config `architecture` | "Compose UI, Room, WorkManager sync. Two modules." |
 | `{{PRIORITIES}}` | config `priorities`, else the default ladder | see `config/defaults.yml` |
+| `{{REPO_PATH}}` | the staged checkout from stage 1 | `/tmp/pr-42-review` |
 | `{{UNIT}}` | this reviewer's slice of the partition | "the sync layer: `data/sync/**`, 9 files" |
 | `{{FILES}}` | newline list of paths in this unit | `data/sync/Merge.kt` … |
 | `{{BASE}}` | merge-base of the PR | `a1b2c3d` |
@@ -19,6 +20,8 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
 Every slot carries a fact about the project or the mechanics of reaching the code. None carries what the change is for, why it was built this way, or what anyone has said about it.
+
+`{{REPO_PATH}}` is the checkout staged in stage 1 — clean, at the PR's head, in the PR's own repository. Reviewers read files there, so pointing them anywhere else has them reviewing code the PR does not contain.
 
 ---
 
@@ -37,7 +40,9 @@ You took no part in writing it. You have no stake in it being correct, and no ob
 Files:
 {{FILES}}
 
-Read the change with `git diff {{BASE}}...{{HEAD}} -- <path>`, and read whatever else you need — callers, types, tests, adjacent code — to judge it. A diff alone rarely shows enough to tell correct from incorrect.
+Everything is checked out at {{HEAD}} in `{{REPO_PATH}}`. Work there. Read the change with `git diff {{BASE}}...{{HEAD}} -- <path>`, and read whatever else you need — callers, types, tests, adjacent code — to judge it. A diff alone rarely shows enough to tell correct from incorrect.
+
+Read, and only read. Other reviewers are working in this same checkout at the same time, and it may hold work that exists nowhere else, so leave the working tree and the object store exactly as you found them: no `checkout`, `stash`, `reset`, `clean`, `fetch`, or writes of any kind. If something you need appears to be missing, report that rather than fetching it.
 
 **CI:** {{CI}}
 

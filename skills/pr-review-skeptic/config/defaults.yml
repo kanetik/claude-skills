@@ -30,7 +30,7 @@ priorities:
   - Failures the application cannot recover from without a reinstall or manual repair
   - Incorrect behaviour on a path real users reach
   - Security and authorization holes, and anything that widens exposure
-  - Concurrency: races, deadlocks, lost updates, ordering assumptions
+  - "Concurrency: races, deadlocks, lost updates, ordering assumptions"
   - Behaviour changes visible to users that the change did not intend
   - Quality costs that land on the next person to touch this code
 
@@ -38,8 +38,8 @@ priorities:
 
 files_per_unit: 12            # soft target when partitioning a PR across reviewers; units follow
                               # module and subsystem boundaries first, this number second
-max_reviewers: 8              # cap on blind reviewers for one PR; a PR needing more gets larger
-                              # units rather than a truncated review
+max_reviewers: 8              # cap on blind reviewers for one PR, counting the composition reviewer;
+                              # a PR needing more gets larger units rather than a truncated review
 blocking_severities:          # severities that post as inline comments and hold the verdict;
   - CRITICAL                  # everything below lands in the summary body as an observation
   - HIGH

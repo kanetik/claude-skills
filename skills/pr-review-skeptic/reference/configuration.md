@@ -21,7 +21,7 @@ Per-key merge: a layer setting one key inherits the rest from below. For the PR'
 | `architecture` | *(empty)* | The shape of the system, in two sentences. Enough to navigate, not a tour. |
 | `priorities` | seven-rung ladder | Blast-radius order, highest first. Override in your domain's own words. |
 | `files_per_unit` | `12` | Soft target when partitioning across reviewers. Module and subsystem boundaries decide the cut; this decides roughly how fine. |
-| `max_reviewers` | `8` | Cap for one PR. Reached, units grow — coverage stays complete. |
+| `max_reviewers` | `8` | Cap on total reviewers for one PR, the composition reviewer included. Reached, units grow — coverage stays complete. |
 | `blocking_severities` | `[CRITICAL, HIGH]` | Which severities post inline and hold the verdict. |
 | `confirm_before_posting` | `false` | `true` shows findings and waits before posting. A model-invoked run confirms whatever this says. |
 

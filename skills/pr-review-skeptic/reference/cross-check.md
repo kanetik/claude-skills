@@ -2,7 +2,7 @@
 
 Runs once, after every blind reviewer has returned. This is the only point in the skill where the PR's review history is read, and the findings are already fixed in writing before it starts — so history can filter them, never form them.
 
-Hand this to one subagent, with the merged findings and the PR's prior review history (threads with their replies and resolution state, review bodies, and the PR description).
+Hand this to one subagent, with the merged findings and the PR's prior review history: threads with their replies, resolution state, and `isOutdated` flag; review bodies; the PR description; and the commit list ([`mechanics.md`](mechanics.md)). The commits and `isOutdated` are what let it tell a concern that was *changed* in response from one that was only argued about — without them the `unfixed` / `re-raised` split is a guess, and a wrong guess raises a severity and posts a blocking comment.
 
 Skip this stage when the PR has no prior review activity; every finding is new by definition.
 
@@ -18,7 +18,7 @@ Classify each finding into exactly one bucket.
 
 **`new`** — no prior thread raised it. Most findings land here. Pass through unchanged.
 
-**`unfixed`** — a prior thread raised this same defect and a change was made in response, yet a reviewer reading HEAD still finds it. The earlier fix did not land, or landed partially. **Raise severity one rung** and note how many rounds have touched it. Code that has been fixed twice and is still wrong is the strongest signal this review produces: every reader who looked at it concluded it was handled.
+**`unfixed`** — a prior thread raised this same defect and a change was made in response, yet a reviewer reading HEAD still finds it. The earlier fix did not land, or landed partially. Read "a change was made" off the evidence you were given — a commit after that thread touching the file, or the thread flagged `isOutdated`; where neither holds, nothing changed and the finding belongs in one of the two buckets below. **Raise severity one rung** and note how many rounds have touched it. Code that has been fixed twice and is still wrong is the strongest signal this review produces: every reader who looked at it concluded it was handled.
 
 **`re-raised`** — a prior thread raised this concern and it was dismissed, argued down, or closed without a change, and a reviewer who never saw that exchange landed on it independently. **Keep at its stated severity and mark it re-raised**, naming the prior thread. An independent reviewer arriving at a concern someone talked their way out of is worth more than either verdict alone.
 

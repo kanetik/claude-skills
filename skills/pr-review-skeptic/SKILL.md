@@ -32,7 +32,7 @@ This skill is self-contained. The files below live in this skill's own directory
 - [`reference/cross-check.md`](reference/cross-check.md) — the brief for the one stage that reads the PR's history.
 - [`reference/mechanics.md`](reference/mechanics.md) — the `gh` calls: resolving the PR, scoping the diff, CI status, review history, posting the review.
 
-**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`). Bash forms also use `jq`.
+**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`).
 
 ## Reporting style — terse
 
@@ -50,11 +50,19 @@ So the brief is **built by substitution, not written**: fill the slots in [`refe
 
 The one hard guardrail, because it cannot be phrased as a target: **no summary of the change, its purpose, its history, or its author's reasoning reaches a blind reviewer** — not in the brief, not in a follow-up message, not in an answer to a question it asks. When a reviewer asks what the change is for, the answer is that the code is the specification. History has exactly one entry point into this skill, and it is stage 6.
 
-## 1. Resolve the PR
+## 1. Resolve the PR and stage a checkout
 
 Find the target PR from the invocation, or from the current branch ([`reference/mechanics.md`](reference/mechanics.md)). Cross-repo references are fine in any phrasing; resolve to `(owner, repo, number)` and pass `--repo` on every later call.
 
 No PR found and none named → say so and stop. This skill reviews a pull request; without one there is nothing to review and nowhere to post.
+
+Reviewers read the code at the PR's head, so the run needs a **clean working tree sitting on that commit**. Fetch the head, then check where you are:
+
+- Working tree dirty → stop and say so. Reviewers run concurrently in one tree; uncommitted work is at risk from any of them, and it also makes what they read differ from what the PR contains.
+- Tree already at the PR's head (the usual case: you opened the PR from this branch) → work here.
+- Anywhere else, including every cross-repo PR → add a temporary `git worktree` at the fetched head and run there, cleaning it up at the end. A cross-repo PR needs a local clone of *its* repo first; without one, say so and stop rather than reviewing same-named files in the wrong repository.
+
+**Done when** the review directory is clean, sits on the PR's head sha, and belongs to the PR's own repo.
 
 ## 2. Load configuration
 
@@ -64,21 +72,21 @@ Merge the config layers. When the five project keys are empty, draft answers fro
 
 ## 3. Scope and partition
 
-Collect the changed file list, the merge-base, the head sha, and CI status ([`reference/mechanics.md`](reference/mechanics.md)).
+Collect the changed file list, the merge-base, the head sha, and CI status ([`reference/mechanics.md`](reference/mechanics.md)). Confirm both shas resolve locally (`git cat-file -e <sha>^{commit}`) before going further — every reviewer's first command is a diff between them, so a sha that isn't in the object store fails every unit identically.
 
-Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
+Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
 
-Add one **composition unit** on top: a reviewer that takes the whole file list and the seams between the other units, and asks how the pieces behave together. Functions that are each correct alone and wrong in the arrangement production actually uses are invisible to every reviewer holding only one of them.
+Where the partition yields more than one unit, spend one of those reviewers on a **composition unit**: it takes the whole file list and the seams between the other units, and asks how the pieces behave together. Functions that are each correct alone and wrong in the arrangement production actually uses are invisible to every reviewer holding only one of them. A single-unit partition has no seams, so it gets no composition reviewer.
 
-**Done when** every changed file belongs to exactly one unit, and the partition is recorded for the report.
+**Done when** every changed file belongs to exactly one unit, the unit count is within `max_reviewers`, and the partition is recorded for the report.
 
 ## 4. Blind pass
 
 For each unit, fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) and dispatch a subagent with the filled brief as its entire prompt — see **Context discipline** above. Dispatch all units concurrently; they are independent.
 
-Each reviewer returns `FINDING` and `SOUND` blocks. A reviewer that returns neither has not reviewed its unit — dispatch it again rather than recording silence as a clean unit.
+Each reviewer returns `FINDING` and `SOUND` blocks. A reviewer that returns neither has not reviewed its unit — dispatch it again rather than recording silence as a clean unit, up to twice. Still nothing after that, the unit is **unreviewed**: carry it forward, name it in the coverage line at stage 7 and in the report at stage 8, and keep going. An unreviewed unit is a hole in the review that the user has to know about; retrying it forever posts nothing at all.
 
-**Done when** every unit has returned at least one block.
+**Done when** every unit has either returned at least one block or is recorded as unreviewed.
 
 ## 5. Merge
 
@@ -101,11 +109,11 @@ Where the PR has no prior review activity, every finding is `new`. Skip the stag
 Post one review, `event: COMMENT`, carrying ([`reference/mechanics.md`](reference/mechanics.md)):
 
 - **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed.
-- **A summary body** — the verdict; the coverage (files reviewed, units, how many reviewers, whether the cap forced larger units); non-blocking observations, one line each; the `settled` list with the threads that decided them; and, when a run was narrowed by a modifier, what it did not cover.
+- **A summary body** — the verdict; the coverage (files reviewed, units, how many reviewers, whether the cap forced larger units, and any unit left unreviewed); non-blocking observations, one line each; the `settled` list with the threads that decided them; and, when a run was narrowed by a modifier, what it did not cover.
 
 The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
 
-With `confirm_before_posting`, on a model-invoked run, or with "don't post", show the review and wait.
+Show the review and wait for a go-ahead when `confirm_before_posting` is set, when the invocation said "don't post" or "show me first", or when **another skill or agent invoked this one** rather than a user message asking for it. Posting a review notifies every collaborator on the PR and cannot be unsent, so a caller that isn't a person gets a preview rather than a post.
 
 ## 8. Report
 

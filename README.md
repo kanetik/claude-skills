@@ -32,6 +32,8 @@ Just opened a PR? `/pr-review-loop` takes it from there — it requests the AI r
 
 Want a colder read on it? `/pr-review-skeptic` reviews the PR with fresh reviewers that had no hand in writing it and are told nothing about why the change exists. It works well at either end of a bot review loop — as a gate before, catching an approach that's wrong from the start, or as the last check after, when the code has accumulated a day's worth of confident comments explaining why it's fine. The two skills know nothing about each other; running both is your call, not theirs.
 
+One wrinkle if you run it *first*: the review it posts comes from your own account, and `/pr-review-loop` reads human review participation as a sign the PR is already mid-flight — so it will skip its own upfront gate. That's usually what you want (you just ran a better one), but if you also wanted the loop's gate, say so when you start the loop rather than assuming both ran.
+
 ## Installation
 
 ### Option A — Claude Code plugin (recommended)
