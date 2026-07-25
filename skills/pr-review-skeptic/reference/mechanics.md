@@ -33,6 +33,8 @@ git cat-file -e "<headRefOid>^{commit}"                         # both shas reso
 git worktree add <tmp>/pr-<num> "<headRefOid>"                  # every reviewer works here
 ```
 
+`<tmp>` must be a **native absolute path** — `C:\Users\…\Temp\…` on Windows, `/tmp/…` elsewhere. Subagents open files with their own file tools, not through your shell, and a Git Bash `/tmp/...` path resolves for Bash and for nothing else: on Windows every reviewer's first read of `{{REPO_PATH}}` returns not-found, and the brief's "report what's missing" rule turns a path bug into a page of findings about absent files. Where the shell hands you a POSIX path, convert it (`cygpath -w`) before it reaches a slot.
+
 The leading `+` on the refspec earns its place on the second run: a force-push — routine on a PR that has just been handed findings — makes an unforced fetch fail non-fast-forward and leaves the local ref on the superseded head.
 
 Teardown when the run ends:
@@ -130,6 +132,14 @@ Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows Pow
 `event` is always `COMMENT`. `APPROVE` would let this review satisfy branch protection and admit a merge on an agent's judgement, which is not a call this skill makes; the verdict goes in the body where a person reads it and decides.
 
 **Anchoring.** `line` must be a line the diff touches at `commit_id`, or the API rejects the whole payload with 422 — one bad anchor loses every comment in the call, summary body included. So any finding you cannot anchor with confidence goes in the **summary body** under a heading naming its path. That costs a little prominence and always works.
+
+**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Move every comment the API rejected into the summary body under a heading naming its path, and send the single review call once more. Resist posting the comments piecemeal through `/pulls/<num>/comments` — that trades one notification for N, and scatters findings the summary body was going to carry anyway.
+
+Replying to a thread this skill opened on an earlier run, rather than opening a second one beside it:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -f body=<text>
+```
 
 `subject_type: file` attaches a comment to a whole file, but it is a property of the standalone comment endpoint, not of the `comments[]` array in a review — sending it here is another 422 on the same all-or-nothing call. Where a file-level comment is worth a second request, post it after the review lands:
 

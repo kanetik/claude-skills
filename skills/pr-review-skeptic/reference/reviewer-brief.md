@@ -12,7 +12,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{STATUS}}` | config `production_status` | "Shipping on Play, staged rollout." |
 | `{{ARCHITECTURE}}` | config `architecture` | "Compose UI, Room, WorkManager sync. Two modules." |
 | `{{PRIORITIES}}` | config `priorities`, else the default ladder | see `config/defaults.yml` |
-| `{{REPO_PATH}}` | the staged checkout from stage 1 | `/tmp/pr-42-review` |
+| `{{REPO_PATH}}` | the staged worktree from stage 1, as a native absolute path | `C:\Users\dev\AppData\Local\Temp\pr-42` |
 | `{{UNIT}}` | this reviewer's slice of the partition | "the sync layer: `data/sync/**`, 9 files" |
 | `{{FILES}}` | newline list of paths in this unit | `data/sync/Merge.kt` … |
 | `{{BASE}}` | merge-base of the PR | `a1b2c3d` |

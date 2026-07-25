@@ -26,4 +26,6 @@ Classify each finding into exactly one bucket.
 
 The discriminator between `settled` and `re-raised` is the consequence, not the topic. Two findings can name the same file and line and land in different buckets: if the prior thread weighed the same outcome and accepted it, the matter is settled; if the finding names an outcome that exchange never considered, it stands.
 
+Some prior threads are this skill's own, from an earlier run over the same PR. Where a finding matches one of those and it is still open, say so and give its comment id: that finding is a reply on the existing thread rather than a new comment, so the PR does not collect two threads and two notifications for one unfixed defect.
+
 Return every finding, each with its bucket, any severity change, and the prior thread URL where one applies. The settled ones come back too — they are reported to the user as settled, not discarded.

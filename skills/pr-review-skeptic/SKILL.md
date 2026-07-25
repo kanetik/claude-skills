@@ -67,7 +67,9 @@ Your working copy is then untouched by the review, dirty or not, and the reviewe
 
 ## 2. Load configuration
 
-Merge the config layers. When the five project keys are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md`, confirm them with the user, and offer to write `.github/pr-review-skeptic.config.yml` ([`reference/configuration.md`](reference/configuration.md)). Write it into the PR repo's primary checkout, on a real branch — the staged worktree from stage 1 is deleted when the run ends, taking the answers to five questions with it. Say that the file is left uncommitted, so the user commits or removes it before running anything that wants a clean tree.
+Merge the config layers, reading the project's own layer from the PR's **base** ref rather than the staged worktree ([`reference/configuration.md`](reference/configuration.md)) — the five project keys are what the reviewers take on faith, so a change that edits them must not get to steer the review of itself.
+
+When the five are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md` and confirm them with the user. Then offer to write `.github/pr-review-skeptic.config.yml`, but only where the PR's repo has a lasting checkout to write it into: the file is written there and left uncommitted, and the skill stages, branches, and commits nothing. Where the only checkout is the temporary one from stage 1, hand the user the confirmed values as YAML to paste instead — a file written into a directory that gets deleted at teardown buys them nothing but a second interview next run.
 
 **Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
 
@@ -105,20 +107,22 @@ Where the PR has no prior review activity, every finding is `new`. Skip the stag
 
 ## 7. Verdict and post
 
-**Blocking findings** are those at `blocking_severities` after the cross-check's severity changes. None → the verdict is that the change is good to go. Any → the verdict names how many and what the worst one is.
+**Blocking findings** are those at `blocking_severities` after the cross-check's severity changes. Any → the verdict names how many and what the worst one is. None → the verdict is that the change is good to go, but only where every unit was actually reviewed; with units carried forward unreviewed from stage 4 it reads "no blocking findings in the N of M units reviewed, U unreviewed". An unqualified good-to-go over code nobody read is the one verdict this skill must never produce, and the coverage line further down the body does not undo it — the verdict is the line collaborators act on.
 
 Post one review, `event: COMMENT`, carrying ([`reference/mechanics.md`](reference/mechanics.md)):
 
-- **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed.
+- **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed. A finding whose prior thread is **this skill's own still-open comment** from an earlier run is a reply on that thread, not a new one — a second run otherwise posts every unfixed finding beside its own original and notifies everyone twice for one defect.
 - **A summary body** — the verdict; the coverage (files reviewed, units, how many reviewers, whether the cap forced larger units, and any unit left unreviewed); non-blocking observations, one line each; the `settled` list with the threads that decided them; and, when a run was narrowed by a modifier, what it did not cover.
 
 The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
 
-Posting notifies every collaborator on the PR and cannot be unsent, so it happens only when a person asked for a review to be posted. Three cases fall short of that:
+Posting notifies every collaborator on the PR and cannot be unsent, so **a run posts when it was told to post**, and reports in the terminal otherwise. It was told to post when the user invoked `/pr-review-skeptic`, or asked for the review on the PR ("post a review", "review it on the PR", "leave comments on #42").
 
-- `confirm_before_posting` is set, or the invocation said "show me first" → show the review and wait for the user's go-ahead.
-- The invocation said "don't post" / "just tell me", or it was a **question** about the change ("is this ready to merge?") rather than a request to review it → answer in the terminal, post nothing, and offer to post.
-- **Another skill or agent invoked this one** → return the drafted review to the caller and post nothing. A reply from an agent caller is not a go-ahead; the decision to publish belongs to the person whose account signs it.
+Everything else — "second opinion on #42", "is this ready to merge?", "take a look at this PR" — is answered in the terminal, with the drafted review shown and an offer to post it. Those phrasings read as a question about the change rather than an instruction to publish under the user's name, and the cost of being wrong runs one way only: an unwanted preview costs a turn, an unwanted review cannot be taken back.
+
+Two cases post nothing at all, whatever the phrasing: **"don't post" / "just tell me"** in the invocation, and **another skill or agent invoking this one** — that caller gets the drafted review returned, and its reply is not a go-ahead, because the decision to publish belongs to the person whose account signs it.
+
+`confirm_before_posting: true` turns even an explicit posting instruction into a preview.
 
 ## 8. Report
 
