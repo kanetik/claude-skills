@@ -1,0 +1,45 @@
+# Configuration
+
+## Override model
+
+Read [`../config/defaults.yml`](../config/defaults.yml), then merge per key, low → high:
+
+1. bundled `config/defaults.yml`
+2. `~/.claude/pr-review-skeptic.config.yml` (optional, user-level)
+3. `<repo>/.github/pr-review-skeptic.config.yml` (project; wins)
+
+Per-key merge: a layer setting one key inherits the rest from below. For the PR's own repo when reviewing cross-repo, read layer 3 from the repo the PR lives in — the project description has to describe the project being reviewed.
+
+## Keys
+
+| Key | Default | Purpose |
+|---|---|---|
+| `project` | *(empty)* | What the application is, in a sentence. |
+| `users` | *(empty)* | Who uses it, and roughly how many. |
+| `irreplaceable_data` | *(empty)* | What cannot be recovered if the change destroys it. The single highest-value key: it is what turns the top priority from a category into a named thing the reviewer can go looking for. |
+| `production_status` | *(empty)* | Shipping, staged, pre-release, internal. Sets how much a regression costs. |
+| `architecture` | *(empty)* | The shape of the system, in two sentences. Enough to navigate, not a tour. |
+| `priorities` | seven-rung ladder | Blast-radius order, highest first. Override in your domain's own words. |
+| `files_per_unit` | `12` | Soft target when partitioning across reviewers. Module and subsystem boundaries decide the cut; this decides roughly how fine. |
+| `max_reviewers` | `8` | Cap for one PR. Reached, units grow — coverage stays complete. |
+| `blocking_severities` | `[CRITICAL, HIGH]` | Which severities post inline and hold the verdict. |
+| `confirm_before_posting` | `false` | `true` shows findings and waits before posting. A model-invoked run confirms whatever this says. |
+
+## First run in a repo
+
+The five project keys are empty in the bundled defaults, and a reviewer given empty ones reviews in a vacuum — it cannot tell which data is precious or which failure is expensive. When they are unset, ask for the five, then offer to write `.github/pr-review-skeptic.config.yml` so the next run is silent. Proceed with the answers if the user declines the file.
+
+Where the repo has a `README.md` or `CLAUDE.md`, read it first and offer drafted answers for confirmation rather than an empty interview. The user confirming a drafted line is what makes it a project fact rather than an orchestrator guess.
+
+## Invocation modifiers
+
+Parse from the invocation, overriding config for that run:
+
+| Phrasing | Effect |
+|---|---|
+| a PR number, URL, or `owner/repo#num` | Sets the target PR. |
+| "don't post" / "just tell me" | Report in the terminal, post nothing. |
+| "show me first" | `confirm_before_posting: true`. |
+| "include medium" / "everything blocks" | Extends `blocking_severities`. |
+| "one reviewer" / "single pass" | `max_reviewers: 1`, no partition. Reasonable on a small PR; on a large one it trades coverage for speed, so say so in the report. |
+| "ignore the review history" | Skip the cross-check; every finding reports as `new`. |

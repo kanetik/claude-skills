@@ -1,0 +1,112 @@
+---
+name: pr-review-skeptic
+description: >-
+  Independent skeptical review of a pull request by reviewers that took no part
+  in writing it: blind subagents read the changes at HEAD, treat comments, docs,
+  and commit messages as claims to verify against the code, and post inline
+  findings plus a go/no-go verdict to the PR. Use when the user asks for a second
+  opinion or an independent skeptical review of a PR, asks whether a PR is really
+  ready to merge, or when another skill needs an independent gate around its own
+  review round. Requires an existing PR; accepts a PR number, URL, or
+  owner/repo#num, and modifiers like "don't post", "one reviewer", or
+  "include medium".
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Glob
+  - Grep
+  - Task
+  - Agent
+---
+
+# PR Review Skeptic
+
+An honest second opinion on a pull request, from reviewers with no stake in it. Work that has been iterated on — by a person, by a bot loop, by the agent that wrote it — accumulates its own justification: comments explaining why each decision is right, a description arguing the design, threads recording what was already considered. Read alongside the code, that justification is persuasive, and the reviewer starts verifying the story instead of the code. This skill puts **blind** reviewers on the diff first — they see the project and the code, and nothing about why the change exists — and only afterwards lets the PR's own history filter what they found.
+
+This skill is self-contained. The files below live in this skill's own directory, beside this `SKILL.md` — read them from there (paths are relative to this file, not the working directory). Load on demand:
+
+- [`config/defaults.yml`](config/defaults.yml) — config defaults and the default priority ladder.
+- [`reference/configuration.md`](reference/configuration.md) — config keys, override model, first-run flow, invocation modifiers.
+- [`reference/reviewer-brief.md`](reference/reviewer-brief.md) — the brief handed to each blind reviewer, and its slots.
+- [`reference/cross-check.md`](reference/cross-check.md) — the brief for the one stage that reads the PR's history.
+- [`reference/mechanics.md`](reference/mechanics.md) — the `gh` calls: resolving the PR, scoping the diff, CI status, review history, posting the review.
+
+**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`). Bash forms also use `jq`.
+
+## Reporting style — terse
+
+Progress is a line per stage: "6 units, 6 reviewers out." / "14 findings, cross-checking against 9 threads." Don't replay findings in the terminal that are about to be posted to the PR — say where they landed and let the user read them there.
+
+## Configuration (summary)
+
+Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < `~/.claude/pr-review-skeptic.config.yml` < the PR repo's `.github/pr-review-skeptic.config.yml`. Five keys describe the project (`project`, `users`, `irreplaceable_data`, `production_status`, `architecture`); the rest shape the review (`priorities`, `files_per_unit`, `max_reviewers`, `blocking_severities`, `confirm_before_posting`). Parse invocation modifiers. Full model: [`reference/configuration.md`](reference/configuration.md).
+
+## Context discipline
+
+The blind pass is the whole value of this skill, and it is lost quietly — not by a decision to abandon it, but by one helpful sentence of preamble explaining what the change does.
+
+So the brief is **built by substitution, not written**: fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) from config values and from the mechanics of reaching the code — project facts, file list, base and head shas, CI status — and hand the result to the subagent as the complete prompt. Every slot has a source that is a fact about the project or about how to find the diff. Between filling the last slot and dispatching, there is nothing left to add.
+
+The one hard guardrail, because it cannot be phrased as a target: **no summary of the change, its purpose, its history, or its author's reasoning reaches a blind reviewer** — not in the brief, not in a follow-up message, not in an answer to a question it asks. When a reviewer asks what the change is for, the answer is that the code is the specification. History has exactly one entry point into this skill, and it is stage 6.
+
+## 1. Resolve the PR
+
+Find the target PR from the invocation, or from the current branch ([`reference/mechanics.md`](reference/mechanics.md)). Cross-repo references are fine in any phrasing; resolve to `(owner, repo, number)` and pass `--repo` on every later call.
+
+No PR found and none named → say so and stop. This skill reviews a pull request; without one there is nothing to review and nowhere to post.
+
+## 2. Load configuration
+
+Merge the config layers. When the five project keys are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md`, confirm them with the user, and offer to write `.github/pr-review-skeptic.config.yml` ([`reference/configuration.md`](reference/configuration.md)).
+
+**Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
+
+## 3. Scope and partition
+
+Collect the changed file list, the merge-base, the head sha, and CI status ([`reference/mechanics.md`](reference/mechanics.md)).
+
+Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
+
+Add one **composition unit** on top: a reviewer that takes the whole file list and the seams between the other units, and asks how the pieces behave together. Functions that are each correct alone and wrong in the arrangement production actually uses are invisible to every reviewer holding only one of them.
+
+**Done when** every changed file belongs to exactly one unit, and the partition is recorded for the report.
+
+## 4. Blind pass
+
+For each unit, fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) and dispatch a subagent with the filled brief as its entire prompt — see **Context discipline** above. Dispatch all units concurrently; they are independent.
+
+Each reviewer returns `FINDING` and `SOUND` blocks. A reviewer that returns neither has not reviewed its unit — dispatch it again rather than recording silence as a clean unit.
+
+**Done when** every unit has returned at least one block.
+
+## 5. Merge
+
+Collect the blocks. Two findings are the same when they name the same defect in the same place, whatever the wording; keep the clearest statement of it, at the highest severity either gave, and note that more than one reviewer found it. Independent agreement is signal — carry it into the report.
+
+Keep the `SOUND` blocks. They are what lets the summary say what was checked rather than only what was wrong.
+
+## 6. Cross-check against history
+
+Where the PR has prior review activity, dispatch one subagent with the merged findings and the PR's review history, per [`reference/cross-check.md`](reference/cross-check.md). It buckets each finding as `new`, `unfixed` (raised before, changed, still present — severity rises), `re-raised` (raised before, dismissed, found independently), or `settled` (the same consequence was weighed and accepted).
+
+Where the PR has no prior review activity, every finding is `new`. Skip the stage.
+
+**Done when** every finding carries a bucket, and every `unfixed`, `re-raised`, and `settled` one carries the thread that decided it.
+
+## 7. Verdict and post
+
+**Blocking findings** are those at `blocking_severities` after the cross-check's severity changes. None → the verdict is that the change is good to go. Any → the verdict names how many and what the worst one is.
+
+Post one review, `event: COMMENT`, carrying ([`reference/mechanics.md`](reference/mechanics.md)):
+
+- **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed.
+- **A summary body** — the verdict; the coverage (files reviewed, units, how many reviewers, whether the cap forced larger units); non-blocking observations, one line each; the `settled` list with the threads that decided them; and, when a run was narrowed by a modifier, what it did not cover.
+
+The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
+
+With `confirm_before_posting`, on a model-invoked run, or with "don't post", show the review and wait.
+
+## 8. Report
+
+One short block to the user: the verdict, counts by severity, the PR URL, anything the run could not cover. The findings themselves are on the PR.
