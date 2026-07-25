@@ -133,10 +133,10 @@ From inside the staged worktree:
 
 ```bash
 git -C "<tmp>/pr-<num>" -c core.quotePath=false \
-    diff --name-status --no-renames "$BASE...<headRefOid>"   # the file list
+    diff --name-status --no-renames "$BASE...$REVIEWED"      # the file list
 ```
 
-Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `BASE` and `<headRefOid>` fill the `{{BASE}}` and `{{HEAD}}` slots.
+Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `$BASE` and `$REVIEWED` fill the `{{BASE}}` and `{{HEAD}}` slots. Downstream of the staging block, `$REVIEWED` is the name for the reviewed head — `<headRefOid>` appears only above, where it is the value being read for the first time.
 
 `--name-status` rather than `--name-only` because the status matters downstream: a `D` path is in the change but not in the worktree, and a reviewer sent to open it finds nothing and — following the brief's report-what's-missing rule — turns a deletion into a finding about an absent file. Mark deleted paths as deleted when they reach `{{FILES}}`; they are reviewed through the diff.
 
@@ -207,7 +207,7 @@ jq -nc --arg p "data/sync/Merge.kt" --argjson l 118 --rawfile b "<tmp>/c-1.md" \
   '{path:$p, line:$l, side:"RIGHT", body:$b}' >> "<tmp>/comments.jsonl"
 
 jq -s '{comments: .}' "<tmp>/comments.jsonl" > "<tmp>/comments.json"
-jq -n --arg sha "<headRefOid>" --rawfile body "<tmp>/body.md" --slurpfile c "<tmp>/comments.json" \
+jq -n --arg sha "$REVIEWED" --rawfile body "<tmp>/body.md" --slurpfile c "<tmp>/comments.json" \
   '{commit_id:$sha, event:"COMMENT", body:$body, comments:$c[0].comments}' > "<tmp>/review.json"
 
 # High-water mark, BEFORE the POST -- see "Any other failure" below, which needs to tell this
@@ -231,7 +231,7 @@ PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encod
 ```powershell
 $summary = [System.IO.File]::ReadAllText("<tmp>/body.md")
 $c1      = [System.IO.File]::ReadAllText("<tmp>/c-1.md")
-$payload = @{ commit_id = '<headRefOid>'; event = 'COMMENT'; body = $summary
+$payload = @{ commit_id = $REVIEWED; event = 'COMMENT'; body = $summary
   comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $c1 })
 } | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
@@ -246,7 +246,7 @@ Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows Pow
 
 **Anchoring.** `line` must be a line the diff touches at `commit_id`, or the API rejects the whole payload with 422 — one bad anchor loses every comment in the call, summary body included.
 
-Check each anchor yourself before building the payload: you already have `git diff "$BASE"...<headRefOid>`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not go in the **summary body** under a heading naming their path — a little less prominent, and it always works. Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
+Check each anchor yourself before building the payload: you already have `git diff "$BASE...$REVIEWED"`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not go in the **summary body** under a heading naming their path — a little less prominent, and it always works. Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
 
 **Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search.
 
