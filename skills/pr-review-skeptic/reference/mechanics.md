@@ -6,7 +6,7 @@
 
 **The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
 
-The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live. Only the posting step carries a PowerShell alternative.
+The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live — `jq` does not ship with it and has to be installed separately. Only the posting step needs a standalone `jq` (the `--jq` flags elsewhere are `gh`'s own), and its PowerShell alternative uses `ConvertTo-Json`, so that block is the route to take where `jq` is missing rather than only where the shell is PowerShell.
 
 ## Resolve the PR
 
@@ -61,7 +61,16 @@ git -C "$REPO" worktree prune
 git -C "$REPO" fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
 git -C "$REPO" fetch "$REMOTE" "<baseRefName>"                           # base tip -> FETCH_HEAD
 BASETIP=$(git -C "$REPO" rev-parse FETCH_HEAD)                           # the next fetch overwrites FETCH_HEAD
-BASE=$(git -C "$REPO" merge-base "$BASETIP" "<headRefOid>")
+
+# An already-merged PR needs its pre-merge base. Once the head is contained in the base
+# branch -- which a merge-commit merge (GitHub's default) makes true -- merge-base returns
+# the head itself, so the diff comes back empty on a PR that plainly changed things.
+if git -C "$REPO" merge-base --is-ancestor "<headRefOid>" "$BASETIP"; then
+  MERGE=$(gh pr view <num> --json mergeCommit --jq '.mergeCommit.oid // empty')
+  BASE=$(git -C "$REPO" rev-parse "$MERGE^1")                            # the base as it was pre-merge
+else
+  BASE=$(git -C "$REPO" merge-base "$BASETIP" "<headRefOid>")
+fi
 git -C "$REPO" cat-file -e "<headRefOid>^{commit}"                       # both shas resolve before any diff
 
 git -C "$REPO" worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
@@ -83,6 +92,7 @@ Teardown — `SKILL.md` stage 9, and **also whenever a run ends badly.** A cance
 ```bash
 git -C "$REPO" worktree remove --force "<tmp>/pr-<num>"
 git -C "$REPO" update-ref -d "refs/prskeptic/<num>"
+git -C "$REPO" update-ref -d "refs/prskeptic/<num>-new" 2>/dev/null   # only if the head-moved check ran
 rm -rf "<tmp>/repo-<num>"                  # only where this run cloned it
 ```
 
@@ -201,7 +211,14 @@ Check each anchor yourself before building the payload: you already have `git di
 
 **Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search.
 
-A bad anchor is the usual cause but not the only one: a `commit_id` the PR no longer contains is rejected the same way, and an identical retry will fail identically. Where the head moved during the run, check whether the reviewed sha is still on the branch — `git -C "$REPO" merge-base --is-ancestor <headRefOid> <new-head>`. If it is not (a force-push), drop `commit_id` and the inline comments entirely, post the findings in the body against the current head, and say the review describes a commit that has since been rewritten. Resist posting the comments piecemeal through `/pulls/<num>/comments`, which trades one notification for N and scatters findings the body was going to carry anyway.
+A bad anchor is the usual cause but not the only one: a `commit_id` the PR no longer contains is rejected the same way, and an identical retry will fail identically. Where the head moved during the run, check whether the reviewed sha is still on the branch. The new head came from `gh pr view` — a remote read — so **fetch it before testing it**, or the test errors on a commit the repo has never seen:
+
+```bash
+git -C "$REPO" fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>-new"
+git -C "$REPO" merge-base --is-ancestor "<headRefOid>" "refs/prskeptic/<num>-new"
+```
+
+Read the exit code strictly: `0` = fast-forward, post at the reviewed sha as usual. `1` = force-push — drop `commit_id` and the inline comments, post the findings in the body against the current head, and say the review describes a commit that has since been rewritten. **Anything else is not an answer**: `128` means the sha did not resolve, and treating that as a force-push discards every anchor and posts a false claim about the PR's history under the user's name. Post at the reviewed sha, or ask. Resist posting the comments piecemeal through `/pulls/<num>/comments`, which trades one notification for N and scatters findings the body was going to carry anyway.
 
 Replying to a thread this skill opened on an earlier run, rather than opening a second one beside it:
 
