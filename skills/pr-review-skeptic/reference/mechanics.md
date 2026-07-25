@@ -261,9 +261,11 @@ BODIES=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" \
            --jq ".[] | select(.id > $LASTID) | .body") || BODIES="<unverifiable>"
 ```
 
-- `gh` failed (`BODIES` unset by the fallback) → **the outcome is unknown; do not re-send.** Say so and ask. This check runs exactly when the network has just misbehaved, so its own call failing is likely, and reading that as "absent" re-posts the review — the thing the check exists to stop.
-- Succeeded, and a body newer than `$LASTID` contains `<!-- pr-review-skeptic -->` → it landed; report it posted.
-- Succeeded, nothing newer carries the marker → re-send.
+Read `$BODIES` in this order — the first bullet is the one that must not be skipped:
+
+- `BODIES` is exactly `<unverifiable>` → the `||` fired, so **`gh` itself failed and the outcome is unknown; do not re-send.** Say so and ask. This check runs exactly when the network has just misbehaved, so its own call failing is likely — and `<unverifiable>` carries no marker, so anything that tests for the marker first reads it as "absent" and re-posts the review, which is the thing the check exists to stop.
+- Otherwise, a body newer than `$LASTID` contains `<!-- pr-review-skeptic -->` → it landed; report it posted.
+- Otherwise (the call succeeded and nothing newer carries the marker) → re-send.
 
 `--paginate` because reviews come back oldest-first, 30 to a page, so on a PR driven through a bot loop the newest is nowhere near the first page. The `id > $LASTID` filter because a second run over a PR this skill already reviewed — the repeat-run path the marker machinery exists for — would otherwise match run one's marker, conclude wrongly that it landed, and lose the current review silently. Match the whole marker string with `grep -F`; a body that merely names the skill is not evidence.
 
