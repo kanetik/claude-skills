@@ -31,7 +31,7 @@ This skill is self-contained. The files below live in this skill's own directory
 - [`reference/cross-check.md`](reference/cross-check.md) — the brief for the one stage that reads the PR's history.
 - [`reference/mechanics.md`](reference/mechanics.md) — the `gh` calls: resolving the PR, scoping the diff, CI status, review history, posting the review.
 
-**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`). The Bash form of the posting step also uses `jq` to build its JSON payload (the PowerShell form uses `ConvertTo-Json` instead).
+**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`). The shell snippets in [`reference/mechanics.md`](reference/mechanics.md) are POSIX forms using `jq` and `awk` — on Windows that means Git Bash, plus `cygpath` to hand subagents a native path. Only the posting step carries a PowerShell alternative, which uses `ConvertTo-Json` in place of `jq`.
 
 ## Reporting style — terse
 
@@ -72,6 +72,8 @@ Merge the config layers, reading the project's own layer from the PR's **base** 
 When the five are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md` and confirm them with the user. Then offer to write `.github/pr-review-skeptic.config.yml`, but only where the PR's repo has a lasting checkout to write it into: the file is written there and left uncommitted, and the skill stages, branches, and commits nothing. Where the only checkout is the temporary one from stage 1, hand the user the confirmed values as YAML to paste instead — a file written into a directory that gets deleted at teardown buys them nothing but a second interview next run.
 
 **Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
+
+Where the run was started by another skill or agent there is nobody to confirm with, so an empty project layer stops the run: say the config is required and hand back what is missing. Reviewers steered by five invented project facts would produce a review whose independence is exactly the thing being claimed for it.
 
 ## 3. Scope and partition
 

@@ -1,6 +1,10 @@
 # Mechanics
 
-`gh` incantations for the steps in `SKILL.md`. `<num>`, `<owner>`, `<repo>`, `<tmp>` are placeholders. Add `--repo <owner>/<repo>` to every call when the PR is not in the working directory's repo.
+`gh` incantations for the steps in `SKILL.md`. `<num>`, `<owner>`, `<repo>` are placeholders. Add `--repo <owner>/<repo>` to every call when the PR is not in the working directory's repo.
+
+`<tmp>` is the one placeholder you create rather than derive, so create it explicitly and **outside any git repository** — `TMP=$(mktemp -d)`, or `$env:TEMP\pr-skeptic-<num>` under PowerShell. Resolved to the working directory instead, `git worktree add` plants a second full checkout of the PR head inside the user's own repo, where it shows up in `git status` and can be swept into a commit — and teardown then aims an `rm -rf` at a path inside that repo.
+
+The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live. Only the posting step carries a PowerShell alternative.
 
 ## Resolve the PR
 
@@ -44,6 +48,11 @@ BASETIP=$(git rev-parse FETCH_HEAD)                           # capture it now; 
 BASE=$(git merge-base "$BASETIP" "<headRefOid>")
 git cat-file -e "<headRefOid>^{commit}"                       # both shas resolve before any reviewer diffs them
 
+# Clear anything an interrupted earlier run left behind -- the path is deterministic, so a
+# stale worktree makes `git worktree add` fail hard and the skill cannot start.
+git worktree remove --force "<tmp>/pr-<num>" 2>/dev/null; rm -rf "<tmp>/pr-<num>"
+git worktree prune
+
 git worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
 ```
 
@@ -56,7 +65,7 @@ The same directory needs **two path forms**, and they are not interchangeable.
 
 The leading `+` on the refspec earns its place on the second run: a force-push — routine on a PR that has just been handed findings — makes an unforced fetch fail non-fast-forward and leaves the local ref on the superseded head.
 
-Teardown when the run ends:
+Teardown when the run ends — **including when it ends badly.** A cancelled run, a failed subagent, or an error at the posting step leaves the worktree, the ref, and possibly a several-hundred-megabyte clone on disk, and the next run on that PR then fails at its first step for a reason the user cannot see.
 
 ```bash
 git worktree remove --force "<tmp>/pr-<num>"
@@ -142,27 +151,29 @@ A clean verdict posts through this same path with no inline comments: the `: >` 
 PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding. Bodies come from files here too, for the same reason:
 
 ```powershell
-$summary = Get-Content -Raw <tmp>/body.md
-$c1      = Get-Content -Raw <tmp>/c-1.md
+$summary = Get-Content -Raw "<tmp>/body.md"
+$c1      = Get-Content -Raw "<tmp>/c-1.md"
 $payload = @{ commit_id = '<head-sha>'; event = 'COMMENT'; body = $summary
   comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $c1 })
 } | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
-gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input <tmp>/review.json
+gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
 
 Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows PowerShell 5.1, and `gh api --input` forwards it verbatim for GitHub to reject as unparseable JSON — after every reviewer has already run, and with a file that looks correct in any editor.
 
 `event` is always `COMMENT`. `APPROVE` would let this review satisfy branch protection and admit a merge on an agent's judgement, which is not a call this skill makes; the verdict goes in the body where a person reads it and decides.
 
-**Anchoring.** `line` must be a line the diff touches at `commit_id`, or the API rejects the whole payload with 422 — one bad anchor loses every comment in the call, summary body included. So any finding you cannot anchor with confidence goes in the **summary body** under a heading naming its path. That costs a little prominence and always works.
+**Anchoring.** `line` must be a line the diff touches at `commit_id`, or the API rejects the whole payload with 422 — one bad anchor loses every comment in the call, summary body included.
 
-**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Move every comment the API rejected into the summary body under a heading naming its path, and send the single review call once more. Resist posting the comments piecemeal through `/pulls/<num>/comments` — that trades one notification for N, and scatters findings the summary body was going to carry anyway.
+Check each anchor yourself before building the payload: you already have `git diff "$BASE"...<headRefOid>`, so a finding's `line` either falls inside a hunk range for its `path` or it does not. Ones that do not go in the **summary body** under a heading naming their path — a little less prominent, and it always works. Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
+
+**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search. Resist posting the comments piecemeal through `/pulls/<num>/comments`, which trades one notification for N and scatters findings the body was going to carry anyway.
 
 Replying to a thread this skill opened on an earlier run, rather than opening a second one beside it:
 
 ```bash
-gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -F body=@<tmp>/reply.md
+gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -F "body=@<tmp>/reply.md"
 ```
 
 The write-to-file rule governs **every** posting call, not just the review payload: `-F key=@path` reads the value from the file, where `-f body=<text>` would put a finding that quotes the reviewed code through the shell first.
@@ -171,7 +182,7 @@ The write-to-file rule governs **every** posting call, not just the review paylo
 
 ```bash
 gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
-  -f commit_id=<head-sha> -f path=<path> -f subject_type=file -F body=@<tmp>/file-comment.md
+  -f commit_id=<head-sha> -f path=<path> -f subject_type=file -F "body=@<tmp>/file-comment.md"
 ```
 
 Findings on code the PR did not touch cannot anchor anywhere. They belong in the body, under a heading that names the file — a defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it.
