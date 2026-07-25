@@ -15,8 +15,8 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{REPO_PATH}}` | the staged worktree from stage 1, as a native absolute path | `C:\Users\dev\AppData\Local\Temp\pr-42` |
 | `{{UNIT}}` | this reviewer's slice of the partition | "the sync layer: `data/sync/**`, 9 files" |
 | `{{FILES}}` | newline list of paths in this unit, each with its `A`/`M`/`D` status | `M data/sync/Merge.kt` … |
-| `{{BASE}}` | merge-base of the PR | `a1b2c3d` |
-| `{{HEAD}}` | PR head sha | `e4f5g6h` |
+| `{{BASE}}` | merge-base of the PR, full 40-char oid from `git merge-base` | `a1b2c3d4e5f6…` |
+| `{{HEAD}}` | PR head sha, full 40-char oid from `gh pr view --json headRefOid` | `e4f5g6h7i8j9…` |
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
 Every slot carries a fact about the project or the mechanics of reaching the code. None carries what the change is for, why it was built this way, or what anyone has said about it.
@@ -47,10 +47,10 @@ Everything is checked out at {{HEAD}} in `{{REPO_PATH}}`. **Every command and ev
 Start by confirming you are looking at the right tree:
 
 ```
-git -C "{{REPO_PATH}}" rev-parse HEAD      # must print {{HEAD}}
+git -C "{{REPO_PATH}}" rev-parse HEAD      # must start with {{HEAD}}
 ```
 
-If it prints anything else, stop and report that instead of reviewing.
+If it names a different commit, stop and report that instead of reviewing.
 
 Then read the change with `git -C "{{REPO_PATH}}" diff {{BASE}}...{{HEAD}} -- <path>`, and open files as `{{REPO_PATH}}/<path>` — never as `<path>` alone. Read whatever else you need beyond the diff — callers, types, tests, adjacent code — to judge it. A diff alone rarely shows enough to tell correct from incorrect.
 

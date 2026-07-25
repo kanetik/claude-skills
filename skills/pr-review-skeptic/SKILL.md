@@ -135,6 +135,8 @@ The second of those needs a test you can actually apply, because an orchestrator
 
 Re-read the PR's head sha before building anything. Where it has moved since stage 1, the review describes a superseded commit — say so in the summary body ("reviewed at `<sha>`; head has since moved") or offer to re-run. GitHub marks outdated inline comments; it does not mark a stale verdict, and the verdict is the line that gets acted on.
 
+**The review still posts at the sha that was reviewed** — stage 1's `<headRefOid>`, not the sha you just read. Every anchor was validated against that commit's diff, so posting at a newer one hands GitHub line numbers from a diff it isn't looking at, and one shifted line 422s the whole call.
+
 Whether it is posted or shown, the review is one `event: COMMENT` review carrying ([`reference/mechanics.md`](reference/mechanics.md)):
 
 - **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed. Every comment ends with the marker line `<!-- pr-review-skeptic -->`, which is how a later run recognises its own work: these reviews post under the user's account and are otherwise indistinguishable from a hand-written one. A finding whose prior thread carries that marker and is still open is a reply on that thread, not a new one — a second run otherwise posts every unfixed finding beside its own original and notifies everyone twice for one defect.

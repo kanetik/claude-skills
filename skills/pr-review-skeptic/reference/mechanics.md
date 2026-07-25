@@ -2,7 +2,7 @@
 
 `gh` incantations for the steps in `SKILL.md`. `<num>`, `<owner>`, `<repo>` are placeholders. Add `--repo <owner>/<repo>` to every call when the PR is not in the working directory's repo.
 
-`<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<num>"`, in that POSIX form, in every snippet on this page including on Windows — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
+`<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<num>"`, in that POSIX form, in every **Bash** snippet on this page including on Windows (the PowerShell posting block takes the native form — see there) — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
 
 **The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
 
@@ -165,7 +165,7 @@ jq -nc --arg p "data/sync/Merge.kt" --argjson l 118 --rawfile b "<tmp>/c-1.md" \
   '{path:$p, line:$l, side:"RIGHT", body:$b}' >> "<tmp>/comments.jsonl"
 
 jq -s '{comments: .}' "<tmp>/comments.jsonl" > "<tmp>/comments.json"
-jq -n --arg sha "<head-sha>" --rawfile body "<tmp>/body.md" --slurpfile c "<tmp>/comments.json" \
+jq -n --arg sha "<headRefOid>" --rawfile body "<tmp>/body.md" --slurpfile c "<tmp>/comments.json" \
   '{commit_id:$sha, event:"COMMENT", body:$body, comments:$c[0].comments}' > "<tmp>/review.json"
 
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
@@ -173,12 +173,14 @@ gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/rev
 
 A clean verdict posts through this same path with no inline comments: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created — on exactly the outcome the skill most wants to report.
 
-PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding. Bodies come from files here too, for the same reason:
+PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding. Bodies come from files here too, for the same reason.
+
+**Substitute `<tmp>` as the native Windows path here** (the `cygpath -w` form, as for `{{REPO_PATH}}`), not the POSIX literal the Bash snippets use. PowerShell and .NET resolve a leading `/` against the current drive, so `/tmp/pr-skeptic-42/body.md` becomes `C:\tmp\…` and every read and write in this block misses the directory the reviewers actually wrote to — at the last step, after the whole review has been produced.
 
 ```powershell
 $summary = [System.IO.File]::ReadAllText("<tmp>/body.md")
 $c1      = [System.IO.File]::ReadAllText("<tmp>/c-1.md")
-$payload = @{ commit_id = '<head-sha>'; event = 'COMMENT'; body = $summary
+$payload = @{ commit_id = '<headRefOid>'; event = 'COMMENT'; body = $summary
   comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $c1 })
 } | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
@@ -209,7 +211,7 @@ The write-to-file rule governs **every** posting call, not just the review paylo
 
 ```bash
 gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
-  -f commit_id=<head-sha> -f path=<path> -f subject_type=file -F "body=@<tmp>/file-comment.md"
+  -f commit_id=<headRefOid> -f path=<path> -f subject_type=file -F "body=@<tmp>/file-comment.md"
 ```
 
 Findings on code the PR did not touch cannot anchor anywhere, and neither can findings on a `D` path. Both belong in the body, under a heading that names the file — a defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it.
