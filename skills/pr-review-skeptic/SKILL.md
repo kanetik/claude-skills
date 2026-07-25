@@ -33,7 +33,7 @@ This skill is self-contained. The files below live in this skill's own directory
 - [`reference/cross-check.md`](reference/cross-check.md) — the brief for the one stage that reads the PR's history.
 - [`reference/mechanics.md`](reference/mechanics.md) — the `gh` calls: resolving the PR, scoping the diff, CI status, review history, posting the review.
 
-**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`). The shell snippets in [`reference/mechanics.md`](reference/mechanics.md) are POSIX forms — on Windows that means Git Bash, which supplies `awk` and `cygpath` but **not `jq`**, so install that separately there. `jq` is needed only to build the posting payload, and the PowerShell form of that step uses `ConvertTo-Json` instead, so it is the route to take without it.
+**Requires:** `gh` (authenticated), `git`, and a subagent tool (`Task` / `Agent`). The shell snippets in [`reference/mechanics.md`](reference/mechanics.md) are POSIX forms — on Windows that means Git Bash, which supplies `awk` and `cygpath`. `jq` is needed for one step only, building the posting payload, and that step has a PowerShell form using `ConvertTo-Json` instead — so `jq` is required only if you take the Bash route there, and Git Bash does not ship it.
 
 ## Reporting style — terse
 
@@ -41,7 +41,7 @@ Progress is a line per stage: "6 units, 6 reviewers out." / "14 findings, cross-
 
 ## Configuration (summary)
 
-Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < an optional user-level `pr-review-skeptic.config.yml` in your Claude config directory < the PR repo's `.github/pr-review-skeptic.config.yml`. Only the bundled layer is required; the skill runs with nothing else present. Five keys describe the project (`project`, `users`, `irreplaceable_data`, `production_status`, `architecture`); the rest shape the review (`priorities`, `files_per_unit`, `max_reviewers`, `blocking_severities`, `confirm_before_posting`). Parse invocation modifiers. Full model: [`reference/configuration.md`](reference/configuration.md).
+Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key, low → high: bundled defaults < an optional `~/.claude/pr-review-skeptic.config.yml` < the PR repo's `.github/pr-review-skeptic.config.yml`. Only the bundled layer is required; the skill runs with nothing else present. Five keys describe the project (`project`, `users`, `irreplaceable_data`, `production_status`, `architecture`); the rest shape the review (`priorities`, `files_per_unit`, `max_reviewers`, `blocking_severities`, `confirm_before_posting`). Parse invocation modifiers. Full model: [`reference/configuration.md`](reference/configuration.md).
 
 ## Context discipline
 
