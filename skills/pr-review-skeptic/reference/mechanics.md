@@ -33,7 +33,14 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # exists", and a stale worktree makes `git worktree add` fail hard -- either way the skill
 # cannot start on that PR again until someone finds a temp directory they were never told
 # about. The `rm -rf` plus the `worktree prune` below are what actually clear it; keep both.
+#
+# But ASK FIRST if <tmp>/run.lock is recent: the key is (owner, repo, num), so a second run
+# on the SAME PR shares this directory with a first one that may still be live -- eight
+# subagents make a run look stalled for minutes. Clearing it deletes the worktree those
+# reviewers are reading, and their teardown later deletes this run's payload files.
+[ -f "<tmp>/run.lock" ] && cat "<tmp>/run.lock"     # a timestamp; recent -> ask, don't clear
 rm -rf "<tmp>/pr-<num>" "<tmp>/repo-<num>"
+mkdir -p "<tmp>" && date -u +%FT%TZ > "<tmp>/run.lock"
 
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
@@ -265,11 +272,6 @@ The write-to-file rule governs **every** posting call, not just the review paylo
 
 So does the check-before-re-sending rule. This call is separate from the all-or-nothing review payload, so an ambiguous failure here has the same shape and the same cost — re-send blindly and the thread carries two identical replies, notifying every subscriber twice for one defect, which is what the reply path exists to avoid. Re-read the thread first and look for a reply carrying the marker; unknown means ask, not re-send.
 
-`subject_type: file` attaches a comment to a whole file, but it is a property of the standalone comment endpoint, not of the `comments[]` array in a review — sending it here is another 422 on the same all-or-nothing call. Where a file-level comment is worth a second request, post it after the review lands:
-
-```bash
-gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
-  -f commit_id=<headRefOid> -f path=<path> -f subject_type=file -F "body=@<tmp>/file-comment.md"
-```
+`subject_type: file` attaches a comment to a whole file, but it is a property of the standalone comment endpoint, not of the `comments[]` array in a review — sending it here is another 422 on the same all-or-nothing call. Knowing that is the point; it is not an invitation to use the other endpoint. A finding that will not anchor goes in the summary body, which costs one notification rather than N and is what the paragraph above already says.
 
 Findings on code the PR did not touch cannot anchor anywhere, and neither can findings on a `D` path. Both belong in the body, under a heading that names the file — a defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it.
