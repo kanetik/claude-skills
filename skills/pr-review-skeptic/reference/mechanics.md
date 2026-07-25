@@ -23,28 +23,41 @@ gh pr view <num> --json number,title,headRefOid,baseRefName
 BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
-gh repo clone <owner>/<repo> <tmp>/repo-<num>
+gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
 
-git fetch "$BASEREPO" "+pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
-git fetch "$BASEREPO" "<baseRefName>"                           # base tip -> FETCH_HEAD
-BASE=$(git merge-base FETCH_HEAD "<headRefOid>")
-git cat-file -e "<headRefOid>^{commit}"                         # both shas resolve before any reviewer diffs them
+# Fetch from an existing remote pointing at the base repo where there is one; $BASEREPO is
+# the fallback for the fork/cross-repo case. `git fetch https://...` on a repo whose remote
+# is SSH has no credential helper unless `gh auth setup-git` was run, and a private repo
+# then fails or blocks on a credential prompt with no TTY.
+REMOTE=$(git remote -v | awk -v r="$BASEREPO" '$2 ~ r {print $1; exit}'); REMOTE=${REMOTE:-$BASEREPO}
 
-git worktree add <tmp>/pr-<num> "<headRefOid>"                  # every reviewer works here
+git fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
+git fetch "$REMOTE" "<baseRefName>"                           # base tip -> FETCH_HEAD
+BASETIP=$(git rev-parse FETCH_HEAD)                           # capture it now; the next fetch overwrites FETCH_HEAD
+BASE=$(git merge-base "$BASETIP" "<headRefOid>")
+git cat-file -e "<headRefOid>^{commit}"                       # both shas resolve before any reviewer diffs them
+
+git worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
 ```
 
-`<tmp>` must be a **native absolute path** — `C:\Users\…\Temp\…` on Windows, `/tmp/…` elsewhere. Subagents open files with their own file tools, not through your shell, and a Git Bash `/tmp/...` path resolves for Bash and for nothing else: on Windows every reviewer's first read of `{{REPO_PATH}}` returns not-found, and the brief's "report what's missing" rule turns a path bug into a page of findings about absent files. Where the shell hands you a POSIX path, convert it (`cygpath -w`) before it reaches a slot.
+`$BASETIP` is also what the project's config layer is read from ([`configuration.md`](configuration.md)) — `git show <baseRefName>:…` would need a local branch of that name, which a fresh clone or an integration-branch base does not have.
+
+The same directory needs **two path forms**, and they are not interchangeable.
+
+- **In the shell, use the POSIX form and quote it every time** — `"<tmp>/pr-<num>"`. An unquoted Windows path loses its backslashes to shell escaping (`C:\Users\me\Temp/pr-42` collapses to `C:UsersmeTemp/pr-42`), and `git worktree add` then plants a garbage-named full checkout inside the user's own repository, which teardown will not find again.
+- **In the `{{REPO_PATH}}` slot, use the native absolute form** — `cygpath -w` on Windows. Subagents open files with their own tools rather than through your shell, and a Git Bash `/tmp/...` path resolves for Bash and for nothing else: every reviewer's first read returns not-found, and the brief's report-what's-missing rule turns that into a page of findings about absent files.
 
 The leading `+` on the refspec earns its place on the second run: a force-push — routine on a PR that has just been handed findings — makes an unforced fetch fail non-fast-forward and leaves the local ref on the superseded head.
 
 Teardown when the run ends:
 
 ```bash
-git worktree remove --force <tmp>/pr-<num>
+git worktree remove --force "<tmp>/pr-<num>"
 git update-ref -d "refs/prskeptic/<num>"
+rm -rf "<tmp>/repo-<num>"                  # only where this run cloned it
 ```
 
-`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here.
+`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here. Drop the clone too where the cross-repo path created one; left behind, every run against a large upstream repo adds another few hundred megabytes the user has no reason to know about.
 
 ## Scope the change
 
@@ -85,11 +98,13 @@ query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
       reviewThreads(first:100,after:$cursor){
         pageInfo{hasNextPage endCursor}
         nodes{ isResolved isOutdated path line
-               comments(first:50){nodes{author{login} body url createdAt}} }
+               comments(first:50){nodes{databaseId author{login} body url createdAt}} }
       }}}}' -F owner=<owner> -F repo=<repo> -F num=<num>
 ```
 
 Paginate on `hasNextPage`. A thread's resolution plus its replies is what separates `settled` from `re-raised` — a thread closed after the author explained why they chose otherwise reads very differently from one closed by a commit.
+
+`databaseId` is the id the replies endpoint needs, and it is how a run recognises its own earlier comments: every comment this skill posts ends with the marker line `<!-- pr-review-skeptic -->`. Without it there is nothing to recognise — these reviews are authored by the user's own account, indistinguishable from a hand-written one.
 
 ## Post the review
 
@@ -100,17 +115,17 @@ Finding bodies are free prose quoting the code under review — quotes, backslas
 So: write `<tmp>/body.md` and one `<tmp>/c-<n>.md` per inline comment with your file-writing tool (or a quoted heredoc — `<<'EOF'`, where the quoted delimiter is what stops the shell evaluating the contents), then:
 
 ```bash
-: > <tmp>/comments.jsonl        # truncate -- a retry must not re-append the first attempt's comments
+: > "<tmp>/comments.jsonl"      # truncate -- a retry must not re-append the first attempt's comments
 
 # one compact JSON object per inline comment
-jq -nc --arg p "data/sync/Merge.kt" --argjson l 118 --rawfile b <tmp>/c-1.md \
-  '{path:$p, line:$l, side:"RIGHT", body:$b}' >> <tmp>/comments.jsonl
+jq -nc --arg p "data/sync/Merge.kt" --argjson l 118 --rawfile b "<tmp>/c-1.md" \
+  '{path:$p, line:$l, side:"RIGHT", body:$b}' >> "<tmp>/comments.jsonl"
 
-jq -s '{comments: .}' <tmp>/comments.jsonl > <tmp>/comments.json
-jq -n --arg sha "<head-sha>" --rawfile body <tmp>/body.md --slurpfile c <tmp>/comments.json \
-  '{commit_id:$sha, event:"COMMENT", body:$body, comments:$c[0].comments}' > <tmp>/review.json
+jq -s '{comments: .}' "<tmp>/comments.jsonl" > "<tmp>/comments.json"
+jq -n --arg sha "<head-sha>" --rawfile body "<tmp>/body.md" --slurpfile c "<tmp>/comments.json" \
+  '{commit_id:$sha, event:"COMMENT", body:$body, comments:$c[0].comments}' > "<tmp>/review.json"
 
-gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input <tmp>/review.json
+gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
 
 A clean verdict posts through this same path with no inline comments: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created — on exactly the outcome the skill most wants to report.
@@ -138,14 +153,16 @@ Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows Pow
 Replying to a thread this skill opened on an earlier run, rather than opening a second one beside it:
 
 ```bash
-gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -f body=<text>
+gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -F body=@<tmp>/reply.md
 ```
+
+The write-to-file rule governs **every** posting call, not just the review payload: `-F key=@path` reads the value from the file, where `-f body=<text>` would put a finding that quotes the reviewed code through the shell first.
 
 `subject_type: file` attaches a comment to a whole file, but it is a property of the standalone comment endpoint, not of the `comments[]` array in a review — sending it here is another 422 on the same all-or-nothing call. Where a file-level comment is worth a second request, post it after the review lands:
 
 ```bash
 gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
-  -f commit_id=<head-sha> -f path=<path> -f subject_type=file -f body=<text>
+  -f commit_id=<head-sha> -f path=<path> -f subject_type=file -F body=@<tmp>/file-comment.md
 ```
 
 Findings on code the PR did not touch cannot anchor anywhere. They belong in the body, under a heading that names the file — a defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it.

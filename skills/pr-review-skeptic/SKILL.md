@@ -107,11 +107,16 @@ Where the PR has no prior review activity, every finding is `new`. Skip the stag
 
 ## 7. Verdict and post
 
-**Blocking findings** are those at `blocking_severities` after the cross-check's severity changes. Any → the verdict names how many and what the worst one is. None → the verdict is that the change is good to go, but only where every unit was actually reviewed; with units carried forward unreviewed from stage 4 it reads "no blocking findings in the N of M units reviewed, U unreviewed". An unqualified good-to-go over code nobody read is the one verdict this skill must never produce, and the coverage line further down the body does not undo it — the verdict is the line collaborators act on.
+**Blocking findings** are those at `blocking_severities` after the cross-check's severity changes. Any → the verdict names how many and what the worst one is.
+
+None → the change is good to go, and the verdict says so **plainly only when the run earned it**. Two things qualify it, both because the verdict is the line collaborators act on and a note further down the body does not undo it:
+
+- Units carried forward unreviewed from stage 4 → "no blocking findings in the N of M units reviewed, U unreviewed".
+- Findings at a blocking severity that stage 6 bucketed `settled` → say how many. A CRITICAL that a prior thread weighed and accepted is still a CRITICAL somebody decided to live with, and burying it in a list under an unqualified good-to-go is how the decision stops being visible.
 
 Post one review, `event: COMMENT`, carrying ([`reference/mechanics.md`](reference/mechanics.md)):
 
-- **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed. A finding whose prior thread is **this skill's own still-open comment** from an earlier run is a reply on that thread, not a new one — a second run otherwise posts every unfixed finding beside its own original and notifies everyone twice for one defect.
+- **Inline comments** — one per blocking finding, anchored at its line: severity, the defect, its consequence, the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread where the concern was dismissed. Every comment ends with the marker line `<!-- pr-review-skeptic -->`, which is how a later run recognises its own work: these reviews post under the user's account and are otherwise indistinguishable from a hand-written one. A finding whose prior thread carries that marker and is still open is a reply on that thread, not a new one — a second run otherwise posts every unfixed finding beside its own original and notifies everyone twice for one defect.
 - **A summary body** — the verdict; the coverage (files reviewed, units, how many reviewers, whether the cap forced larger units, and any unit left unreviewed); non-blocking observations, one line each; the `settled` list with the threads that decided them; and, when a run was narrowed by a modifier, what it did not cover.
 
 The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
