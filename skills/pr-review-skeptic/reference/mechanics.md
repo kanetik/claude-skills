@@ -2,7 +2,7 @@
 
 `gh` incantations for the steps in `SKILL.md`. `<num>`, `<owner>`, `<repo>` are placeholders. Add `--repo <owner>/<repo>` to every call when the PR is not in the working directory's repo.
 
-`<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<num>"`, in that POSIX form, in every **Bash** snippet on this page including on Windows (the PowerShell posting block takes the native form — see there) — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
+`<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<owner>-<repo>-<num>"`, in that POSIX form, in every **Bash** snippet on this page including on Windows (the PowerShell posting block takes the native form — see there) — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Keyed on the repository as well as the number, because PR numbers are small integers and any user with two repos has a `#7` in both — sharing one staging directory means the second run's opening `rm -rf` deletes the worktree eight live reviewers are reading. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
 
 **The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
 
@@ -21,7 +21,7 @@ Zero matches and no PR named in the invocation → say so and stop; this skill r
 ## Stage the checkout
 
 ```bash
-gh pr view <num> --json number,title,headRefOid,baseRefName
+gh pr view <num> --json number,title,headRefOid,baseRefName,state,mergedAt
 
 # The PR lives in its base repo, which is NOT `origin` in a fork clone -- there `origin`
 # is the fork, and pull/<num>/head fetched from it either 404s or, worse, resolves to
@@ -197,7 +197,9 @@ Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows Pow
 
 Check each anchor yourself before building the payload: you already have `git diff "$BASE"...<headRefOid>`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not go in the **summary body** under a heading naming their path — a little less prominent, and it always works. Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
 
-**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search. Resist posting the comments piecemeal through `/pulls/<num>/comments`, which trades one notification for N and scatters findings the body was going to carry anyway.
+**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search.
+
+A bad anchor is the usual cause but not the only one: a `commit_id` the PR no longer contains is rejected the same way, and an identical retry will fail identically. Where the head moved during the run, check whether the reviewed sha is still on the branch — `git -C "$REPO" merge-base --is-ancestor <headRefOid> <new-head>`. If it is not (a force-push), drop `commit_id` and the inline comments entirely, post the findings in the body against the current head, and say the review describes a commit that has since been rewritten. Resist posting the comments piecemeal through `/pulls/<num>/comments`, which trades one notification for N and scatters findings the body was going to carry anyway.
 
 Replying to a thread this skill opened on an earlier run, rather than opening a second one beside it:
 

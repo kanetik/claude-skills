@@ -54,7 +54,7 @@ The one hard guardrail, because it cannot be phrased as a target: **no summary o
 
 Find the target PR from the invocation, or from the current branch ([`reference/mechanics.md`](reference/mechanics.md)). Cross-repo references are fine in any phrasing; resolve to `(owner, repo, number)` and pass `--repo` on every later call.
 
-No PR found and none named → say so and stop. This skill reviews a pull request; without one there is nothing to review and nowhere to post.
+No PR found and none named → say so and stop. This skill reviews a pull request; without one there is nothing to review and nowhere to post. Note the PR's `state` while you are here — a merged or closed PR can still be reviewed, but its verdict is a report rather than something to post (stage 7).
 
 Reviewers read the code at the PR's head, and several of them read it at once, so every run happens in a **staged worktree** at that commit rather than in your own checkout ([`reference/mechanics.md`](reference/mechanics.md)):
 
@@ -135,7 +135,9 @@ The second of those needs a test you can actually apply, because an orchestrator
 
 Re-read the PR's head sha before building anything. Where it has moved since stage 1, the review describes a superseded commit — say so in the summary body ("reviewed at `<sha>`; head has since moved") or offer to re-run. GitHub marks outdated inline comments; it does not mark a stale verdict, and the verdict is the line that gets acted on.
 
-**The review still posts at the sha that was reviewed** — stage 1's `<headRefOid>`, not the sha you just read. Every anchor was validated against that commit's diff, so posting at a newer one hands GitHub line numbers from a diff it isn't looking at, and one shifted line 422s the whole call.
+**The review still posts at the sha that was reviewed** — stage 1's `<headRefOid>`, not the sha you just read. Every anchor was validated against that commit's diff, so posting at a newer one hands GitHub line numbers from a diff it isn't looking at, and one shifted line 422s the whole call. Unless the move was a **force-push**, which orphans the reviewed sha from the branch and makes it an invalid `commit_id` — that case posts to the body against the current head instead ([`reference/mechanics.md`](reference/mechanics.md)).
+
+Re-read the PR's **state** here too. A PR merged or closed during the run — or one whose number was mistyped in the first place — still stages and reviews cleanly, because a merged PR's head ref still resolves. Posting a go/no-go verdict on it says nothing useful and cannot be unsent, so a non-`OPEN` PR previews: report in the terminal and say the PR is already merged or closed.
 
 Whether it is posted or shown, the review is one `event: COMMENT` review carrying ([`reference/mechanics.md`](reference/mechanics.md)):
 
