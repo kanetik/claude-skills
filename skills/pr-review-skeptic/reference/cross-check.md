@@ -29,3 +29,11 @@ The discriminator between `settled` and `re-raised` is the consequence, not the 
 Some prior threads are this skill's own, from an earlier run over the same PR: their comments end with the marker line `<!-- pr-review-skeptic -->`. Where a finding matches one of those and the thread is still open, say so and return that comment's `databaseId` — the finding is a reply on the existing thread rather than a new comment, so the PR does not collect two threads and two notifications for one unfixed defect. Match on the marker, not on the author: these reviews are posted under the user's own account and look exactly like a hand-written one.
 
 Return every finding, each with its bucket, any severity change, and the prior thread URL where one applies. The settled ones come back too — they are reported to the user as settled, not discarded.
+
+---
+
+## The marker-only variant
+
+Where the run was invoked with "ignore the review history", hand over **this paragraph in place of everything above**:
+
+> Below are findings from reviewers who read the code at HEAD, and below them, the PR's existing review threads. Do not classify or re-severity anything — every finding stands exactly as written. Your one job: some threads are this skill's own from an earlier run, ending in the marker line `<!-- pr-review-skeptic -->`. Where a finding matches one of those and the thread is still open, return that comment's `databaseId` so the finding goes back as a reply instead of opening a second thread beside its own original. Return every finding unchanged, each with a `databaseId` where one applies.

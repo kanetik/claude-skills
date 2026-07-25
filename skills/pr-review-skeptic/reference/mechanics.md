@@ -4,7 +4,7 @@
 
 `<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository** — `"${TMPDIR:-/tmp}/pr-skeptic-<num>"`, or `"$env:TEMP\pr-skeptic-<num>"` under PowerShell. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because resolved to the working directory instead, `git worktree add` plants a second full checkout of the PR head inside the user's own repo, where it shows up in `git status` and can be swept into a commit — and teardown then aims an `rm -rf` at a path inside that repo.
 
-**The shell variables below (`$BASE`, `$BASETIP`, `$REMOTE`, `$TMP`) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried.
+**The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
 
 The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live. Only the posting step carries a PowerShell alternative.
 
@@ -28,8 +28,21 @@ gh pr view <num> --json number,title,headRefOid,baseRefName
 # the fork's own PR of that number and reviews unrelated commits.
 BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 
+# Clear anything an interrupted earlier run left behind. First, because the paths are
+# deterministic: a stale worktree makes `git worktree add` fail hard, and a stale clone makes
+# `gh repo clone` fail with "destination path already exists" -- either way the skill cannot
+# start on that PR again until someone finds a temp directory they were never told about.
+git -C "$REPO" worktree remove --force "<tmp>/pr-<num>" 2>/dev/null
+rm -rf "<tmp>/pr-<num>" "<tmp>/repo-<num>"
+
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
+
+# $REPO is the checkout every git call below runs against: the current repo for a PR in it,
+# else the clone above. Teardown happens many turns later, in another shell -- point it at
+# the wrong repo and the fetch plants refs/prskeptic/* and a worktree registration in the
+# user's own repository, where nothing ever reclaims them.
+REPO=<repo-root-or-tmp-clone>
 
 # Fetch from an existing remote pointing at the base repo where there is one; $BASEREPO is
 # the fallback for the fork/cross-repo case. `git fetch https://...` on a repo whose remote
@@ -39,25 +52,21 @@ gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
 # Compare on owner/repo, normalised out of each remote URL: an SSH remote never matches an
 # https string, and a substring test would match sibling repos (acme/widget ~ acme/widget-android).
 OWNERREPO=$(gh pr view <num> --json url --jq '.url | capture("[^/]+/(?<or>[^/]+/[^/]+)/pull").or')
-REMOTE=$(git remote -v | awk '$3=="(fetch)"{u=$2; sub(/\.git$/,"",u); sub(/^git@[^:]+:/,"",u);
+REMOTE=$(git -C "$REPO" remote -v | awk '$3=="(fetch)"{u=$2; sub(/\.git$/,"",u); sub(/^git@[^:]+:/,"",u);
            sub(/^[a-z]+:\/\/[^\/]+\//,"",u); print $1, u}' \
          | awk -v r="$OWNERREPO" '$2==r {print $1; exit}')
 REMOTE=${REMOTE:-$BASEREPO}
 
-git fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
-git fetch "$REMOTE" "<baseRefName>"                           # base tip -> FETCH_HEAD
-BASETIP=$(git rev-parse FETCH_HEAD)                           # capture it now; the next fetch overwrites FETCH_HEAD
-BASE=$(git merge-base "$BASETIP" "<headRefOid>")
-git cat-file -e "<headRefOid>^{commit}"                       # both shas resolve before any reviewer diffs them
+git -C "$REPO" worktree prune
+git -C "$REPO" fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
+git -C "$REPO" fetch "$REMOTE" "<baseRefName>"                           # base tip -> FETCH_HEAD
+BASETIP=$(git -C "$REPO" rev-parse FETCH_HEAD)                           # the next fetch overwrites FETCH_HEAD
+BASE=$(git -C "$REPO" merge-base "$BASETIP" "<headRefOid>")
+git -C "$REPO" cat-file -e "<headRefOid>^{commit}"                       # both shas resolve before any diff
 
-# Clear anything an interrupted earlier run left behind -- the path is deterministic, so a
-# stale worktree makes `git worktree add` fail hard and the skill cannot start.
-git worktree remove --force "<tmp>/pr-<num>" 2>/dev/null; rm -rf "<tmp>/pr-<num>"
-git worktree prune
+git -C "$REPO" worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
 
-git worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
-
-echo "BASE=$BASE BASETIP=$BASETIP TMP=<tmp>"                  # record these -- later shells will not have them
+echo "REPO=$REPO BASE=$BASE BASETIP=$BASETIP TMP=<tmp>"       # record these -- later shells will not have them
 ```
 
 `$BASETIP` is also what the project's config layer is read from ([`configuration.md`](configuration.md)) — `git show <baseRefName>:…` would need a local branch of that name, which a fresh clone or an integration-branch base does not have.
@@ -72,8 +81,8 @@ The leading `+` on the refspec earns its place on the second run: a force-push �
 Teardown when the run ends — **including when it ends badly.** A cancelled run, a failed subagent, or an error at the posting step leaves the worktree, the ref, and possibly a several-hundred-megabyte clone on disk, and the next run on that PR then fails at its first step for a reason the user cannot see.
 
 ```bash
-git worktree remove --force "<tmp>/pr-<num>"
-git update-ref -d "refs/prskeptic/<num>"
+git -C "$REPO" worktree remove --force "<tmp>/pr-<num>"
+git -C "$REPO" update-ref -d "refs/prskeptic/<num>"
 rm -rf "<tmp>/repo-<num>"                  # only where this run cloned it
 ```
 
@@ -84,12 +93,14 @@ rm -rf "<tmp>/repo-<num>"                  # only where this run cloned it
 From inside the staged worktree:
 
 ```bash
-git diff --name-status "$BASE...<headRefOid>"    # the file list -- the input to partitioning
+git -C "<tmp>/pr-<num>" diff --name-status --no-renames "$BASE...<headRefOid>"   # the file list
 ```
 
 Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `BASE` and `<headRefOid>` fill the `{{BASE}}` and `{{HEAD}}` slots.
 
 `--name-status` rather than `--name-only` because the status matters downstream: a `D` path is in the change but not in the worktree, and a reviewer sent to open it finds nothing and — following the brief's report-what's-missing rule — turns a deletion into a finding about an absent file. Mark deleted paths as deleted when they reach `{{FILES}}`; they are reviewed through the diff.
+
+`--no-renames` so the statuses stay the three the brief documents. Rename detection is on by default and emits `R<score>` with *two* tab-separated paths, one of which is not in the worktree — an undefined status and a phantom file for the reviewer, and an ambiguous count for stage 3's one-file-one-unit condition. Split into `D` + `A`, both already handled.
 
 ## CI status
 
@@ -155,14 +166,16 @@ A clean verdict posts through this same path with no inline comments: the `: >` 
 PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding. Bodies come from files here too, for the same reason:
 
 ```powershell
-$summary = Get-Content -Raw "<tmp>/body.md"
-$c1      = Get-Content -Raw "<tmp>/c-1.md"
+$summary = [System.IO.File]::ReadAllText("<tmp>/body.md")
+$c1      = [System.IO.File]::ReadAllText("<tmp>/c-1.md")
 $payload = @{ commit_id = '<head-sha>'; event = 'COMMENT'; body = $summary
   comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $c1 })
 } | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
+
+`ReadAllText` rather than `Get-Content -Raw`, for two reasons that both land on Windows PowerShell 5.1: `-Raw` returns a decorated PSObject that `ConvertTo-Json` serializes as an object (`"body": {"value": …, "PSPath": …}`) which GitHub rejects outright, and it decodes UTF-8 through the ANSI codepage, so every em dash and arrow in a finding posts as mojibake. Both surface only at the last step, after every reviewer has run.
 
 Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows PowerShell 5.1, and `gh api --input` forwards it verbatim for GitHub to reject as unparseable JSON — after every reviewer has already run, and with a file that looks correct in any editor.
 

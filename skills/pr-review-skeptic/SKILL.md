@@ -70,7 +70,7 @@ Your working copy is then untouched by the review, dirty or not, and the reviewe
 
 Merge the config layers, reading the project's own layer from the PR's **base** ref rather than the staged worktree ([`reference/configuration.md`](reference/configuration.md)) — the five project keys are what the reviewers take on faith, so a change that edits them must not get to steer the review of itself.
 
-When the five are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md` and confirm them with the user. Then offer to write `.github/pr-review-skeptic.config.yml`, but only where the PR's repo has a lasting checkout to write it into: the file is written there and left uncommitted, and the skill stages, branches, and commits nothing. Where the only checkout is the temporary one from stage 1, hand the user the confirmed values as YAML to paste instead — a file written into a directory that gets deleted at teardown buys them nothing but a second interview next run.
+When the five are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md` and confirm them with the user. Then offer to write `.github/pr-review-skeptic.config.yml`, but only where the PR's repo has a lasting checkout to write it into: the file is written there and left uncommitted, and the skill stages, branches, and commits nothing. Where the file already exists — a repo can legitimately set only `max_reviewers` and leave the project keys empty, which is what brought you here — add the missing keys and leave every existing one as it stands, naming in the offer which keys will be added. Where the only checkout is the temporary one from stage 1, hand the user the confirmed values as YAML to paste instead — a file written into a directory that gets deleted at teardown buys them nothing but a second interview next run.
 
 **Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
 
@@ -106,7 +106,7 @@ Keep the `SOUND` blocks. They are what lets the summary say what was checked rat
 
 Where the PR has prior review activity, dispatch one subagent with the merged findings and the PR's review history, per [`reference/cross-check.md`](reference/cross-check.md). It buckets each finding as `new`, `unfixed` (raised before, changed, still present — severity rises), `re-raised` (raised before, dismissed, found independently), or `settled` (the same consequence was weighed and accepted).
 
-Where the PR has no prior review activity, every finding is `new`. Skip the stage. Where "ignore the review history" was asked for, skip the bucketing but keep the marker pass — a duplicate thread posted beside this skill's own earlier one is not something the user opted into.
+Where the PR has no prior review activity, every finding is `new`. Skip the stage. Where "ignore the review history" was asked for, dispatch the marker-only variant at the end of that file instead — a duplicate thread posted beside this skill's own earlier one is not something the user opted into.
 
 **Done when** every finding carries a bucket, and every `unfixed`, `re-raised`, and `settled` one carries the thread that decided it.
 
@@ -123,11 +123,15 @@ None → the change is good to go, and the verdict says so **plainly only when t
 
 Settle this before drafting anything, because posting notifies every collaborator on the PR and cannot be unsent. **A run posts when it was told to post** — the user invoked `/pr-review-skeptic`, or asked for the review on the PR ("post a review", "review it on the PR", "leave comments on #42").
 
-Everything else is answered in the terminal, the drafted review shown, with an offer to post it. That includes the phrasings this skill most often arrives on — "second opinion on #42", "is this ready to merge?", "take a look at this PR" — which read as a question about the change rather than an instruction to publish under the user's name. The cost of being wrong runs one way only: an unwanted preview costs a turn, an unwanted review cannot be taken back.
+Everything else is answered in the terminal, the drafted review shown, with an offer to post it. That includes the phrasings this skill most often arrives on — "second opinion on #42", "is this ready to merge?", "take a look at this PR" — which read as a question about the change rather than an instruction to publish under the user's name.
+
+**Where both readings fit, preview wins.** `/pr-review-skeptic #42 — is this ready to merge?` carries a question, so it previews, bare slash command notwithstanding. The cost of being wrong runs one way only: an unwanted preview costs a turn, an unwanted review cannot be taken back.
 
 Two cases post nothing at all, whatever the phrasing: **"don't post" / "just tell me"** in the invocation, and **another skill or agent invoking this one** — that caller gets the drafted review returned, and its reply is not a go-ahead, because the decision to publish belongs to the person whose account signs it. `confirm_before_posting: true` turns even an explicit posting instruction into a preview.
 
 ### The review
+
+Re-read the PR's head sha before building anything. Where it has moved since stage 1, the review describes a superseded commit — say so in the summary body ("reviewed at `<sha>`; head has since moved") or offer to re-run. GitHub marks outdated inline comments; it does not mark a stale verdict, and the verdict is the line that gets acted on.
 
 Whether it is posted or shown, the review is one `event: COMMENT` review carrying ([`reference/mechanics.md`](reference/mechanics.md)):
 
