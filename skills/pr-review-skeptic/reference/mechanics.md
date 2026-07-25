@@ -224,8 +224,11 @@ Check each anchor yourself before building the payload: you already have `git di
 Take a high-water mark **before** the POST, so the check can tell this run's review from one an earlier run left:
 
 ```bash
-LASTID=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[-1].id // 0')
+LASTID=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].id' | sort -n | tail -1)
+LASTID=${LASTID:-0}
 ```
+
+`--jq` runs **per page**, not over a merged array, so `.[-1].id` would return one id per page — a multi-line value that turns the filter below into a jq syntax error on exactly the many-review PRs `--paginate` is here for. Emit every id and take the maximum in the shell instead.
 
 Then, after an ambiguous failure:
 
@@ -259,6 +262,8 @@ gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method P
 ```
 
 The write-to-file rule governs **every** posting call, not just the review payload: `-F key=@path` reads the value from the file, where `-f body=<text>` would put a finding that quotes the reviewed code through the shell first.
+
+So does the check-before-re-sending rule. This call is separate from the all-or-nothing review payload, so an ambiguous failure here has the same shape and the same cost — re-send blindly and the thread carries two identical replies, notifying every subscriber twice for one defect, which is what the reply path exists to avoid. Re-read the thread first and look for a reply carrying the marker; unknown means ask, not re-send.
 
 `subject_type: file` attaches a comment to a whole file, but it is a property of the standalone comment endpoint, not of the `comments[]` array in a review — sending it here is another 422 on the same all-or-nothing call. Where a file-level comment is worth a second request, post it after the review lands:
 
