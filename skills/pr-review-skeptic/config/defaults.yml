@@ -44,6 +44,6 @@ blocking_severities:          # severities that post as inline comments and hold
   - CRITICAL                  # everything below lands in the summary body as an observation
   - HIGH
 
-confirm_before_posting: false # false: post the review when invoked directly. Set true to always
-                              # show the findings and wait for a go-ahead. A model-invoked run
-                              # confirms regardless of this setting.
+confirm_before_posting: false # false: post the review when a person asked for one. Set true to always
+                              # show the findings and wait for a go-ahead first. SKILL.md stage 7 is
+                              # the authority on when a run posts at all.

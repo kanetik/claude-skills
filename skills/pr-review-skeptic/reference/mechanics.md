@@ -12,32 +12,47 @@ gh pr list --search "$(git rev-parse HEAD)" --json number,title,url   # detached
 
 Zero matches and no PR named in the invocation → say so and stop; this skill reviews a PR and there isn't one. Multiple → ask which.
 
-## Scope the change
+## Stage the checkout
 
 ```bash
-gh pr view <num> --json number,title,headRefOid,baseRefName,files
+gh pr view <num> --json number,title,headRefOid,baseRefName
 
 # The PR lives in its base repo, which is NOT `origin` in a fork clone -- there `origin`
-# is the fork, and fetching pull/<num>/head from it either 404s or, worse, resolves to
-# the fork's own PR of that number and reviews the wrong commits.
+# is the fork, and pull/<num>/head fetched from it either 404s or, worse, resolves to
+# the fork's own PR of that number and reviews unrelated commits.
 BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 
-git fetch "$BASEREPO" "pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
-git fetch "$BASEREPO" "<baseRefName>"                          # base tip -> FETCH_HEAD
+# Cross-repo PR with no local clone at hand -- get one, and work from it.
+gh repo clone <owner>/<repo> <tmp>/repo-<num>
+
+git fetch "$BASEREPO" "+pull/<num>/head:refs/prskeptic/<num>"   # head, into a local ref
+git fetch "$BASEREPO" "<baseRefName>"                           # base tip -> FETCH_HEAD
 BASE=$(git merge-base FETCH_HEAD "<headRefOid>")
-git cat-file -e "<headRefOid>^{commit}"                        # both shas must resolve before a reviewer diffs them
+git cat-file -e "<headRefOid>^{commit}"                         # both shas resolve before any reviewer diffs them
+
+git worktree add <tmp>/pr-<num> "<headRefOid>"                  # every reviewer works here
 ```
 
-`files[].path` is the change's file list — the input to partitioning. `BASE` and `headRefOid` are the `{{BASE}}` and `{{HEAD}}` slots; reviewers diff with `git diff $BASE...<head>`.
+The leading `+` on the refspec earns its place on the second run: a force-push — routine on a PR that has just been handed findings — makes an unforced fetch fail non-fast-forward and leaves the local ref on the superseded head.
 
-Staging the checkout (`SKILL.md` stage 1) where the current tree isn't already at the head:
+Teardown when the run ends:
 
 ```bash
-git worktree add <tmp>/pr-<num> <headRefOid>       # review here
-git worktree remove --force <tmp>/pr-<num>         # when the run ends
+git worktree remove --force <tmp>/pr-<num>
+git update-ref -d "refs/prskeptic/<num>"
 ```
 
-`--force` because `git worktree remove` refuses outright on any untracked file, and a reviewer that wrote a scratch file would otherwise strand the worktree. Nothing the run needs to keep lives there — the config file from stage 2 is written to the primary checkout, never here.
+`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here.
+
+## Scope the change
+
+From inside the staged worktree:
+
+```bash
+git diff --name-only "$BASE...<headRefOid>"      # the file list -- the input to partitioning
+```
+
+Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `BASE` and `<headRefOid>` fill the `{{BASE}}` and `{{HEAD}}` slots.
 
 ## CI status
 
@@ -78,12 +93,15 @@ Paginate on `hasNextPage`. A thread's resolution plus its replies is what separa
 
 One review carries the summary body and every inline comment. Build a JSON payload and post it:
 
-Finding bodies are free prose, routinely carrying quotes, backslashes, and fenced code. **Let a JSON encoder encode them** — one hand-written `"` in a comment body makes the payload malformed, and this call is all-or-nothing, so the summary and every other comment fail with it.
+Finding bodies are free prose quoting the code under review — quotes, backslashes, fenced snippets. **Write every body to a file, and let a JSON encoder read it from there.** Two separate hazards close this way: one hand-written `"` makes the payload malformed and this call is all-or-nothing, so the summary and every other comment fail with it; and a body pasted into a shell assignment has its backticks and `$(…)` evaluated by the shell before `jq` ever sees them, which both corrupts the quoted code and executes text lifted out of the repository being reviewed.
+
+So: write `<tmp>/body.md` and one `<tmp>/c-<n>.md` per inline comment with your file-writing tool (or a quoted heredoc — `<<'EOF'`, where the quoted delimiter is what stops the shell evaluating the contents), then:
 
 ```bash
-printf '%s' "$summary" > <tmp>/body.md
-# one compact JSON object per inline comment, appended as you build them:
-jq -nc --arg p "data/sync/Merge.kt" --argjson l 118 --arg b "$comment" \
+: > <tmp>/comments.jsonl        # truncate -- a retry must not re-append the first attempt's comments
+
+# one compact JSON object per inline comment
+jq -nc --arg p "data/sync/Merge.kt" --argjson l 118 --rawfile b <tmp>/c-1.md \
   '{path:$p, line:$l, side:"RIGHT", body:$b}' >> <tmp>/comments.jsonl
 
 jq -s '{comments: .}' <tmp>/comments.jsonl > <tmp>/comments.json
@@ -93,11 +111,15 @@ jq -n --arg sha "<head-sha>" --rawfile body <tmp>/body.md --slurpfile c <tmp>/co
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input <tmp>/review.json
 ```
 
-PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding:
+A clean verdict posts through this same path with no inline comments: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created — on exactly the outcome the skill most wants to report.
+
+PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding. Bodies come from files here too, for the same reason:
 
 ```powershell
+$summary = Get-Content -Raw <tmp>/body.md
+$c1      = Get-Content -Raw <tmp>/c-1.md
 $payload = @{ commit_id = '<head-sha>'; event = 'COMMENT'; body = $summary
-  comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $comment })
+  comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $c1 })
 } | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input <tmp>/review.json

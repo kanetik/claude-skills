@@ -5,9 +5,8 @@ description: >-
   in writing it: blind subagents read the changes at HEAD, treat comments, docs,
   and commit messages as claims to verify against the code, and post inline
   findings plus a go/no-go verdict to the PR. Use when the user asks for a second
-  opinion or an independent skeptical review of a PR, asks whether a PR is really
-  ready to merge, or when another skill needs an independent gate around its own
-  review round. Requires an existing PR; accepts a PR number, URL, or
+  opinion or an independent skeptical review of a PR, or asks whether a PR is
+  really ready to merge. Requires an existing PR; accepts a PR number, URL, or
   owner/repo#num, and modifiers like "don't post", "one reviewer", or
   "include medium".
 allowed-tools:
@@ -56,23 +55,25 @@ Find the target PR from the invocation, or from the current branch ([`reference/
 
 No PR found and none named → say so and stop. This skill reviews a pull request; without one there is nothing to review and nowhere to post.
 
-Reviewers read the code at the PR's head, so the run needs a **clean working tree sitting on that commit**. Fetch the head, then check where you are:
+Reviewers read the code at the PR's head, and several of them read it at once, so every run happens in a **staged worktree** at that commit rather than in your own checkout ([`reference/mechanics.md`](reference/mechanics.md)):
 
-- Working tree dirty → stop and say so. Reviewers run concurrently in one tree; uncommitted work is at risk from any of them, and it also makes what they read differ from what the PR contains.
-- Tree already at the PR's head (the usual case: you opened the PR from this branch) → work here.
-- Anywhere else, including every cross-repo PR → add a temporary `git worktree` at the fetched head and run there, cleaning it up at the end. A cross-repo PR needs a local clone of *its* repo first; without one, say so and stop rather than reviewing same-named files in the wrong repository.
+1. Resolve the PR's own repository. For a cross-repo PR that isn't cloned locally, `gh repo clone` it into the temp directory first — same-named files in the repo you happen to be standing in are not the code under review.
+2. Fetch the head from that repository and add a temporary `git worktree` at it.
+3. Remove the worktree when the run ends.
 
-**Done when** the review directory is clean, sits on the PR's head sha, and belongs to the PR's own repo.
+Your working copy is then untouched by the review, dirty or not, and the reviewers get a tree whose contents are exactly the PR's.
+
+**Done when** the review worktree exists, sits on the PR's head sha, and belongs to the PR's own repository.
 
 ## 2. Load configuration
 
-Merge the config layers. When the five project keys are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md`, confirm them with the user, and offer to write `.github/pr-review-skeptic.config.yml` ([`reference/configuration.md`](reference/configuration.md)). Write it into the PR repo's primary checkout, on a real branch — a staged review worktree from stage 1 is deleted when the run ends, taking the answers to five questions with it.
+Merge the config layers. When the five project keys are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md`, confirm them with the user, and offer to write `.github/pr-review-skeptic.config.yml` ([`reference/configuration.md`](reference/configuration.md)). Write it into the PR repo's primary checkout, on a real branch — the staged worktree from stage 1 is deleted when the run ends, taking the answers to five questions with it. Say that the file is left uncommitted, so the user commits or removes it before running anything that wants a clean tree.
 
 **Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
 
 ## 3. Scope and partition
 
-Collect the changed file list, the merge-base, the head sha, and CI status ([`reference/mechanics.md`](reference/mechanics.md)). Confirm both shas resolve locally (`git cat-file -e <sha>^{commit}`) before going further — every reviewer's first command is a diff between them, so a sha that isn't in the object store fails every unit identically.
+Collect the merge-base, the head sha, CI status, and the changed file list ([`reference/mechanics.md`](reference/mechanics.md)). Take the file list from `git diff --name-only` in the staged worktree, not from `gh pr view --json files`, which returns at most 100 files and says nothing when it truncates — a partition built from a truncated list reviews part of the change and reports full coverage.
 
 Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
 

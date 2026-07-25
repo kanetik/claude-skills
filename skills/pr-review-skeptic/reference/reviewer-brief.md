@@ -21,7 +21,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 
 Every slot carries a fact about the project or the mechanics of reaching the code. None carries what the change is for, why it was built this way, or what anyone has said about it.
 
-`{{REPO_PATH}}` is the checkout staged in stage 1 — clean, at the PR's head, in the PR's own repository. Reviewers read files there, so pointing them anywhere else has them reviewing code the PR does not contain.
+`{{REPO_PATH}}` is the worktree staged in stage 1 — at the PR's head, in the PR's own repository. Reviewers read files there, so pointing them anywhere else has them reviewing code the PR does not contain.
 
 ---
 
@@ -42,7 +42,7 @@ Files:
 
 Everything is checked out at {{HEAD}} in `{{REPO_PATH}}`. Work there. Read the change with `git diff {{BASE}}...{{HEAD}} -- <path>`, and read whatever else you need — callers, types, tests, adjacent code — to judge it. A diff alone rarely shows enough to tell correct from incorrect.
 
-Read, and only read. Other reviewers are working in this same checkout at the same time, and it may hold work that exists nowhere else, so leave the working tree and the object store exactly as you found them: no `checkout`, `stash`, `reset`, `clean`, `fetch`, or writes of any kind. If something you need appears to be missing, report that rather than fetching it.
+Read, and only read. Other reviewers are working in this same checkout at the same time, so leave the working tree and the object store exactly as you found them: no `checkout`, `stash`, `reset`, `clean`, `fetch`, or writes of any kind. Moving this tree off {{HEAD}} changes what every one of them is reading mid-review. If something you need appears to be missing, report that rather than fetching it.
 
 **CI:** {{CI}}
 
