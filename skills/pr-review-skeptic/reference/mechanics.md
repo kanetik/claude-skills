@@ -4,7 +4,7 @@
 
 `<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<owner>-<repo>-<num>"`, in that POSIX form, in every **Bash** snippet on this page including on Windows (the PowerShell posting block takes the native form — see there) — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Keyed on the repository as well as the number, because PR numbers are small integers and any user with two repos has a `#7` in both — sharing one staging directory means the second run's opening `rm -rf` deletes the worktree eight live reviewers are reading. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
 
-**The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
+**The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`, and `$LASTID` from the posting block) live only inside their own invocation.** Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
 
 The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live — `jq` does not ship with it and has to be installed separately. Only the posting step needs a standalone `jq` (the `--jq` flags elsewhere are `gh`'s own), and its PowerShell alternative uses `ConvertTo-Json`, so that block is the route to take where `jq` is missing rather than only where the shell is PowerShell.
 
@@ -34,13 +34,17 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # cannot start on that PR again until someone finds a temp directory they were never told
 # about. The `rm -rf` plus the `worktree prune` below are what actually clear it; keep both.
 #
-# But ASK FIRST if <tmp>/run.lock is recent: the key is (owner, repo, num), so a second run
-# on the SAME PR shares this directory with a first one that may still be live -- eight
-# subagents make a run look stalled for minutes. Clearing it deletes the worktree those
-# reviewers are reading, and their teardown later deletes this run's payload files.
-[ -f "<tmp>/run.lock" ] && cat "<tmp>/run.lock"     # a timestamp; recent -> ask, don't clear
+# But STOP if <tmp>/run.lock was touched in the last 30 minutes: the key is (owner, repo,
+# num), so a second run on the SAME PR shares this directory with a first one that may still
+# be live -- eight subagents make a run look stalled for minutes. Clearing it deletes the
+# worktree those reviewers are reading, and their teardown later deletes this run's payload
+# files. On LIVE-RUN-SUSPECTED, ask the user whether the other run is still going rather than
+# continuing through this block. Older than that, the lock is a crashed run's leaving: sweep it.
+if [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
+  echo "LIVE-RUN-SUSPECTED"; exit 1     # stop here and ask; do NOT clear
+fi
 rm -rf "<tmp>/pr-<num>" "<tmp>/repo-<num>"
-mkdir -p "<tmp>" && date -u +%FT%TZ > "<tmp>/run.lock"
+mkdir -p "<tmp>" && : > "<tmp>/run.lock"
 
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
@@ -118,12 +122,15 @@ Remove the whole `<tmp>` directory, not just its two subdirectories. The payload
 From inside the staged worktree:
 
 ```bash
-git -C "<tmp>/pr-<num>" diff --name-status --no-renames "$BASE...<headRefOid>"   # the file list
+git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+    diff --name-status --no-renames "$BASE...<headRefOid>"   # the file list
 ```
 
 Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `BASE` and `<headRefOid>` fill the `{{BASE}}` and `{{HEAD}}` slots.
 
 `--name-status` rather than `--name-only` because the status matters downstream: a `D` path is in the change but not in the worktree, and a reviewer sent to open it finds nothing and — following the brief's report-what's-missing rule — turns a deletion into a finding about an absent file. Mark deleted paths as deleted when they reach `{{FILES}}`; they are reviewed through the diff.
+
+`core.quotePath=false` so paths reach `{{FILES}}` and the payload byte-for-byte. Git's default octal-escapes any non-ASCII byte and wraps the path in literal quotes — `src/café.kt` comes back as `"src/caf\303\251.kt"` — and a reviewer sent to open that finds nothing and reports a missing file that is present. Worse if such a finding does anchor: the mangled path goes into the payload, GitHub 422s the all-or-nothing call, and one i18n fixture costs the whole review its inline comments.
 
 `--no-renames` so the statuses stay the three the brief documents. Rename detection is on by default and emits `R<score>` with *two* tab-separated paths, one of which is not in the worktree — an undefined status and a phantom file for the reviewer, and an ambiguous count for stage 3's one-file-one-unit condition. Split into `D` + `A`, both already handled.
 
@@ -198,6 +205,7 @@ jq -n --arg sha "<headRefOid>" --rawfile body "<tmp>/body.md" --slurpfile c "<tm
 # the check then concludes nothing landed and re-sends the lot.
 LASTID=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].id' | sort -n | tail -1)
 LASTID=${LASTID:-0}
+echo "LASTID=$LASTID"          # carry it forward -- the check that needs it runs in a later shell
 
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
@@ -234,7 +242,7 @@ Check each anchor yourself before building the payload: you already have `git di
 
 **Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
 
-This uses the `$LASTID` captured in the posting block above, before the POST. Note `--jq` runs **per page** rather than over a merged array, which is why it emits every id and takes the maximum in the shell: `.[-1].id` would return one id per page, a multi-line value that turns the filter below into a jq syntax error on exactly the many-review PRs `--paginate` is here for.
+This runs in a later shell than the POST, so it needs the `$LASTID` literal the posting block echoed — an empty one makes the filter `select(.id > )`, a jq compile error, which trips the "cannot verify" fallback on *every* ambiguous failure and asks the user the one question the mechanism exists to answer. Note `--jq` runs **per page** rather than over a merged array, which is why it emits every id and takes the maximum in the shell: `.[-1].id` would return one id per page, a multi-line value that turns the filter below into a jq syntax error on exactly the many-review PRs `--paginate` is here for.
 
 After an ambiguous failure:
 
