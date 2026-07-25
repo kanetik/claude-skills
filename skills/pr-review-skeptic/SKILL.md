@@ -14,6 +14,7 @@ allowed-tools:
   - Bash
   - Read
   - Write
+  - Edit
   - Glob
   - Grep
   - Task
@@ -70,7 +71,7 @@ Your working copy is then untouched by the review, dirty or not, and the reviewe
 
 Merge the config layers, reading the project's own layer from the PR's **base** ref rather than the staged worktree ([`reference/configuration.md`](reference/configuration.md)) — the five project keys are what the reviewers take on faith, so a change that edits them must not get to steer the review of itself.
 
-When the five are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md` — read at the same ref the config layer is (`$BASETIP`, or `$BASE` on a PR that is not `OPEN`), for the same reason — and confirm them with the user. A PR that edits the README would otherwise get to describe the project to the reviewers judging it, and a user confirming a plausible-looking line makes it a fact. Then offer to write `.github/pr-review-skeptic.config.yml`, but only where the PR's repo has a lasting checkout to write it into: the file is written there and left uncommitted, and the skill stages, branches, and commits nothing. Where the file already exists — a repo can legitimately set only `max_reviewers` and leave the project keys empty, which is what brought you here — add the missing keys and leave every existing one as it stands, naming in the offer which keys will be added. Where the only checkout is the temporary one from stage 1, hand the user the confirmed values as YAML to paste instead — a file written into a directory that gets deleted at teardown buys them nothing but a second interview next run.
+When the five are empty, draft answers from the PR repo's `README.md` / `CLAUDE.md` — read at the same ref the config layer is (`$BASETIP`, or `$BASE` on a PR that is not `OPEN`), for the same reason — and confirm them with the user. A PR that edits the README would otherwise get to describe the project to the reviewers judging it, and a user confirming a plausible-looking line makes it a fact. Then offer to write `.github/pr-review-skeptic.config.yml`, but only where the PR's repo has a lasting checkout to write it into: the file is written there and left uncommitted, and the skill stages, branches, and commits nothing. Where the file already exists — a repo can legitimately set only `max_reviewers` and leave the project keys empty, which is what brought you here — **append** the missing keys with an edit rather than rewriting the file, and name in the offer which keys will be added. A rewrite silently drops the comments and key ordering the repo's author put there, in a file left uncommitted in their tree, so the loss rides into their next commit. Where the only checkout is the temporary one from stage 1, hand the user the confirmed values as YAML to paste instead — a file written into a directory that gets deleted at teardown buys them nothing but a second interview next run.
 
 **Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
 
@@ -80,7 +81,11 @@ Where the run was started by another skill or agent there is nobody to confirm w
 
 Collect the merge-base, the head sha, CI status, and the changed file list ([`reference/mechanics.md`](reference/mechanics.md)). Take the file list from `git diff --name-status` in the staged worktree, not from `gh pr view --json files`, which returns at most 100 files and says nothing when it truncates — a partition built from a truncated list reviews part of the change and reports full coverage.
 
-**An empty file list is never just "nothing to review."** An empty partition satisfies every condition below vacuously, produces no findings, and ends in a posted "no blocking findings", so separate the two ways it happens before going on. Both shas resolve and `git -C "$REPO" rev-list --count "$BASE..<headRefOid>"` is non-zero → the PR genuinely has no net change (an empty commit, or a change and its own revert); say that and stop. Anything else → the diff ran against the wrong revisions; say that and stop. Either way, tear down first (stage 9) — staging has already happened, and a stop is not a reason to leave a worktree and a ref in the user's repository. The difference matters to the user, who otherwise goes hunting a revision bug that isn't there.
+**An empty file list is never just "nothing to review."** An empty partition satisfies every condition below vacuously, produces no findings, and ends in a posted "no blocking findings", so separate the two ways it happens before going on. Three arms, and the difference matters to whoever reads the message:
+
+- `$BASE` equals the head sha → the PR's commits are already contained in the base branch with no merge commit recording where they joined, so there is no base to diff against. Say that; offer to review against a base ref the user names.
+- Both shas resolve and `git -C "$REPO" rev-list --count "$BASE..<headRefOid>"` is non-zero → the PR genuinely has no net change (an empty commit, or a change and its own revert). Say that.
+- Anything else → the diff ran against the wrong revisions. Say that. Either way, tear down first (stage 9) — staging has already happened, and a stop is not a reason to leave a worktree and a ref in the user's repository. The difference matters to the user, who otherwise goes hunting a revision bug that isn't there.
 
 Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
 
@@ -156,7 +161,9 @@ The verdict belongs in the body, where a person reads it and decides. Report cov
 
 One short block to the user: the verdict, counts by severity, the PR URL, what the reviewers confirmed sound, and anything the run could not cover.
 
-Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands — and taking that offer up **re-enters the run at stage 1**, re-staging and re-reading state and head sha before anything is sent, because a preview can sit for an hour while the PR is merged or force-pushed out from under it. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
+Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands.
+
+Taking that offer up **re-runs stage 1 and nothing else**: re-stage, re-read `state` and the head sha per the checks at the top of "The review", write the payload files again from the draft already shown, re-validate the anchors against the re-fetched diff, and post. A preview can sit for an hour while the PR is merged or force-pushed out from under it, which is what those checks are for. Do not re-run stages 2–6 — dispatching fresh reviewers would publish a draft the user never saw — and do not re-apply the post/preview decision, which they have already made. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
 
 ## 9. Tear down
 

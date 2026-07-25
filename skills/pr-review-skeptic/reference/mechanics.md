@@ -193,6 +193,12 @@ jq -s '{comments: .}' "<tmp>/comments.jsonl" > "<tmp>/comments.json"
 jq -n --arg sha "<headRefOid>" --rawfile body "<tmp>/body.md" --slurpfile c "<tmp>/comments.json" \
   '{commit_id:$sha, event:"COMMENT", body:$body, comments:$c[0].comments}' > "<tmp>/review.json"
 
+# High-water mark, BEFORE the POST -- see "Any other failure" below, which needs to tell this
+# run's review from one an earlier run left. Captured afterwards it includes this review, and
+# the check then concludes nothing landed and re-sends the lot.
+LASTID=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].id' | sort -n | tail -1)
+LASTID=${LASTID:-0}
+
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
 
@@ -228,16 +234,9 @@ Check each anchor yourself before building the payload: you already have `git di
 
 **Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
 
-Take a high-water mark **before** the POST, so the check can tell this run's review from one an earlier run left:
+This uses the `$LASTID` captured in the posting block above, before the POST. Note `--jq` runs **per page** rather than over a merged array, which is why it emits every id and takes the maximum in the shell: `.[-1].id` would return one id per page, a multi-line value that turns the filter below into a jq syntax error on exactly the many-review PRs `--paginate` is here for.
 
-```bash
-LASTID=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].id' | sort -n | tail -1)
-LASTID=${LASTID:-0}
-```
-
-`--jq` runs **per page**, not over a merged array, so `.[-1].id` would return one id per page — a multi-line value that turns the filter below into a jq syntax error on exactly the many-review PRs `--paginate` is here for. Emit every id and take the maximum in the shell instead.
-
-Then, after an ambiguous failure:
+After an ambiguous failure:
 
 ```bash
 BODIES=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" \
