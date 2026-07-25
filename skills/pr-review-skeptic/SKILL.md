@@ -166,4 +166,4 @@ Run it as soon as the review is **posted** — or, on a previewed run, as soon a
 
 The exception is the **cross-repo** path, where `$REPO` is the temp clone and the accept path needs it for the state and force-push checks. Hold that one open until the offer resolves or the user moves on.
 
-**Done when** `git -C "$REPO" worktree list` shows no worktree at `<tmp>/pr-<num>` and `refs/prskeptic/<num>` is gone — or, cross-repo, once the clone itself is gone, which settles both.
+**Done when** `git -C "$REPO" worktree list` shows no worktree at `<tmp>/pr-<num>`, the `refs/prskeptic/<num>` refs are gone, and the `<tmp>` directory itself no longer exists — the payload files holding the review text live directly in it. Cross-repo, the clone going with it settles all three.

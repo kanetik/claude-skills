@@ -81,7 +81,7 @@ git -C "$REPO" cat-file -e "<headRefOid>^{commit}"                       # both 
 
 git -C "$REPO" worktree add "<tmp>/pr-<num>" "<headRefOid>"              # every reviewer works here
 
-echo "REPO=$REPO BASE=$BASE BASETIP=$BASETIP TMP=<tmp>"       # record these -- later shells will not have them
+echo "REPO=$REPO REMOTE=$REMOTE BASE=$BASE BASETIP=$BASETIP TMP=<tmp>"   # later shells will not have these
 ```
 
 `$BASETIP` is also what the project's config layer is read from ([`configuration.md`](configuration.md)) — `git show <baseRefName>:…` would need a local branch of that name, which a fresh clone or an integration-branch base does not have.
@@ -99,10 +99,12 @@ Teardown — `SKILL.md` stage 9, and **every other exit after staging**: a cance
 git -C "$REPO" worktree remove --force "<tmp>/pr-<num>"
 git -C "$REPO" update-ref -d "refs/prskeptic/<num>"
 git -C "$REPO" update-ref -d "refs/prskeptic/<num>-new" 2>/dev/null   # only if the head-moved check ran
-rm -rf "<tmp>/repo-<num>"                  # only where this run cloned it
+rm -rf "<tmp>"                             # the whole per-PR directory, clone and payload files included
 ```
 
-`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here. Drop the clone too where the cross-repo path created one; left behind, every run against a large upstream repo adds another few hundred megabytes the user has no reason to know about.
+`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here.
+
+Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
 ## Scope the change
 
@@ -219,21 +221,34 @@ Check each anchor yourself before building the payload: you already have `git di
 
 **Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
 
+Take a high-water mark **before** the POST, so the check can tell this run's review from one an earlier run left:
+
 ```bash
-gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].body' \
-  | grep -qF '<!-- pr-review-skeptic -->'
+LASTID=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[-1].id // 0')
 ```
 
-Marker present → it landed; report it posted. Absent → re-send.
+Then, after an ambiguous failure:
 
-`--paginate` because reviews come back oldest-first, 30 to a page, and the one you are looking for is the newest — on a PR that has been through a bot loop the first page is nothing but history. The full marker string, `grep -F`, because a body that merely mentions the skill by name is not evidence that this review posted.
+```bash
+BODIES=$(gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" \
+           --jq ".[] | select(.id > $LASTID) | .body") || BODIES="<unverifiable>"
+```
+
+- `gh` failed (`BODIES` unset by the fallback) → **the outcome is unknown; do not re-send.** Say so and ask. This check runs exactly when the network has just misbehaved, so its own call failing is likely, and reading that as "absent" re-posts the review — the thing the check exists to stop.
+- Succeeded, and a body newer than `$LASTID` contains `<!-- pr-review-skeptic -->` → it landed; report it posted.
+- Succeeded, nothing newer carries the marker → re-send.
+
+`--paginate` because reviews come back oldest-first, 30 to a page, so on a PR driven through a bot loop the newest is nowhere near the first page. The `id > $LASTID` filter because a second run over a PR this skill already reviewed — the repeat-run path the marker machinery exists for — would otherwise match run one's marker, conclude wrongly that it landed, and lose the current review silently. Match the whole marker string with `grep -F`; a body that merely names the skill is not evidence.
 
 A bad anchor is the usual cause of a 422 but not the only one: a `commit_id` the PR no longer contains is rejected the same way, and an identical retry will fail identically. Where the head moved during the run, check whether the reviewed sha is still on the branch. The new head came from `gh pr view` — a remote read — so **fetch it before testing it**, or the test errors on a commit the repo has never seen:
 
 ```bash
 git -C "$REPO" fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>-new"
+git -C "$REPO" rev-parse --verify "refs/prskeptic/<num>-new"   # the fetch above exits 0 on an empty $REMOTE
 git -C "$REPO" merge-base --is-ancestor "<headRefOid>" "refs/prskeptic/<num>-new"
 ```
+
+Verify the ref before trusting the test: `git fetch "" <refspec>` **exits 0 and creates nothing**, so a `$REMOTE` lost between shells produces a missing ref, then a 128 from `--is-ancestor`, then a post at a sha the force-pushed PR no longer contains — a 422, a retry that 422s identically, and a review lost after every reviewer has run. A missing ref means unanswered, not fast-forward.
 
 Read the exit code strictly: `0` = fast-forward, post at the reviewed sha as usual. `1` = force-push — drop `commit_id` and the inline comments, post the findings in the body against the current head, and say the review describes a commit that has since been rewritten. **Anything else is not an answer**: `128` means the sha did not resolve, and treating that as a force-push discards every anchor and posts a false claim about the PR's history under the user's name. Post at the reviewed sha, or ask. Resist posting the comments piecemeal through `/pulls/<num>/comments`, which trades one notification for N and scatters findings the body was going to carry anyway.
 
