@@ -64,9 +64,15 @@ BASETIP=$(git -C "$REPO" rev-parse FETCH_HEAD)                           # the n
 
 # An already-merged PR needs its pre-merge base. Once the head is contained in the base
 # branch -- which a merge-commit merge (GitHub's default) makes true -- merge-base returns
-# the head itself, so the diff comes back empty on a PR that plainly changed things.
+# the head itself, so the diff comes back empty on a PR that plainly changed things. The
+# empty-$MERGE guard matters: a head can be contained with no merge commit (commits that
+# reached the base another way), and `rev-parse "^1"` prints "^1" and exits 128, so BASE
+# would be the literal string and every later git call dies on "bad revision".
+MERGE=""
 if git -C "$REPO" merge-base --is-ancestor "<headRefOid>" "$BASETIP"; then
   MERGE=$(gh pr view <num> --json mergeCommit --jq '.mergeCommit.oid // empty')
+fi
+if [ -n "$MERGE" ]; then
   BASE=$(git -C "$REPO" rev-parse "$MERGE^1")                            # the base as it was pre-merge
 else
   BASE=$(git -C "$REPO" merge-base "$BASETIP" "<headRefOid>")
@@ -214,10 +220,13 @@ Check each anchor yourself before building the payload: you already have `git di
 **Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
 
 ```bash
-gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].body' | grep -q 'pr-review-skeptic'
+gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].body' \
+  | grep -qF '<!-- pr-review-skeptic -->'
 ```
 
 Marker present → it landed; report it posted. Absent → re-send.
+
+`--paginate` because reviews come back oldest-first, 30 to a page, and the one you are looking for is the newest — on a PR that has been through a bot loop the first page is nothing but history. The full marker string, `grep -F`, because a body that merely mentions the skill by name is not evidence that this review posted.
 
 A bad anchor is the usual cause of a 422 but not the only one: a `commit_id` the PR no longer contains is rejected the same way, and an identical retry will fail identically. Where the head moved during the run, check whether the reviewed sha is still on the branch. The new head came from `gh pr view` — a remote read — so **fetch it before testing it**, or the test errors on a commit the repo has never seen:
 
