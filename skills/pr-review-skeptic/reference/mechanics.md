@@ -29,10 +29,10 @@ gh pr view <num> --json number,title,headRefOid,baseRefName,state,mergedAt
 BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 
 # Clear anything an interrupted earlier run left behind. First, because the paths are
-# deterministic: a stale worktree makes `git worktree add` fail hard, and a stale clone makes
-# `gh repo clone` fail with "destination path already exists" -- either way the skill cannot
-# start on that PR again until someone finds a temp directory they were never told about.
-git -C "$REPO" worktree remove --force "<tmp>/pr-<num>" 2>/dev/null
+# deterministic: a stale clone makes `gh repo clone` fail with "destination path already
+# exists", and a stale worktree makes `git worktree add` fail hard -- either way the skill
+# cannot start on that PR again until someone finds a temp directory they were never told
+# about. The `rm -rf` plus the `worktree prune` below are what actually clear it; keep both.
 rm -rf "<tmp>/pr-<num>" "<tmp>/repo-<num>"
 
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
@@ -155,7 +155,7 @@ One review carries the summary body and every inline comment. Build a JSON paylo
 
 Finding bodies are free prose quoting the code under review — quotes, backslashes, fenced snippets. **Write every body to a file, and let a JSON encoder read it from there.** Two separate hazards close this way: one hand-written `"` makes the payload malformed and this call is all-or-nothing, so the summary and every other comment fail with it; and a body pasted into a shell assignment has its backticks and `$(…)` evaluated by the shell before `jq` ever sees them, which both corrupts the quoted code and executes text lifted out of the repository being reviewed.
 
-So: write `<tmp>/body.md` and one `<tmp>/c-<n>.md` per inline comment with your file-writing tool (or a quoted heredoc — `<<'EOF'`, where the quoted delimiter is what stops the shell evaluating the contents), then:
+So: write `<tmp>/body.md` and one `<tmp>/c-<n>.md` per inline comment with a **quoted heredoc** — `<<'EOF'`, where the quoted delimiter is what stops the shell evaluating the contents — then:
 
 ```bash
 : > "<tmp>/comments.jsonl"      # truncate -- a retry must not re-append the first attempt's comments
@@ -170,6 +170,8 @@ jq -n --arg sha "<headRefOid>" --rawfile body "<tmp>/body.md" --slurpfile c "<tm
 
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
+
+The heredoc rather than a file-writing tool because everything in this block has to agree on one path convention. Git Bash MSYS-converts a `/tmp/…` argument to the native directory before `jq` and `gh` see it; a file-writing tool takes the string literally and resolves the leading `/` against the current drive, so bodies written to `C:\tmp\…` are invisible to a `jq --rawfile` reading `C:\Users\…\AppData\Local\Temp\…`. `review.json` then never gets built, at the last step, after every reviewer has run. Use a file-writing tool here only with the native (`cygpath -w`) path.
 
 A clean verdict posts through this same path with no inline comments: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created — on exactly the outcome the skill most wants to report.
 

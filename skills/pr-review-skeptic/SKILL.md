@@ -100,7 +100,7 @@ Each reviewer returns `FINDING` and `SOUND` blocks. A reviewer that returns neit
 
 Collect the blocks. Two findings are the same when they name the same defect in the same place, whatever the wording; keep the clearest statement of it, at the highest severity either gave, and note that more than one reviewer found it. Independent agreement is signal — carry it into the report.
 
-Keep the `SOUND` blocks. They are what lets the summary say what was checked rather than only what was wrong.
+Keep the `SOUND` blocks. They feed the terminal report at stage 8 — what the reviewers actually verified, which is the difference between a clean result and a quiet one. They do not go in the posted body; a PR review is for what needs attention.
 
 ## 6. Cross-check against history
 
@@ -148,4 +148,4 @@ The verdict belongs in the body, where a person reads it and decides. Report cov
 
 ## 8. Report
 
-One short block to the user: the verdict, counts by severity, the PR URL, anything the run could not cover. Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
+One short block to the user: the verdict, counts by severity, the PR URL, what the reviewers confirmed sound, and anything the run could not cover. Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands — and taking that offer up **re-enters the checks at the top of "The review"**: state and head sha are re-read before anything is sent, because a preview can sit for an hour while the PR is merged or force-pushed out from under it. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
