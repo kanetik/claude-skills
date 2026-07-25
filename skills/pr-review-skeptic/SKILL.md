@@ -74,13 +74,13 @@ When the five are empty, draft answers from the PR repo's `README.md` / `CLAUDE.
 
 **Done when** all five project keys hold a confirmed value. A reviewer that does not know which data is irreplaceable cannot rank anything it finds.
 
-Where the run was started by another skill or agent there is nobody to confirm with, so an empty project layer stops the run: say the config is required and hand back what is missing. Reviewers steered by five invented project facts would produce a review whose independence is exactly the thing being claimed for it.
+Where the run was started by another skill or agent there is nobody to confirm with, so an empty project layer stops the run: tear down (stage 9), say the config is required, and hand back what is missing. Reviewers steered by five invented project facts would produce a review whose independence is exactly the thing being claimed for it.
 
 ## 3. Scope and partition
 
 Collect the merge-base, the head sha, CI status, and the changed file list ([`reference/mechanics.md`](reference/mechanics.md)). Take the file list from `git diff --name-status` in the staged worktree, not from `gh pr view --json files`, which returns at most 100 files and says nothing when it truncates — a partition built from a truncated list reviews part of the change and reports full coverage.
 
-**An empty file list is never just "nothing to review."** An empty partition satisfies every condition below vacuously, produces no findings, and ends in a posted "no blocking findings", so separate the two ways it happens before going on. Both shas resolve and `git -C "$REPO" rev-list --count "$BASE..<headRefOid>"` is non-zero → the PR genuinely has no net change (an empty commit, or a change and its own revert); say that and stop. Anything else → the diff ran against the wrong revisions; say that and stop. The difference matters to the user, who otherwise goes hunting a revision bug that isn't there.
+**An empty file list is never just "nothing to review."** An empty partition satisfies every condition below vacuously, produces no findings, and ends in a posted "no blocking findings", so separate the two ways it happens before going on. Both shas resolve and `git -C "$REPO" rev-list --count "$BASE..<headRefOid>"` is non-zero → the PR genuinely has no net change (an empty commit, or a change and its own revert); say that and stop. Anything else → the diff ran against the wrong revisions; say that and stop. Either way, tear down first (stage 9) — staging has already happened, and a stop is not a reason to leave a worktree and a ref in the user's repository. The difference matters to the user, who otherwise goes hunting a revision bug that isn't there.
 
 Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
 
@@ -160,7 +160,7 @@ Where the review was posted, say the findings are on the PR; where it was previe
 
 ## 9. Tear down
 
-Remove the staged worktree, delete `refs/prskeptic/<num>`, and drop the temp clone where the run made one ([`reference/mechanics.md`](reference/mechanics.md)). None of it is anything to keep: left behind, the ref pins the PR's objects alive and the worktree shows up in the user's `git worktree list` and `git status` forever, at paths they were never told.
+Remove the staged worktree, delete `refs/prskeptic/<num>`, and drop the temp clone where the run made one ([`reference/mechanics.md`](reference/mechanics.md)). **Every exit after stage 1 comes through here** — a posted review, a shown preview, and the deliberate stops at stages 2 and 3 alike. None of it is anything to keep: left behind, the ref pins the PR's objects alive and the worktree shows up in the user's `git worktree list` and `git status` forever, at paths they were never told.
 
 Run it as soon as the review is **posted** — or, on a previewed run, as soon as the preview is shown. Do not hold it open for an answer that may never come: the phrasings that preview are the ones this skill most often arrives on, a user with their answer usually closes the session rather than replying, and what is left behind is a ref pinning the PR's objects and a worktree registration in the user's own repository, at paths they were never told and in a `refs/prskeptic/*` namespace nothing surfaces. Accepting the offer later re-stages through stage 1, which costs one fetch.
 

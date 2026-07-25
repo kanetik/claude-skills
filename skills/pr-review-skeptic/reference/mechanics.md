@@ -87,7 +87,7 @@ The same directory needs **two path forms**, and they are not interchangeable.
 
 The leading `+` on the refspec earns its place on the second run: a force-push — routine on a PR that has just been handed findings — makes an unforced fetch fail non-fast-forward and leaves the local ref on the superseded head.
 
-Teardown — `SKILL.md` stage 9, and **also whenever a run ends badly.** A cancelled run, a failed subagent, or an error at the posting step otherwise leaves the worktree, the ref, and possibly a several-hundred-megabyte clone on disk.
+Teardown — `SKILL.md` stage 9, and **every other exit after staging**: a cancelled run, a failed subagent, an error at the posting step, and the deliberate stops at stages 2 and 3 alike. Once `worktree add` has run, the only orderly ways out are through here.
 
 ```bash
 git -C "$REPO" worktree remove --force "<tmp>/pr-<num>"
@@ -211,7 +211,15 @@ Check each anchor yourself before building the payload: you already have `git di
 
 **Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search.
 
-A bad anchor is the usual cause but not the only one: a `commit_id` the PR no longer contains is rejected the same way, and an identical retry will fail identically. Where the head moved during the run, check whether the reviewed sha is still on the branch. The new head came from `gh pr view` — a remote read — so **fetch it before testing it**, or the test errors on a commit the repo has never seen:
+**Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
+
+```bash
+gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].body' | grep -q 'pr-review-skeptic'
+```
+
+Marker present → it landed; report it posted. Absent → re-send.
+
+A bad anchor is the usual cause of a 422 but not the only one: a `commit_id` the PR no longer contains is rejected the same way, and an identical retry will fail identically. Where the head moved during the run, check whether the reviewed sha is still on the branch. The new head came from `gh pr view` — a remote read — so **fetch it before testing it**, or the test errors on a commit the repo has never seen:
 
 ```bash
 git -C "$REPO" fetch "$REMOTE" "+pull/<num>/head:refs/prskeptic/<num>-new"
