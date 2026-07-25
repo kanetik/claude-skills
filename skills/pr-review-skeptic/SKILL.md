@@ -60,7 +60,7 @@ Reviewers read the code at the PR's head, and several of them read it at once, s
 
 1. Resolve the PR's own repository. For a cross-repo PR that isn't cloned locally, `gh repo clone` it into the temp directory first — same-named files in the repo you happen to be standing in are not the code under review.
 2. Fetch the head from that repository and add a temporary `git worktree` at it.
-3. Remove the worktree when the run ends.
+3. The worktree comes down at stage 9.
 
 Your working copy is then untouched by the review, dirty or not, and the reviewers get a tree whose contents are exactly the PR's.
 
@@ -80,7 +80,7 @@ Where the run was started by another skill or agent there is nobody to confirm w
 
 Collect the merge-base, the head sha, CI status, and the changed file list ([`reference/mechanics.md`](reference/mechanics.md)). Take the file list from `git diff --name-status` in the staged worktree, not from `gh pr view --json files`, which returns at most 100 files and says nothing when it truncates — a partition built from a truncated list reviews part of the change and reports full coverage.
 
-**A PR with commits cannot have an empty file list.** Zero entries means the diff ran against the wrong revisions, not that there is nothing to review — and an empty partition satisfies every condition below vacuously, produces no findings, and ends in a posted "no blocking findings". Treat it as an error and stop.
+**An empty file list is never just "nothing to review."** An empty partition satisfies every condition below vacuously, produces no findings, and ends in a posted "no blocking findings", so separate the two ways it happens before going on. Both shas resolve and `git rev-list --count "$BASE..<headRefOid>"` is non-zero → the PR genuinely has no net change (an empty commit, or a change and its own revert); say that and stop. Anything else → the diff ran against the wrong revisions; say that and stop. The difference matters to the user, who otherwise goes hunting a revision bug that isn't there.
 
 Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
 
@@ -121,7 +121,11 @@ None → the change is good to go, and the verdict says so **plainly only when t
 
 ### Does this run post at all?
 
-Settle this before drafting anything, because posting notifies every collaborator on the PR and cannot be unsent. **A run posts when it was told to post** — the user invoked `/pr-review-skeptic`, or asked for the review on the PR ("post a review", "review it on the PR", "leave comments on #42").
+Settle this before drafting anything, because posting notifies every collaborator on the PR and cannot be unsent.
+
+**Nothing posts unless something was reviewed.** Where no unit returned a `FINDING` or `SOUND` block — the subagent tool unavailable, rate-limited, or erroring, which hits every unit at once because it is a whole-session condition — the run has no review in it. Say so in the terminal and offer a re-run. Posting here would put a review on the user's PR, under their account, notifying everyone, containing nothing; "0 of 4 units reviewed" in the coverage line does not redeem that.
+
+Otherwise: **a run posts when it was told to post** — the user invoked `/pr-review-skeptic`, or asked for the review on the PR ("post a review", "review it on the PR", "leave comments on #42").
 
 Everything else is answered in the terminal, the drafted review shown, with an offer to post it. That includes the phrasings this skill most often arrives on — "second opinion on #42", "is this ready to merge?", "take a look at this PR" — which read as a question about the change rather than an instruction to publish under the user's name.
 
@@ -148,4 +152,14 @@ The verdict belongs in the body, where a person reads it and decides. Report cov
 
 ## 8. Report
 
-One short block to the user: the verdict, counts by severity, the PR URL, what the reviewers confirmed sound, and anything the run could not cover. Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands — and taking that offer up **re-enters the checks at the top of "The review"**: state and head sha are re-read before anything is sent, because a preview can sit for an hour while the PR is merged or force-pushed out from under it. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
+One short block to the user: the verdict, counts by severity, the PR URL, what the reviewers confirmed sound, and anything the run could not cover.
+
+Where the review was posted, say the findings are on the PR; where it was previewed, they are in the draft already shown and the offer to post stands — and taking that offer up **re-enters the checks at the top of "The review"**: state and head sha are re-read before anything is sent, because a preview can sit for an hour while the PR is merged or force-pushed out from under it. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
+
+## 9. Tear down
+
+Remove the staged worktree, delete `refs/prskeptic/<num>`, and drop the temp clone where the run made one ([`reference/mechanics.md`](reference/mechanics.md)). None of it is anything to keep: left behind, the ref pins the PR's objects alive and the worktree shows up in the user's `git worktree list` and `git status` forever, at paths they were never told.
+
+Run this once the review is **posted**, or once the user declines the offer or moves on to something else. A live offer holds it open — accepting it needs `$REPO` for the state and force-push checks, and on the cross-repo path `$REPO` is the temp clone. An offer nobody ever answers is not a leak: the next run on that PR clears these same paths before it stages anything (stage 1).
+
+**Done when** `git -C "$REPO" worktree list` shows no `pr-skeptic` entry and `refs/prskeptic/<num>` is gone.

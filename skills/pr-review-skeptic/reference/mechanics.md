@@ -78,7 +78,7 @@ The same directory needs **two path forms**, and they are not interchangeable.
 
 The leading `+` on the refspec earns its place on the second run: a force-push — routine on a PR that has just been handed findings — makes an unforced fetch fail non-fast-forward and leaves the local ref on the superseded head.
 
-Teardown when the run ends — **including when it ends badly.** A cancelled run, a failed subagent, or an error at the posting step leaves the worktree, the ref, and possibly a several-hundred-megabyte clone on disk, and the next run on that PR then fails at its first step for a reason the user cannot see.
+Teardown — `SKILL.md` stage 9, and **also whenever a run ends badly.** A cancelled run, a failed subagent, or an error at the posting step otherwise leaves the worktree, the ref, and possibly a several-hundred-megabyte clone on disk.
 
 ```bash
 git -C "$REPO" worktree remove --force "<tmp>/pr-<num>"
