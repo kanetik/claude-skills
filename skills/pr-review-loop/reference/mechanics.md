@@ -182,7 +182,7 @@ Two of that skill's rules matter to you as caller and are not yours to override:
 
 ### Reading what comes back
 
-The returned review carries a **verdict**, **blocking findings** (`CRITICAL`/`HIGH` by default, each with location, defect, consequence, fix), **non-blocking observations**, a **coverage** line, and — where the PR had prior review activity — a bucket per finding (`new` / `unfixed` / `re-raised` / `settled`). Triage: `reference/evaluation.md` → "Upfront gate triage".
+The returned review carries a **verdict**, **blocking findings** (`CRITICAL`/`HIGH` by default, each with location, defect, consequence, fix), **non-blocking observations**, a **coverage** line, and — where the PR had prior review activity — a bucket per finding (`new` / `unfixed` / `re-raised` / `settled`). Triage: `reference/evaluation.md` → "Gate triage".
 
 Failure modes, and what each means:
 

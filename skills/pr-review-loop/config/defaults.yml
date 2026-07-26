@@ -23,8 +23,11 @@ loop_reviewers: [copilot]       # bots re-requested on every push during the loo
                                 # request_on_pr_open but NOT here is "first-pass only": a structural role
                                 # (requested once, out-of-loop, not necessarily adversarial), its findings
                                 # triaged like any other, then never re-engaged. Mirrors request_on_pr_open.
-                                # `skeptic` does not belong here -- it is not a GitHub reviewer and cannot
-                                # be re-requested by a push; it gates, it doesn't drive convergence.
+                                # `skeptic` belongs in NEITHER this key nor request_on_pr_open above -- it
+                                # is not a GitHub reviewer, so it cannot be requested on PR open or
+                                # re-requested by a push; it gates, it doesn't drive convergence. The two
+                                # gate keys are the only ones that accept it.
+
 final_gate_reviewers: [skeptic] # after the loop converges, run these ONCE more as a final check; if they
                                 # raise anything, fix it and re-converge loop_reviewers. Empty = no check.
 auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a Ruleset auto-requests Copilot or similar

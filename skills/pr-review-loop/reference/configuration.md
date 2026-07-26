@@ -2,7 +2,7 @@
 
 The loop is governed by seven config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
 
-The two gate keys accept **either** a bot name **or** `skeptic` (the sibling `pr-review-skeptic` skill, invoked locally — no request, no wait, no PR trace). The other two lists accept bots only: `skeptic` is not a GitHub reviewer, so it cannot be requested on PR open or re-requested by a push, and listing it there is a config error — say so and treat it as a gate entry. Mechanism differences: SKILL.md "Two kinds of gate reviewer" and `reference/mechanics.md`.
+The two gate keys accept **either** a bot name **or** `skeptic` (the sibling `pr-review-skeptic` skill, invoked locally — no request, no wait, no PR trace). The other two lists accept bots only: `skeptic` is not a GitHub reviewer, so it cannot be requested on PR open or re-requested by a push. Listing it in `request_on_pr_open` or `loop_reviewers` is a config error — **ignore it in that key** and tell the user, naming the key. Don't silently promote it into a gate: which gate was meant isn't inferable, and a `skeptic` in `loop_reviewers` may equally be a leftover from a config that no longer wants the gates at all. Where a gate key already lists it, that gate runs regardless; the error is only about the key it can't work in. Mechanism differences: SKILL.md "Two kinds of gate reviewer" and `reference/mechanics.md`.
 
 ## Config keys
 
