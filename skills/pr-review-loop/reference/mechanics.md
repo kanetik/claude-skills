@@ -161,9 +161,11 @@ Run once at kickoff, before Phase 0, whenever `skeptic` is in a non-empty gate l
 2. **Are its five project keys filled?** They come from that skill's own config, merged low → high: its bundled `config/defaults.yml` (all five empty by design) < `~/.claude/pr-review-skeptic.config.yml` < the **PR repo's** `.github/pr-review-skeptic.config.yml`, read from the PR's **base** ref:
 
 ```bash
-gh api "repos/<owner>/<repo>/contents/.github/pr-review-skeptic.config.yml?ref=<base-branch>" \
-  --jq '.content' 2>/dev/null | base64 -d
+gh api -H "Accept: application/vnd.github.raw" \
+  "repos/<owner>/<repo>/contents/.github/pr-review-skeptic.config.yml?ref=<base-branch>" 2>/dev/null
 ```
+
+The raw `Accept` header returns the file's bytes directly. Don't take the default JSON response and decode `.content` yourself — that needs a `base64` whose decode flag differs across platforms (`-d` GNU, `-D` BSD), for a step that has a portable form.
 
 Non-empty `project`, `users`, `irreplaceable_data`, `production_status`, `architecture` after the merge → good to go. Any empty → pause.
 
