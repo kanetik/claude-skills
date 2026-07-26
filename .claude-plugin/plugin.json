@@ -4,6 +4,7 @@
     "./skills/translate-strings",
     "./skills/translate-content",
     "./skills/whats-new",
-    "./skills/pr-review-loop"
+    "./skills/pr-review-loop",
+    "./skills/pr-review-skeptic"
   ]
 }

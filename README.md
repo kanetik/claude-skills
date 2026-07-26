@@ -12,6 +12,7 @@ The skills here are deliberately small and single-purpose. Each one does **one j
 | [`/translate-content`](skills/translate-content/SKILL.md) | Translate prose — Play Store release notes, app descriptions, FAQs, marketing copy. Reads a per-repo config for output layout, target locales, and char limits. Handles cross-sentence consistency, tone, and the 500-char Play Store limit. |
 | [`/whats-new`](skills/whats-new/SKILL.md) | Author Play Store "What's New" release notes from your commit log (English only). Pulls commits since the last release tag, drafts bullets within Play's 500-char limit, waits for approval, then writes the source-locale file and hands off to `/translate-content` for the other locales. |
 | [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop on a repo's open PR(s): request AI reviewers (Copilot, Codex, any bot that posts), wait for their reviews, evaluate each thread under a weighted project/PR/item judgement, then fix, push back, or file follow-up issues, and repeat until every tracked bot is satisfied. Self-contained — bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
+| [`/pr-review-skeptic`](skills/pr-review-skeptic/SKILL.md) | Get an honest second opinion on a PR from reviewers with no stake in it. Blind subagents read the changes at HEAD knowing the project but nothing about why the change exists, treating comments and docs as claims to check against the code. Large PRs are partitioned across reviewers plus a pass on how the pieces compose. Only afterwards does the PR's own review history filter what they found — settled decisions drop out, a defect raised and patched before and still present comes back a severity higher, and a concern that was dismissed once and independently found again comes back flagged with the thread that dismissed it. Produces inline findings plus a go/no-go verdict: posted to the PR when you invoke `/pr-review-skeptic` or ask for it to be posted, shown in the terminal first for question-shaped asks like "is this ready to merge?". |
 
 ## Typical workflow
 
@@ -28,6 +29,10 @@ Forgot to translate before merge? *"translate the strings from the last PR"* —
 Cutting a release? `/whats-new` drafts the English release notes from your commits, you approve, then `/translate-content` propagates to the other locales.
 
 Just opened a PR? `/pr-review-loop` takes it from there — it requests the AI reviewers, waits for them, works through their feedback (fixing, pushing back, or filing follow-ups), and loops until they're satisfied. Unlike the translation skills, this one *is* about git/PR work, so it drives those operations itself rather than leaving them to you.
+
+Want a colder read on it? `/pr-review-skeptic` reviews the PR with fresh reviewers who had no hand in writing it and are told nothing about why the change exists. It works well at either end of a bot review loop — as a gate before, catching an approach that's wrong from the start, or as the last check after, when the code has accumulated a day's worth of confident comments explaining why it's fine. The two skills know nothing about each other; running both is your call, not theirs.
+
+One wrinkle if you run it *first*: the review it posts comes from your own account, and `/pr-review-loop` reads human review participation as a sign the PR is already mid-flight — so it will skip its own upfront gate. That's usually what you want (you just ran a better one), but if you also wanted the loop's gate, say so when you start the loop rather than assuming both ran.
 
 ## Installation
 
@@ -54,17 +59,21 @@ Then symlink each skill into your `~/.claude/skills/` directory.
 **macOS / Linux:**
 
 ```bash
-ln -s ~/Projects/claude-skills/skills/translate-strings  ~/.claude/skills/translate-strings
-ln -s ~/Projects/claude-skills/skills/translate-content  ~/.claude/skills/translate-content
-ln -s ~/Projects/claude-skills/skills/whats-new          ~/.claude/skills/whats-new
+ln -s ~/Projects/claude-skills/skills/translate-strings   ~/.claude/skills/translate-strings
+ln -s ~/Projects/claude-skills/skills/translate-content   ~/.claude/skills/translate-content
+ln -s ~/Projects/claude-skills/skills/whats-new           ~/.claude/skills/whats-new
+ln -s ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/pr-review-loop
+ln -s ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/pr-review-skeptic
 ```
 
 **Windows (directory junctions, no admin required):**
 
 ```cmd
-mklink /J "%USERPROFILE%\.claude\skills\translate-strings" "%USERPROFILE%\Projects\claude-skills\skills\translate-strings"
-mklink /J "%USERPROFILE%\.claude\skills\translate-content" "%USERPROFILE%\Projects\claude-skills\skills\translate-content"
-mklink /J "%USERPROFILE%\.claude\skills\whats-new"         "%USERPROFILE%\Projects\claude-skills\skills\whats-new"
+mklink /J "%USERPROFILE%\.claude\skills\translate-strings"  "%USERPROFILE%\Projects\claude-skills\skills\translate-strings"
+mklink /J "%USERPROFILE%\.claude\skills\translate-content"  "%USERPROFILE%\Projects\claude-skills\skills\translate-content"
+mklink /J "%USERPROFILE%\.claude\skills\whats-new"          "%USERPROFILE%\Projects\claude-skills\skills\whats-new"
+mklink /J "%USERPROFILE%\.claude\skills\pr-review-loop"     "%USERPROFILE%\Projects\claude-skills\skills\pr-review-loop"
+mklink /J "%USERPROFILE%\.claude\skills\pr-review-skeptic"  "%USERPROFILE%\Projects\claude-skills\skills\pr-review-skeptic"
 ```
 
 ### Option C — plain copy
@@ -72,9 +81,11 @@ mklink /J "%USERPROFILE%\.claude\skills\whats-new"         "%USERPROFILE%\Projec
 If you don't want the link / want to fork-and-modify locally without syncing back:
 
 ```bash
-cp -r ~/Projects/claude-skills/skills/translate-strings  ~/.claude/skills/
-cp -r ~/Projects/claude-skills/skills/translate-content  ~/.claude/skills/
-cp -r ~/Projects/claude-skills/skills/whats-new          ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/translate-strings   ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/translate-content   ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/whats-new           ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/
 ```
 
 ## Per-project setup
@@ -146,6 +157,33 @@ You can also skip the config entirely and drive `/translate-content` ad-hoc: *"t
 ### One file or two?
 
 **Two.** `/whats-new` and `/translate-content` read separate config files with non-overlapping keys — `/whats-new` never reads `source_path`/`output_pattern`, and `/translate-content` never reads `since_ref_rule`. Keep them as two files. (`/translate-content` will fall back to reading `whats-new.config.md` if that's your project's convention, but it only picks up the keys it recognizes, so a dedicated `translate-content.config.md` is clearer.) When a config is missing, the skill asks for the values and offers to write the file for you.
+
+### For `/pr-review-skeptic`
+
+Optional, but worth two minutes: add `.github/pr-review-skeptic.config.yml` to the repo you review. Without it the skill asks on first run (drafting answers from your README/CLAUDE.md for you to confirm) and offers to write the file.
+
+| Key | Required | Purpose |
+|---|---|---|
+| `project` | yes | What the application is, in a sentence |
+| `users` | yes | Who uses it, and roughly how many |
+| `irreplaceable_data` | yes | What can't be recovered if a change destroys it — the key that does the most work, since it turns "data loss" into a named thing the reviewer goes hunting for |
+| `production_status` | yes | Shipping, staged, pre-release, internal — sets what a regression costs |
+| `architecture` | yes | The shape of the system, in two sentences |
+| `priorities` | no | Blast-radius order in your own domain's words (has a sensible seven-rung default) |
+| `files_per_unit` | no | Soft target when splitting a large PR across reviewers (default 12) |
+| `max_reviewers` | no | Cap for one PR (default 8); past it, units grow rather than files going unreviewed |
+| `blocking_severities` | no | Which severities post inline and hold the verdict (default `[CRITICAL, HIGH]`) |
+| `confirm_before_posting` | no | `true` to always preview the review before it's posted (default `false`) |
+
+```yaml
+project: "An offline-first note-taking app for Android."
+users: "Consumers on phones and tablets; a few thousand daily."
+irreplaceable_data: "User-authored note bodies. Everything else re-syncs from the server."
+production_status: "Shipping on Play, staged rollout."
+architecture: "Compose UI over a Room database, with a WorkManager sync worker reconciling against a REST backend."
+```
+
+Nothing about any individual change belongs in this file — it describes the project, and it's the only thing the reviewers are allowed to take on faith.
 
 ## Design principles
 
