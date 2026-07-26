@@ -30,14 +30,23 @@ For those, a fix written against the *finding* rather than the *invariant* close
 - **Ask what already does this.** Before writing a predicate, a dispatcher, a null check — look for the seam that exists. Re-implementing a rule the codebase already encodes (a `Ref.isEmpty`, a project `ioDispatcher`) means the copy drifts from the original the first time either changes. A hand-rolled duplicate of an existing rule is a defect with a delay fuse.
 - **Check the fix didn't weaken the tests.** A test edited while fixing a finding can end up asserting less than it did before, and it still passes — that is what makes it invisible. If a guard is added, disable it and confirm its test fails; if a fixture is changed, confirm the assertion still depends on what it claims to prove.
 
-## Upfront gate triage (SKILL.md Phase 0)
+## Gate triage (SKILL.md Phase 0 and step 10)
 
 The gate reuses everything above — same surfaces, lenses, courses — but adds one decision, because its job is to decide *what the gate does next*. Read the whole verdict together. A clean verdict, or one whose findings all resolve **without a code change** (`Create-issue-and-close` / `Reject-with-explanation`), **satisfies the gate** — deferred findings need no re-review. For actionable findings, sort into:
 
-- **Actionable-clear.** Confident there's a real issue *and* what the correct change is — some `Fix-*` you'd stand behind. **Size is irrelevant** (one-line rename = structural redesign here). → Apply, re-request the gate bot(s), and **repeat to clean**: the gate's re-review sub-loop runs until every gate bot signs off on what you changed.
+- **Actionable-clear.** Confident there's a real issue *and* what the correct change is — some `Fix-*` you'd stand behind. **Size is irrelevant** (one-line rename = structural redesign here). → Apply, re-engage the gate reviewer(s) by their own mechanism (request a bot, re-invoke skeptic), and **repeat to clean**: the gate's re-review sub-loop runs until every gate reviewer signs off on what you changed.
 - **Actionable-unclear.** A genuine judgement call: multiple viable approaches, the concern is real but the fix is contestable, or it's security/auth/data-model/API-contract-adjacent (the `Ask-user` default, surfaced at gate time). → Pause and ask the user before the loop runs; their answer may turn it into a clear fix (then re-review to clean) or a reject.
 
-The split is **certainty of the path, not size.** When a verdict mixes findings, the most conservative present outcome wins: any actionable-unclear routes the whole gate to `Ask-user` (you may still apply the unambiguous fixes in the same push), and the gate isn't satisfied until both the unclear question is settled and the bot has re-reviewed the result clean.
+The split is **certainty of the path, not size.** When a verdict mixes findings, the most conservative present outcome wins: any actionable-unclear routes the whole gate to `Ask-user` (you may still apply the unambiguous fixes in the same push), and the gate isn't satisfied until both the unclear question is settled and the reviewer has re-reviewed the result clean.
+
+### Triaging a skeptic verdict
+
+Same three outcomes, reached from a returned review rather than from PR surfaces. Four things about its shape change how you read it:
+
+- **Severity decides what holds the gate, not what deserves thought.** Blocking findings (`CRITICAL`/`HIGH` by default) are the gate: every one must end at fixed, `Create-issue-and-close`, or `Reject-with-explanation` before the gate is satisfied. Non-blocking observations are still triaged under the same lenses — take the cheap correct ones now, defer the rest — but they don't hold the gate open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your lenses may rate an item higher than it did.
+- **A reviewer's `Reject-with-explanation` goes nowhere.** There is no thread to reply on and no bot to persuade, so a rejection is a note to yourself and to the summary — say which findings you rejected and why in what you report to the user, or the reasoning is lost the moment the run ends. This is the one course whose usual mechanics don't exist here.
+- **The buckets are evidence, and `unfixed` is the loud one.** A finding bucketed `unfixed` — raised earlier in this PR's history, touched by a fix round, still present — is the loop's characteristic failure caught red-handed, and it arrives already a severity higher. Treat it as a signal that the earlier fix was written against the scenario rather than the invariant ("Writing the fix without causing the next finding", above) and re-open that question, rather than patching the new instance. `settled` findings are not yours to re-litigate: a prior thread weighed that consequence and accepted it, so they neither hold the gate nor need a fix — but a *blocking* one still gets named to the user, because somebody decided to live with a CRITICAL and that decision should stay visible.
+- **`Ask-user` is unchanged and still the default** for security/auth, scope boundaries and architectural calls. The finding arriving with a confident severity attached is not extra authority to act unilaterally.
 
 ## Issue creation (when choosing `Create-issue-and-close`)
 
