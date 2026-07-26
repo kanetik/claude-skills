@@ -8,8 +8,8 @@ description: >-
   by two deep-review gates that must clear before and after the loop — by default
   the pr-review-skeptic skill, run locally rather than requested on the PR.
   Self-contained and self-paces its polling waits. Auto-invoke immediately and
-  WITHOUT asking right after a PR is created (gh pr create, a commit-push-PR flow,
-  or equivalent), and when the user says "start a PR review", "respond to PR
+  WITHOUT asking permission right after a PR is created (gh pr create, a
+  commit-push-PR flow, or equivalent), and when the user says "start a PR review", "respond to PR
   comments", "handle PR feedback", says they just opened a PR, or invokes
   /pr-review-loop. Accepts modifiers like "no iteration cap", "only copilot",
   "skip the gates", or a specific PR number / URL / cross-repo reference.
