@@ -29,7 +29,7 @@ allowed-tools:
 
 Drives AI code reviewers to convergence on a pull request: request → wait → evaluate → fix/answer → push → repeat, until every **loop reviewer** is happy. Two out-of-loop gates bookend it: an **upfront gate** (Phase 0) that vets the approach before the loop and runs to completion (review → fix → re-review until it signs off), and a **final check** (step 10) after convergence, on the code the fix rounds produced. Both default to the sibling **pr-review-skeptic** skill; either can be emptied or pointed at a bot instead. Convergence is gauged on `loop_reviewers` only; other tracked bots are triaged but don't gate the loop.
 
-The three phases in order: **skeptic gate → Copilot loop → skeptic check**.
+The three phases in order, **as shipped**: skeptic gate → Copilot loop → skeptic check. Every part of that is config: either gate can be emptied or pointed at a bot, and `loop_reviewers` decides who drives the middle.
 
 This skill is self-contained. The files below live in this skill's own directory, beside this `SKILL.md` — read them from there (paths are relative to this file, not the working directory). Load on demand:
 

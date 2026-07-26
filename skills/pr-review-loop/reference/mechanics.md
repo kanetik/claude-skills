@@ -157,7 +157,7 @@ gh api graphql -f id="<node_id>" -f query='mutation($id:ID!){ deleteIssueComment
 
 Run once at kickoff, before Phase 0, whenever `skeptic` is in a non-empty gate list.
 
-1. **Is the skill installed?** Look for a `pr-review-skeptic` entry in the available skills, or the folder on disk (`~/.claude/skills/pr-review-skeptic/SKILL.md`, or a plugin's copy). Absent → pause; the gate can't run.
+1. **Is the skill installed?** A `pr-review-skeptic` entry in the skills available to you is the answer — that listing covers every install layout (user-level, project-level, plugin bundle) without your having to know which one this environment uses. Don't go looking for it at a fixed path. Absent from the listing → pause; the gate can't run.
 2. **Are its five project keys filled?** They come from that skill's own config, merged low → high: its bundled `config/defaults.yml` (all five empty by design) < `~/.claude/pr-review-skeptic.config.yml` < the **PR repo's** `.github/pr-review-skeptic.config.yml`, read from the PR's **base** ref:
 
 ```bash
