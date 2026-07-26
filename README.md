@@ -11,7 +11,7 @@ The skills here are deliberately small and single-purpose. Each one does **one j
 | [`/translate-strings`](skills/translate-strings/SKILL.md) | Translate Android `values/strings.xml` keys into every sibling `values-{locale}/strings.xml`. Preserves placeholders, escapes, plurals, HTML, `translatable="false"`. Always writes locale files alphabetized by key. Supports `--add <locale>` for onboarding and `--retranslate <key>` to force a fresh pass. |
 | [`/translate-content`](skills/translate-content/SKILL.md) | Translate prose — Play Store release notes, app descriptions, FAQs, marketing copy. Reads a per-repo config for output layout, target locales, and char limits. Handles cross-sentence consistency, tone, and the 500-char Play Store limit. |
 | [`/whats-new`](skills/whats-new/SKILL.md) | Author Play Store "What's New" release notes from your commit log (English only). Pulls commits since the last release tag, drafts bullets within Play's 500-char limit, waits for approval, then writes the source-locale file and hands off to `/translate-content` for the other locales. |
-| [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop on a repo's open PR(s): request AI reviewers (Copilot, Codex, any bot that posts), wait for their reviews, evaluate each thread under a weighted project/PR/item judgement, then fix, push back, or file follow-up issues, and repeat until every tracked bot is satisfied. Self-contained — bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
+| [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop on a repo's open PR(s): request AI reviewers (Copilot, Codex, any bot that posts), wait for their reviews, evaluate each thread under a weighted project/PR/item judgement, then fix, push back, or file follow-up issues, and repeat until every tracked bot is satisfied. Bookended by two deep-review gates that must clear before the loop starts and after it converges — by default `/pr-review-skeptic`, run locally rather than requested on the PR. Bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
 | [`/pr-review-skeptic`](skills/pr-review-skeptic/SKILL.md) | Get an honest second opinion on a PR from reviewers with no stake in it. Blind subagents read the changes at HEAD knowing the project but nothing about why the change exists, treating comments and docs as claims to check against the code. Large PRs are partitioned across reviewers plus a pass on how the pieces compose. Only afterwards does the PR's own review history filter what they found — settled decisions drop out, a defect raised and patched before and still present comes back a severity higher, and a concern that was dismissed once and independently found again comes back flagged with the thread that dismissed it. Produces inline findings plus a go/no-go verdict: posted to the PR when you invoke `/pr-review-skeptic` or ask for it to be posted, shown in the terminal first for question-shaped asks like "is this ready to merge?". |
 
 ## Typical workflow
@@ -28,11 +28,13 @@ Forgot to translate before merge? *"translate the strings from the last PR"* —
 
 Cutting a release? `/whats-new` drafts the English release notes from your commits, you approve, then `/translate-content` propagates to the other locales.
 
-Just opened a PR? `/pr-review-loop` takes it from there — it requests the AI reviewers, waits for them, works through their feedback (fixing, pushing back, or filing follow-ups), and loops until they're satisfied. Unlike the translation skills, this one *is* about git/PR work, so it drives those operations itself rather than leaving them to you.
+Just opened a PR? `/pr-review-loop` takes it from there, in three phases: a deep review before anything else, then the bot loop — requesting reviewers, waiting, working through their feedback (fixing, pushing back, or filing follow-ups) until they're satisfied — then the same deep review again over what the fix rounds produced. Unlike the translation skills, this one *is* about git/PR work, so it drives those operations itself rather than leaving them to you.
 
-Want a colder read on it? `/pr-review-skeptic` reviews the PR with fresh reviewers who had no hand in writing it and are told nothing about why the change exists. It works well at either end of a bot review loop — as a gate before, catching an approach that's wrong from the start, or as the last check after, when the code has accumulated a day's worth of confident comments explaining why it's fine. The two skills know nothing about each other; running both is your call, not theirs.
+The deep review at either end is `/pr-review-skeptic`, which reviews the PR with fresh reviewers who had no hand in writing it and are told nothing about why the change exists. Up front it catches an approach that's wrong from the start, before the loop spends ten rounds polishing it; at the end it reads code that has accumulated a day's worth of confident comments explaining why it's fine, and its history pass drops the ground the loop already settled while flagging a defect a fix round patched and left present. The loop invokes it locally, so those runs post nothing to the PR — their verdicts come back in the loop's summary.
 
-One wrinkle if you run it *first*: the review it posts comes from your own account, and `/pr-review-loop` reads human review participation as a sign the PR is already mid-flight — so it will skip its own upfront gate. That's usually what you want (you just ran a better one), but if you also wanted the loop's gate, say so when you start the loop rather than assuming both ran.
+Two things follow from that default. It needs the skeptic skill installed and its five project keys configured (below); the loop checks at kickoff and asks rather than gating on invented project facts. And you can turn it off or swap it — *"skip the gates"*, or *"gate with codex"* to use a review bot on the bookends instead.
+
+You can also run `/pr-review-skeptic` yourself, on its own, whenever you want a colder read — that's the same skill, posting under your account. One wrinkle if you run it *before* the loop: `/pr-review-loop` reads human review participation as a sign the PR is already mid-flight, so it will skip its own upfront gate and tell you that's why. Usually what you want, since you just ran it.
 
 ## Installation
 
@@ -87,6 +89,8 @@ cp -r ~/Projects/claude-skills/skills/whats-new           ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/
 ```
+
+Installing a subset is fine, with one pairing to know about: `/pr-review-loop` uses `/pr-review-skeptic` for its two gates by default, so taking the loop without the skeptic means the loop stops at kickoff to ask whether to run ungated. Take both, or tell the loop *"skip the gates"*.
 
 ## Per-project setup
 
@@ -160,7 +164,7 @@ You can also skip the config entirely and drive `/translate-content` ad-hoc: *"t
 
 ### For `/pr-review-skeptic`
 
-Optional, but worth two minutes: add `.github/pr-review-skeptic.config.yml` to the repo you review. Without it the skill asks on first run (drafting answers from your README/CLAUDE.md for you to confirm) and offers to write the file.
+Worth two minutes: add `.github/pr-review-skeptic.config.yml` to the repo you review. Run directly, the skill asks on first run without it (drafting answers from your README/CLAUDE.md for you to confirm) and offers to write the file. Run **as a gate from `/pr-review-loop`**, there's nobody to interview — so the loop checks the config at kickoff and pauses to ask you, rather than gating your PR on five invented facts about your project. Committing the file to your default branch settles it for good: the config is read from the PR's base ref, so a committed one covers every run from anywhere.
 
 | Key | Required | Purpose |
 |---|---|---|

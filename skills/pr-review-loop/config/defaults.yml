@@ -9,33 +9,46 @@
 # Merge is per-key: a layer that sets only one key inherits the rest from below.
 # See reference/configuration.md for the full override model.
 
-upfront_gate_reviewers: []      # adversarial bots run as a gate BEFORE the loop starts (Phase 0). The gate
-                                # reviewers review, you apply changes, and they RE-REVIEW until ALL sign off:
-                                # actionable-clear -> fix and re-request the same bot(s), repeating to clean
-                                # (no cap, any size); actionable-unclear (judgement call) -> pause and ask.
-                                # The review completes this way -- every gate bot clean or all-deferred --
-                                # before the loop starts. Empty = no upfront gate (loop starts immediately).
+# The gate BEFORE the loop starts (Phase 0). The gate reviewer reviews, you apply changes, and it
+# RE-REVIEWS until it signs off: actionable-clear -> fix and re-run the same gate reviewer(s), repeating
+# to clean (no cap, any size); actionable-unclear (judgement call) -> pause and ask. The gate completes
+# this way -- every gate reviewer clean or all-deferred -- before the loop starts. Empty = no upfront gate
+# (loop starts immediately). `skeptic` is the sibling pr-review-skeptic skill, invoked locally rather than
+# requested on the PR: no trigger, no polling wait, and it posts nothing when an agent invokes it. Bot
+# names (e.g. codex) work here too.
+upfront_gate_reviewers: [skeptic]
+
 request_on_pr_open: [copilot]   # bots to manually request on the first pass (iteration 1)
 loop_reviewers: [copilot]       # bots re-requested on every push during the loop. A bot in
                                 # request_on_pr_open but NOT here is "first-pass only": a structural role
                                 # (requested once, out-of-loop, not necessarily adversarial), its findings
                                 # triaged like any other, then never re-engaged. Mirrors request_on_pr_open.
-final_gate_reviewers: []        # after the loop converges, request these ONCE more as a final
-                                # sanity check (a last confirming look, not an adversarial dig); if they
+                                # `skeptic` does not belong here -- it is not a GitHub reviewer and cannot
+                                # be re-requested by a push; it gates, it doesn't drive convergence.
+final_gate_reviewers: [skeptic] # after the loop converges, run these ONCE more as a final check; if they
                                 # raise anything, fix it and re-converge loop_reviewers. Empty = no check.
 auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a Ruleset auto-requests Copilot or similar
 wait_check_cadence_seconds: 180 # how often the loop polls during waits (3 min; stay in 120-240 = every 2-4 min; ≤270 keeps each check inside the 5-min prompt cache — faster AND cheaper than longer cadences)
 max_iterations: 10
 
-# Recommended pattern for a rate-limited deep reviewer (e.g. Codex) — set in a project's
-# .github/pr-review-loop.config.yml so it doesn't burn its allotment on redundant middle-of-loop re-raises:
+# The shipped shape, and why: a deep reviewer's unique value is its first-look design/correctness catches
+# plus a final look at what the fix rounds introduced. It adds little to iterative polish, which Copilot
+# handles well. So the deep reviewer bookends the loop and Copilot drives convergence in between:
+#   upfront_gate_reviewers: [skeptic]      # deep check BEFORE the loop (Phase 0)
 #   request_on_pr_open: [copilot]          # Copilot reviews the first pass
 #   loop_reviewers: [copilot]              # only Copilot drives the convergence loop
-#   upfront_gate_reviewers: [codex]        # Codex gates the design BEFORE the loop (Phase 0)
-#   final_gate_reviewers: [codex]          # Codex does one final sanity check after convergence
-# Empirically the deep reviewer's unique value is its first-look design/correctness catches plus a
-# final sanity check; it adds little to iterative polish, which Copilot handles well. Putting it on the upfront
-# gate catches a wrong-from-the-start approach before Copilot polishes it; the final sanity check then catches
-# what the fix rounds introduced. (Use the gate keys instead of request_on_pr_open for the deep reviewer:
-# request_on_pr_open batches it into iteration 1 alongside the loop, whereas upfront_gate_reviewers makes
-# it a distinct triaged phase that must settle before the loop starts.)
+#   final_gate_reviewers: [skeptic]        # one more deep check after convergence
+# Use the gate keys rather than request_on_pr_open for a deep reviewer: request_on_pr_open batches it into
+# iteration 1 alongside the loop, whereas upfront_gate_reviewers makes it a distinct triaged phase that
+# must settle before the loop starts.
+#
+# The skeptic gate needs the pr-review-skeptic skill installed AND its five project keys filled (its own
+# config, read from the PR's base ref). Agent-invoked runs of that skill do not interview for them, so the
+# loop checks before Phase 0 and pauses if either is missing — see reference/mechanics.md.
+#
+# Bot gates. A comment- or request-triggered bot (Codex) works in either gate key too, on the older
+# mechanism: requested on the PR, then polled for like any loop reviewer. Swap it in per project where
+# you'd rather have the gate's verdict on the PR itself, or where the skeptic skill isn't installed:
+#   upfront_gate_reviewers: [codex]
+#   final_gate_reviewers: [codex]
+# Both mechanisms can gate at once (e.g. [skeptic, codex]) — the gate isn't satisfied until both are clean.
