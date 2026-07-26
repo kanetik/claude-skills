@@ -28,8 +28,9 @@ loop_reviewers: [copilot]       # bots re-requested on every push during the loo
                                 # re-requested by a push; it gates, it doesn't drive convergence. The two
                                 # gate keys are the only ones that accept it.
 
-final_gate_reviewers: [skeptic] # after the loop converges, run these ONCE more as a final check; if they
-                                # raise anything, fix it and re-converge loop_reviewers. Empty = no check.
+final_gate_reviewers: [skeptic] # after the loop converges, run these ONCE more as a final check. Findings
+                                # -> fix, push, re-run the check once, then stop: the loop does NOT
+                                # restart and loop_reviewers are not re-requested. Empty = no check.
 auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a Ruleset auto-requests Copilot or similar
 wait_check_cadence_seconds: 180 # how often the loop polls during waits (3 min; stay in 120-240 = every 2-4 min; ≤270 keeps each check inside the 5-min prompt cache — faster AND cheaper than longer cadences)
 max_iterations: 10
