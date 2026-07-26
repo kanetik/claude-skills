@@ -9,8 +9,8 @@
 # Merge is per-key: a layer that sets only one key inherits the rest from below.
 # See reference/configuration.md for the full override model.
 
-# The gate BEFORE the loop starts (Phase 0). The gate reviewer reviews, you apply changes, and it
-# RE-REVIEWS until it signs off: actionable-clear -> fix and re-run the same gate reviewer(s), repeating
+# The gate BEFORE the loop starts (Phase 0). The gate reviewers review, you apply changes, and they
+# RE-REVIEW until they all sign off: actionable-clear -> fix and re-run the same gate reviewers, repeating
 # to clean (no cap, any size); actionable-unclear (judgement call) -> pause and ask. The gate completes
 # this way -- every gate reviewer clean or all-deferred -- before the loop starts. Empty = no upfront gate
 # (loop starts immediately). `skeptic` is the sibling pr-review-skeptic skill, invoked locally rather than
