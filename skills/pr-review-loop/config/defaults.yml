@@ -35,10 +35,13 @@ max_iterations: 10              # NOT a backstop -- see below
 # Blind subagents read the diff knowing the project but nothing about why the change
 # exists, so they judge the code rather than the argument for it -- and because they are
 # re-invoked on every fix push, they also read the code the fix rounds produced, which is
-# the code with the least review behind it. It needs three things, all checked at kickoff
-# (reference/mechanics.md): the skill installed, its five project keys filled, and
+# the code with the least review behind it. It needs some setup in the reviewed repo, all of it
+# checked at kickoff -- reference/mechanics.md is the authority on the checks, and there are more
+# of them than this comment used to imply: the skill installed, its five project keys filled,
 # `allow_agent_posting: true` committed to the reviewed repo's own
-# .github/pr-review-skeptic.config.yml. That last one is what lets an agent-invoked run
+# .github/pr-review-skeptic.config.yml, and `confirm_before_posting` not true in any layer
+# (it reverts an agent-invoked run to no-post, silently cancelling the grant). The grant is
+# what lets an agent-invoked run
 # put its findings on the PR as threads; without it the loop can still fix what it is
 # told, but nothing is recorded on the PR, so every round re-finds what the last round
 # settled and the loop runs to the cap.

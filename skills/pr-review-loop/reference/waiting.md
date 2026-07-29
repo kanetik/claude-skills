@@ -64,7 +64,9 @@ An **external push** (below) empties the dropped-happy set — every tracked bot
 
 ## Lockstep across the round's engaged bots
 
-Wait until every bot **engaged for the current commit** has either delivered a verdict (a formal review OR an issue comment, clean or findings) OR been dropped as happy (step 4). The engaged set is `active ∩ reviewers` for a normal round, and the **full tracked set** after an external push. Convergence is gauged on `reviewers`; a reviewer that turned up on its own is triaged but never blocks the loop.
+Wait until every bot **engaged for the current commit** has either delivered a verdict (a formal review OR an issue comment, clean or findings), been dropped as happy, or been **excused for the run** (all three: step 4). The engaged set is `active ∩ reviewers` for a normal round, and the **full tracked set** after an external push.
+
+Excused is the exit that is easy to omit, and omitting it hangs the loop: the excusal is offered from inside this very step (the timeout, below), so a condition listing only "delivered or happy" is still unmet the moment the user grants it — the poll re-arms and the wait never ends, never reaching the step-4 handling that was supposed to unblock it. **Recompute the engaged set from `active` when a reviewer is excused, and let control pass to step 4 immediately.** "Engaged for the current commit" is a historical fact that the excusal does not undo, so it cannot be the thing you test. Convergence is gauged on `reviewers`; a reviewer that turned up on its own is triaged but never blocks the loop.
 
 **Skeptic is never waited on.** It isn't requested, so nothing is pending; it runs synchronously and its review is already posted before the round's wait would begin. Where `reviewers` mixes both kinds, run skeptic first and let its findings join the same batch as the bot's — one combined evaluation per round, for the reason below. A list with no bot in it has no wait at all, and a wait armed for one would never end.
 
@@ -80,7 +82,9 @@ If `git pull` on wake brings in commits the loop didn't author (a teammate or au
 
 If a bot doesn't respond within ~20 minutes of being triggered (or ~20 min after the push that should have auto-triggered it), surface to the user — don't silently hang. **Before declaring it unresponsive, reconcile all three surfaces against HEAD** — its verdict may have arrived as an issue comment a prior poll didn't catch, in which case it's done. The user decides: skip it, wait longer, or terminate.
 
-"Skip it" means **excused for the run**, not for this iteration (SKILL.md step 4). A bot skipped for one iteration is re-requested by the next step 8, stalls the next wait for another twenty minutes, and asks the user the same question again — ten times over, on a broken integration, before the cap report finally arrives. And because nothing removed it from `active ∩ reviewers`, the loop cannot terminate anyway: the run ends as *did not converge* even where every real finding was settled. So drop it from `active`, don't re-engage it, and name it in the summary as excused and unreviewed. Carry the excused set in the wake payload; an external push resets it, because new code nobody has seen is worth asking about again.
+"Skip it" means **excused for the run**, not for this iteration (SKILL.md step 4). A bot skipped for one iteration is re-requested by the next step 8, stalls the next wait for another twenty minutes, and asks the user the same question again — ten times over, on a broken integration, before the cap report finally arrives. And because nothing removed it from `active ∩ reviewers`, the loop cannot terminate anyway: the run ends as *did not converge* even where every real finding was settled. So drop it from `active`, end this wait, don't re-engage it, and name it in the summary as excused and unreviewed. Carry the excused set in the wake payload, and **do not reset it on an external push** — unlike a stale happy verdict, a reviewer that could not run is not made able to run by new code, so resetting it just charges the user another twenty-minute stall and the same question.
+
+**Where it is the last reviewer**, excusing it means nothing reviewed this HEAD, so the run cannot report convergence (SKILL.md step 4's invariant). Say so as part of the offer.
 
 ## Optional self-review — push BEFORE triggering, not during the wait
 

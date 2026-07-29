@@ -48,6 +48,14 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # outlast 30 minutes by itself), and once per reviewer dispatch. A lock that ages out under a
 # live run is worse than none: the second run stops asking and clears the worktree the first
 # run's reviewers are mid-read of.
+#
+# Stage boundaries are NOT enough on their own, because the two longest waits in the run sit
+# BETWEEN them: the concurrent blind pass (stage 4) and the cross-check (stage 6, the largest
+# prompt the skill builds). Either can outlast 30 minutes on a large PR. So also re-touch the
+# lock on a timer -- every ~10 minutes -- for as long as any subagent is outstanding. A second
+# run on the same PR is not hypothetical: the key is (owner, repo, num), pr-review-loop
+# re-invokes this skill on every fix push, and the user can run /pr-review-skeptic on the same
+# PR at the same time.
 if [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
   echo "LIVE-RUN-SUSPECTED"; exit 1     # stop here and ask; do NOT clear
 fi
@@ -125,7 +133,7 @@ rm -rf "<tmp>"                             # the whole per-PR directory, clone a
 
 `--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here.
 
-Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
+Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
 ## Scope the change
 
@@ -226,7 +234,9 @@ gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/rev
 
 The heredoc rather than a file-writing tool because everything in this block has to agree on one path convention. Git Bash MSYS-converts a `/tmp/…` argument to the native directory before `jq` and `gh` see it; a file-writing tool takes the string literally and resolves the leading `/` against the current drive, so bodies written to `C:\tmp\…` are invisible to a `jq --rawfile` reading `C:\Users\…\AppData\Local\Temp\…`. `review.json` then never gets built, at the last step, after every reviewer has run. Use a file-writing tool here only with the native (`cygpath -w`) path.
 
-A clean verdict posts through this same path with no inline comments: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created — on exactly the outcome the skill most wants to report.
+A run with **no inline comments** posts through this same path: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created.
+
+That is "no findings at all, or every finding in another tier" — **not** "a clean verdict". Severity decides the verdict, placement is decided separately, and every finding gets a thread whatever its severity ([`SKILL.md`](../SKILL.md) stage 7): a verdict with no `CRITICAL`/`HIGH` is clean and may still carry four `MEDIUM`s that each need an inline comment. Reading the two as the same thing posts a clean verdict with an empty comment array and drops those four off the PR entirely, where the next run's blind pass re-finds them as `new` forever.
 
 PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding. Bodies come from files here too, for the same reason.
 
@@ -239,8 +249,16 @@ $payload = @{ commit_id = $REVIEWED; event = 'COMMENT'; body = $summary
   comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $c1 })
 } | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
+
+# High-water mark, BEFORE the POST -- same purpose and same timing as the Bash block's.
+$ids = gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].id'
+$LASTID = if ($ids) { ($ids | ForEach-Object { [long]$_ } | Measure-Object -Maximum).Maximum } else { 0 }
+Write-Output "LASTID=$LASTID"      # carry it forward -- the check that needs it runs in a later shell
+
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
+
+**The `$LASTID` capture is not optional on this route.** It is easy to read as a Bash-block detail, and it is not: this is the route to take wherever standalone `jq` is missing, which on Windows with Git Bash is the default rather than the exception. Without it the ambiguous-failure check below compiles `select(.id > )`, jq errors, the `||` fires, and every ambiguous failure lands on the `<unverifiable>` branch — the one branch that cannot answer the question and has to ask a human, which on an agent-invoked run means nobody. `ForEach-Object { [long]$_ }` because the ids arrive as strings and `Measure-Object -Maximum` would otherwise compare them lexically, making `id 9` beat `id 10`.
 
 `ReadAllText` rather than `Get-Content -Raw`, for two reasons that both land on Windows PowerShell 5.1: `-Raw` returns a decorated PSObject that `ConvertTo-Json` serializes as an object (`"body": {"value": …, "PSPath": …}`) which GitHub rejects outright, and it decodes UTF-8 through the ANSI codepage, so every em dash and arrow in a finding posts as mojibake. Both surface only at the last step, after every reviewer has run.
 
