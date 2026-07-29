@@ -17,7 +17,11 @@ One value the loop depends on is **not** its own: the severity floor that decide
 
 It reads like it should mean "engage nobody, just triage whatever turns up", and it cannot: with nothing to engage there is nothing to wait for, so step 3 returns immediately, step 4 finds the intersection vacuously happy, and the loop terminates having triaged nothing — reporting a *converged* run on a PR no reviewer has looked at. A clean finish on an unreviewed PR is worse than no run at all.
 
-So the non-empty requirement is an **invariant, not a validation of the config file** — and it is tested twice, because the set can empty at two different times. Before step 2, over `reviewers`: the merge itself, a modifier that narrows the list to nothing, or the Preconditions offer to drop an unusable `skeptic`. And again at every step-4 evaluation, over `active ∩ reviewers`, which is where the fourth route lands — a reviewer *excused* mid-run, the only one that fires after step 2 has already passed. Any of the four landing on empty stops the run: say the set is empty and name what emptied it, and never let step 4's "every reviewer is happy" pass vacuously over nobody.
+So the non-empty requirement is an **invariant, not a validation of the config file** — and it is tested twice, over two different sets. Before step 2, over `reviewers`: emptied by the merge itself, by a modifier that narrows the list to nothing, or by the Preconditions offer to drop an unusable `skeptic`. And again at every step-4 evaluation, over the **accountable set** (`reviewers` minus excused), which is where the fourth route lands — a reviewer excused mid-run, the only one that fires after step 2 has passed.
+
+The second test is over the accountable set specifically, **not** the active set. A reviewer that goes happy leaves the active set, so the active set empties on success; testing that for non-emptiness would call every successful run unreviewed. See SKILL.md step 4.
+
+Any of the four routes landing on empty stops the run: say which set is empty and what emptied it, and never let "every reviewer is happy" pass vacuously over nobody.
 
 The thing it was reaching for is legitimate and already works — a repo whose bots auto-review on push, needing no manual request. Put those bots in `reviewers` anyway: step 2's per-reviewer skip check sees each has already covered the current commit and requests nothing, so the loop waits for and converges on them without ever pinging one.
 

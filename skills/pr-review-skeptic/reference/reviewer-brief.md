@@ -16,12 +16,14 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{UNIT}}` | this reviewer's slice of the partition | "the sync layer: `data/sync/**`, 9 files" |
 | `{{FILES}}` | newline list of paths in this unit, each with its `A`/`M`/`D` status | `M data/sync/Merge.kt` … |
 | `{{BASE}}` | merge-base of the PR, full 40-char oid from `git merge-base` | `a1b2c3d4e5f6…` |
-| `{{HEAD}}` | PR head sha, full 40-char oid from `gh pr view --json headRefOid` | `e4f5a6b7c8d9…` |
+| `{{HEAD}}` | `$REVIEWED` — the sha the worktree was staged at ([`mechanics.md`](mechanics.md)). **Never re-read from `gh`** | `e4f5a6b7c8d9…` |
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
 Every slot carries a fact about the project or the mechanics of reaching the code. None carries what the change is for, why it was built this way, or what anyone has said about it.
 
 `{{REPO_PATH}}` is the worktree staged in stage 1 — at the PR's head, in the PR's own repository. Reviewers read files there, so pointing them anywhere else has them reviewing code the PR does not contain.
+
+`{{HEAD}}` must be `$REVIEWED` and not a fresh `headRefOid` read, because the brief's first instruction has the reviewer assert `rev-parse HEAD` equals it. On a PR being pushed to mid-run — routine when `pr-review-loop` drives this skill — a freshly-read head disagrees with the staged worktree, so every reviewer aborts and reports the mismatch instead of reviewing, stage 4 re-dispatches twice for the same abort, and the unit is recorded unreviewed: a coverage hole in the verdict that does not exist in reality.
 
 ---
 
