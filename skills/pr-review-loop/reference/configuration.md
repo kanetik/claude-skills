@@ -2,14 +2,22 @@
 
 The loop is governed by four config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
 
+One value the loop depends on is **not** its own: the severity floor that decides when a reviewer is happy (SKILL.md step 4). For `skeptic` that is `blocking_severities` in the *skeptic* skill's config — `[CRITICAL, HIGH]` by default, set in the reviewed repo's `.github/pr-review-skeptic.config.yml` and nowhere in this skill's config. For a bot, which tags no severities, there is no key at all: step 4's equivalent judgement is whether the verdict raises anything that would change code on a path users reach. So a user wanting `MEDIUM` findings to block the loop changes the skeptic config, not this one — and on a `reviewers: [copilot]` setup there is no floor to configure.
+
 ## Config keys
 
 | Key | Default | Meaning |
 |---|---|---|
-| `reviewers` | `[copilot]` | The reviewers the loop drives: engaged on PR open, re-engaged after every fix push (SKILL.md step 8), and the set convergence is gauged on (step 4). Each entry is a review **bot** or **`skeptic`** (the sibling `pr-review-skeptic` skill, invoked locally, posting its findings to the PR itself). `[]` is legal and means the loop only triages reviewers that turn up on their own. |
+| `reviewers` | `[copilot]` | The reviewers the loop drives: engaged on PR open, re-engaged after every fix push (SKILL.md step 8), and the set convergence is gauged on (step 4). Each entry is a review **bot** or **`skeptic`** (the sibling `pr-review-skeptic` skill, invoked locally, posting its findings to the PR itself). Must be non-empty — see below. |
 | `auto_review_grace_seconds` | `0` | After a push, wait this long for an auto-trigger to land before manually requesting. `0` = no wait. Bump to ~60 where a Ruleset auto-requests Copilot, or to give a bot's auto-review time to start. Doesn't apply to `skeptic`, which nothing auto-triggers. |
 | `wait_check_cadence_seconds` | `180` | Polling cadence while waiting on a **bot** (SKILL.md step 3, `reference/waiting.md`). Stay in 120-240s (every 2-4 min): frequent enough to react promptly, and ≤270s keeps each wake inside the 5-minute prompt-cache window; >300s incurs a full context replay per wake. A `reviewers` list with no bot in it never waits. |
 | `max_iterations` | `10` | Iteration cap. **Not a backstop** — see below. Waiting does NOT count toward it. |
+
+### An empty `reviewers` is a configuration error, not a mode
+
+It reads like it should mean "engage nobody, just triage whatever turns up", and it cannot: with nothing to engage there is nothing to wait for, so step 3 returns immediately, step 4 finds the intersection vacuously happy, and the loop terminates having triaged nothing — reporting a *converged* run on a PR no reviewer has looked at. A clean finish on an unreviewed PR is worse than no run at all. So an empty merged `reviewers` stops at kickoff: say the list is empty, name the layer that emptied it, and ask.
+
+The thing it was reaching for is legitimate and already works — a repo whose bots auto-review on push, needing no manual request. Put those bots in `reviewers` anyway: step 2's per-reviewer skip check sees each has already covered the current commit and requests nothing, so the loop waits for and converges on them without ever pinging one.
 
 ### `max_iterations` is load-bearing
 

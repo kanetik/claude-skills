@@ -32,7 +32,9 @@ On a PR that is **not `OPEN`**, read it from `$BASE` instead. The base tip of a 
 
 ## `allow_agent_posting` — the one key that does not merge
 
-Every other key merges per layer, low → high. This one is honoured **only from the repo's own `.github/pr-review-skeptic.config.yml`, read at the PR's base ref, committed there.** Set in the bundled layer, in `~/.claude/pr-review-skeptic.config.yml`, or in an uncommitted working-tree copy, it is ignored — and say so when you see it, naming the layer, rather than silently dropping a permission the user believes they granted.
+Every other key merges per layer, low → high. This one is honoured **only from the repo's own `.github/pr-review-skeptic.config.yml`, read at the PR's base ref, committed there.** Set anywhere else — the bundled layer, `~/.claude/pr-review-skeptic.config.yml`, an uncommitted working-tree copy — it is ignored.
+
+Where one of those layers sets it **`true`**, say so and name the layer: that is a permission the user believes they granted and did not. Don't warn on a `false`; the bundled layer sets `allow_agent_posting: false` on every run, so a warning that fires on any value at all fires always, and the one message that matters arrives as the one the user has learned to skip.
 
 Three properties follow from the exception, and the key is not worth having without them:
 

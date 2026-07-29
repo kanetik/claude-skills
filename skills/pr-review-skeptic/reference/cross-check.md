@@ -40,13 +40,26 @@ Where the pull request is being driven by an agent, the author's replies carry a
 
 They appear as a reply on the finding's own thread. For findings the earlier run could not give a thread to, they appear instead as entries in a PR-level issue comment ending `<!-- pr-review-loop: dispositions -->`, each entry naming the path and restating the finding — match those on the finding's substance, since there is no line to match on.
 
-Where a record matches a finding, it is the best evidence available and it decides the bucket: `rejected` and `deferred` → `settled`; `fixed` on a finding a reviewer still sees at HEAD → `unfixed`, with the severity rise, because a direct claim that this concern was fixed is exactly what that bucket is about. Take `rejected` at face value even where you find the rationale unconvincing — arguing it here would re-open a decision the author recorded publicly, which is what these records exist to stop, and the check on a bad rejection is that a blocking `settled` finding is reported in the verdict rather than hidden.
+Where a record matches a finding, it is the best evidence available for **what was decided**: `rejected` and `deferred` mean the concern was weighed and the project chose otherwise; `fixed` on a finding a reviewer still sees at HEAD → `unfixed`, with the severity rise, because a direct claim that this concern was fixed is exactly what that bucket is about.
+
+**It does not decide the bucket on its own, and the consequence test above still governs.** A `rejected` or `deferred` record buckets the finding `settled` only where the finding names no consequence the recorded rationale failed to account for — the same discriminator as any other prior thread. Where the finding names an outcome that rationale never considered, it is `re-raised` at its stated severity, citing the record. Otherwise the `re-raised` bucket would be unreachable on any agent-driven PR, since those stamp a record on every finding they answer, and one rejection would immunise a defect against every later independent re-discovery — which is the failure the whole blind pass exists to catch.
+
+What you must not do is re-argue a rationale that *does* cover the finding's consequence. Take that at face value even where you find it unconvincing: re-opening it is what these records exist to stop, and the check on a bad rejection is that a blocking `settled` finding is still reported in the verdict rather than hidden.
+
+**Where more than one record matches**, the most recent decides — a threadless finding accumulates one entry per round, and a finding `deferred` in round 3 and `fixed` in round 6 is an `unfixed` finding, not a settled one. The earlier entries are where the round count for an `unfixed` finding comes from.
 
 The absence of a record decides nothing. Most PRs have none at all, and a human author's reply is prose; read it as prose and bucket on its meaning, exactly as above.
 
 ## Recognising this skill's own earlier threads
 
-Some prior threads are this skill's own, from an earlier run over the same PR: their comments end with the marker line `<!-- pr-review-skeptic -->`. Match on the marker, not on the author — these reviews are posted under the user's own account and look exactly like a hand-written one — and match on `originalLine` where `line` is null, which is every thread the last push marked outdated.
+Some prior threads are this skill's own, from an earlier run over the same PR: their comments end with the marker line `<!-- pr-review-skeptic -->`. Match on the marker, not on the author — these reviews are posted under the user's own account and look exactly like a hand-written one.
+
+**How to match depends on the thread's `subjectType`**, and getting this wrong is how a run posts a second thread beside its own original:
+
+- `LINE` — match on `line`, falling back to `originalLine` where `line` is null, which is every thread the last push marked outdated.
+- `FILE` — a whole-file thread, which this skill posts for findings that had no line to anchor to. **Both `line` and `originalLine` are null on these, permanently, outdated or not**, so a line-based key matches nothing and every file-level finding looks new on every run. Match on `path` plus the substance of the finding instead.
+
+A null `line` therefore does not by itself mean the thread is outdated — read `subjectType` before concluding anything from it.
 
 Where a finding matches one of those, say so and return that comment's `databaseId`, **together with the thread's resolution state**, because the two go different ways:
 

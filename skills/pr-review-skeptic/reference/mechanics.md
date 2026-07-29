@@ -182,7 +182,7 @@ query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
     pullRequest(number:$num){
       reviewThreads(first:100,after:$cursor){
         pageInfo{hasNextPage endCursor}
-        nodes{ isResolved isOutdated path line originalLine originalStartLine
+        nodes{ isResolved isOutdated subjectType path line originalLine originalStartLine
                comments(first:50){nodes{databaseId author{login} body url createdAt}} }
       }}}}' -F owner=<owner> -F repo=<repo> -F num=<num>
 ```
@@ -191,7 +191,9 @@ Paginate on `hasNextPage`. A thread's resolution plus its replies is what separa
 
 `databaseId` is the id the replies endpoint needs, and it is how a run recognises its own earlier comments: every comment this skill posts ends with the marker line `<!-- pr-review-skeptic -->`. Without it there is nothing to recognise — these reviews are authored by the user's own account, indistinguishable from a hand-written one.
 
-`line` comes back **null on any outdated thread**, so match on `originalLine` when it does. Outdated is the common case here, not the rare one: a rebase or a formatting push marks every thread in the PR outdated at once, and the run that follows is exactly the one that needs to find its own earlier comment. Matching on path alone instead posts a second thread beside the first and notifies everyone twice for one defect.
+`line` comes back **null on any outdated thread**, so match on `originalLine` when it does. Outdated is the common case here, not the rare one: a rebase or a formatting push marks every thread in the PR outdated at once, and the run that follows is exactly the one that needs to find its own earlier comment.
+
+`subjectType` is why it is in the selection: a `FILE` thread — the file-level comments below — has `line` **and** `originalLine` null forever, outdated or not, so it is not distinguishable from an outdated `LINE` thread without it, and a line-based key matches no file-level thread ever. Match those on `path` plus the finding's substance ([`cross-check.md`](cross-check.md)). Getting this wrong posts a second thread beside the first and notifies everyone twice for one defect — on exactly the findings the file-level tier exists to make settleable.
 
 ## Post the review
 
@@ -250,7 +252,7 @@ Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows Pow
 
 Check each anchor yourself before building the payload: you already have `git diff "$BASE...$REVIEWED"`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not anchor drop to the next placement tier — a file-level comment where the path allows one, the summary body otherwise (below). Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
 
-**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, re-send the review once with **no** `comments[]` at all — one retry, not a search — then place each of those findings through the file-level path below, one call each, and put the ones that fail there in the summary body. That costs a round of separate calls, but it keeps each finding on a thread that can be resolved; folding them all into the body instead trades one bad anchor for a review whose every finding re-raises on the next run.
+**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, rebuild the body with a line saying the inline anchors were rejected and the findings follow as separate comments, re-send the review once with **no** `comments[]` at all — one retry, not a search — then place each of those findings through the file-level path below, one call each, reporting any that fail. That costs a round of separate calls, but it keeps each finding on a thread that can be resolved; folding them all into the body instead trades one bad anchor for a review whose every finding re-raises on the next run. Rebuild the body *before* the retry, for the reason in that section: once it posts, there is no amending it.
 
 **Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
 
@@ -305,8 +307,15 @@ gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
 
 This is the home for a finding whose path is in the diff and present at `$REVIEWED` but whose line the change never touched — a defect on line 40 of a file the diff only reaches at line 200 ([`SKILL.md`](../SKILL.md) stage 7, tier 2). It buys the one thing the summary body cannot: a real thread, which can be replied to and resolved, and which a later run's cross-check can read as evidence that the finding was dealt with. A finding with no thread comes back every round forever.
 
-One call per finding, so a failure costs that finding rather than the review. On failure — the path is not in the diff, the file no longer exists at `$REVIEWED`, any other rejection — do not retry variations: drop the finding into the summary body under a heading naming its path, and mark it as having no thread. The same ambiguous-failure rule as everywhere else applies: `gh` exits non-zero whether or not GitHub accepted the comment, so re-read the file's threads and look for the marker before re-sending, or one defect notifies everyone twice.
+**Every finding that qualifies for this tier gets one.** The extra notification is the price of a settleable finding, and it is worth paying at any severity — a `LOW` with no thread re-raises just as forever as a `HIGH` with none. Don't ration them by importance; the only question is whether the tier applies.
 
-Keep these to the findings that need them. Each is its own notification, which is the cost the summary body avoids — the trade is worth making for a finding that has to be settleable, and not worth making to move a paragraph out of the body for tidiness.
+**Order matters, and the failure path is why.** The review call publishes the summary body, and nothing in this skill can amend a published body afterwards — there is no edit step. So a tier-2 failure discovered *after* the review call cannot be "moved into the body"; the body is already on the PR. Two consequences:
+
+- **Decide tier 3 before the review call, not after.** Tier 3 is the findings that could never anchor — a `D` path, a file the change never touched, a path absent from the diff. Those are knowable from the diff you already have, so the body is built with them in it and the placement is correct when it posts.
+- **A tier-2 call that fails anyway is reported, not relocated.** Say so in the terminal and in stage 8's report, naming the finding and its path. Do not silently drop it: stage 8 would otherwise count it as placed on a thread when it is nowhere at all.
+
+One call per finding, so a failure costs that finding rather than the review. On failure — a secondary rate limit, a 502, a path the API rejects — do not retry variations.
+
+The ambiguous-failure rule applies here too, but **the marker is not a usable test on this path**. `gh` exits non-zero whether or not GitHub accepted the comment, and by now this same run's inline comments are already on the PR carrying the same marker, quite possibly on the same file — so "look for the marker" answers yes for a comment that never landed. Test for *this finding* instead: capture the comment `databaseId`s on that path before the tier-2 batch begins, and look for one newer than the high-water mark whose body matches this finding (the same shape as `$LASTID` for the review call). Where you cannot establish that, report the finding as unplaced rather than assuming it landed — an unplaced finding the user is told about is recoverable; one silently counted as posted is not.
 
 **Findings that reach neither tier** — on a `D` path, or on a file the change never touched at all — go in the summary body under a heading that names the file, at full severity, listed as having no thread. A defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it. Say plainly in the body that these carry no thread: whoever dispositions the review needs to know which findings they cannot resolve on the PR, and where those dispositions have to go instead.

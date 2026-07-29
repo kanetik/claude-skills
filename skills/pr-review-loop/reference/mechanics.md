@@ -169,7 +169,11 @@ The raw `Accept` header returns the file's bytes directly. Don't take the defaul
 
 Non-empty `project`, `users`, `irreplaceable_data`, `production_status`, `architecture` after the merge → good. Any empty → pause. This check exists because an **agent-invoked** skeptic run does not interview for missing keys — it tears down and hands back what's missing. Discovering that inside the first round wastes a staging round and reads like a failure rather than a setup step.
 
-3. **Does the repo allow agent-invoked posting?** The same file must carry `allow_agent_posting: true` — and it counts **only** from that committed project file at the base ref, which is why the one `gh api` call above answers checks 2 and 3 together. A user-level copy does not grant it, by that skill's own rule.
+3. **Will an agent-invoked run actually post?** Two keys decide it, and both must be right — checking only the first is the commonest way this pre-flight passes on a setup that cannot work:
+   - `allow_agent_posting: true`, which counts **only** from the committed project file at the base ref (a user-level copy does not grant it, by that skill's own rule). That is why the one `gh api` call above answers checks 2 and 3 together.
+   - `confirm_before_posting` must not be `true`. Unlike the grant, this key **merges normally across all three layers**, so read the merged value — including `~/.claude/pr-review-skeptic.config.yml`, which the base-ref call above does not cover. `true` turns an agent-invoked run into a no-post, so it silently cancels the grant. It is a perfectly reasonable thing for someone to have set for their own hand-run previews, and a repo can equally commit both keys thinking they are independent.
+
+   Either one wrong produces the identical symptom, so name which when you pause. Diagnosing this as `allow_agent_posting` when the real cause is `confirm_before_posting` sends the user to verify a key that is already correct.
 
 Read the base ref, not the working tree and not the PR head: that is the ref the skeptic skill itself reads, and a config the PR *adds* is a change under review describing the project to its own reviewers — or, for the posting key, granting itself permission to publish. For the five project keys, a file sitting uncommitted in the working tree does satisfy that skill (it falls back to the working copy when the file isn't part of the change), but only from a lasting checkout, so treat it as covering this run rather than as configured-for-good. For `allow_agent_posting` there is no such fallback: uncommitted is not granted.
 
@@ -186,16 +190,18 @@ Two of that skill's rules matter to you as caller and are not yours to override:
 
 ### Reading what comes back
 
-Two channels, and use both. The skill **returns** a verdict, the findings with severities and buckets (`new` / `unfixed` / `re-raised` / `settled`), a coverage line, and where each finding was placed. It also **posts** that review, so the findings are on the PR as threads. Evaluate from the threads — they are what you reply to and resolve, and they are what survives into a context-less wake — and use the returned copy for the parts that never reach the PR: the coverage caveat, and which findings it could not give a thread to.
+Two channels, and use both. The skill **returns** a verdict, the findings with severities and buckets (`new` / `unfixed` / `re-raised` / `settled`), a coverage line, and where each finding was placed. It also **posts** that review, so the findings are on the PR as threads. Evaluate from the threads — they are what you reply to and resolve — and use the returned copy as the convenient in-turn source for the rest.
 
-That last one matters. Findings placed in the summary body rather than on a thread (a deleted path, code the change never touched) are yours to disposition in the PR-level comment described in `reference/evaluation.md`. Nothing else records them, and a finding with no record comes back every round.
+Both of the things you most need from the returned copy are also **recoverable from the PR**, and it matters that you know that, because a context-less wake has only the PR: the posted summary body carries the coverage line and the findings that got no thread, under their own heading. So a wake can reconstruct the whole round without the return value — read the marker-carrying review body.
+
+Findings placed in that body rather than on a thread (a deleted path, code the change never touched) are yours to disposition in the PR-level comment described in `reference/evaluation.md`. Nothing else records them, and a finding with no record comes back every round.
 
 Failure modes, and what each means:
 
 | What comes back | Reading |
 |---|---|
 | A verdict with findings, or a clean verdict, posted to the PR | Normal. Triage from the threads and proceed. |
-| A verdict, but nothing posted | Check 3's condition, hit at run time. Not a reviewer this loop can converge — say so and ask whether to fix the config, drop `skeptic`, or proceed knowing rounds won't accumulate. |
+| A verdict, but nothing posted | One of check 3's two keys — `allow_agent_posting` absent from the committed project file, or `confirm_before_posting: true` in any layer. Re-read both before naming one; they produce the same symptom and the second is the one a pre-flight that checked only the grant will have missed. Not a reviewer this loop can converge — say so and ask whether to fix the config, drop `skeptic`, or proceed knowing rounds won't accumulate. |
 | "Config is required", listing missing project keys | Pre-flight missed it (a user-level config that turned out empty, say). Pause as in Preconditions. |
 | No unit reviewed — subagent tool unavailable, rate-limited, erroring | **Not a clean round.** It is a whole-session condition, so it hits every unit at once. Say so and ask the user whether to retry, use a bot, or proceed without it. |
 | A clean verdict qualified by unreviewed units, or a cross-check that didn't run | Counts as happy over what was covered. Carry the qualification into what you tell the user, verbatim in substance, and into the final summary. |
