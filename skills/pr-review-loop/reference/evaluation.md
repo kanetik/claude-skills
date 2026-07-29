@@ -2,7 +2,7 @@
 
 ## What to read
 
-**Threads are the unit of evaluation.** Fetch unresolved review threads with full comment lists via paginated GraphQL (`reference/mechanics.md`); they cover inline AND file-level comments (`line: null`) and carry the conversation context (human replies) the per-review REST endpoint omits. **Also read each review's `body`** separately — bots sometimes put findings, qualifiers, or "no issues" there with no thread. **And read bot-authored PR issue comments** — the third surface (SKILL.md "Reading reviewer state"); some bots deliver findings or their whole clean verdict only here. Any state check must union all three. (The REST endpoint `/repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` is a convenience for one review's comments by ID; for the whole-PR view, paginated `reviewThreads` is canonical.)
+**Threads are the unit of evaluation.** Fetch unresolved review threads with full comment lists via paginated GraphQL (`reference/mechanics.md`); they cover inline AND file-level comments (`line: null`) and carry the conversation context (human replies, and your own dispositions from earlier rounds) the per-review REST endpoint omits. **Also read each review's `body`** separately — reviewers put findings, qualifiers, or "no issues" there with no thread, and a skeptic body additionally names the findings it could not anchor, which exist nowhere else. **And read PR issue comments** — the third surface (SKILL.md "Reading reviewer state"); some bots deliver findings or their whole clean verdict only here. Any state check must union all three. (The REST endpoint `/repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` is a convenience for one review's comments by ID; for the whole-PR view, paginated `reviewThreads` is canonical.)
 
 **Human replies are evaluation INPUT, not a post-hoc check.** Read replies from the author/maintainers BEFORE forming your evaluation — they often steer ("we're doing it this way because…", "ignore for now", "fix narrowly, broader cleanup is tracked elsewhere") and weigh heavily, often decisively. If a human reply directly conflicts with the lens-weighted evaluation (reply says "ignore" but lenses say it's a real project-breaking bug), surface the conflict — don't silently obey or override.
 
@@ -30,23 +30,38 @@ For those, a fix written against the *finding* rather than the *invariant* close
 - **Ask what already does this.** Before writing a predicate, a dispatcher, a null check — look for the seam that exists. Re-implementing a rule the codebase already encodes (a `Ref.isEmpty`, a project `ioDispatcher`) means the copy drifts from the original the first time either changes. A hand-rolled duplicate of an existing rule is a defect with a delay fuse.
 - **Check the fix didn't weaken the tests.** A test edited while fixing a finding can end up asserting less than it did before, and it still passes — that is what makes it invisible. If a guard is added, disable it and confirm its test fails; if a fixture is changed, confirm the assertion still depends on what it claims to prove.
 
-## Gate triage (SKILL.md Phase 0 and step 10)
+## Triaging a skeptic verdict
 
-The gate reuses everything above — same surfaces, lenses, courses — but adds one decision, because its job is to decide *what the gate does next*. Read the whole verdict together. A clean verdict, or one whose findings all resolve **without a code change** (`Create-issue-and-close` / `Reject-with-explanation`), **satisfies the gate** — deferred findings need no re-review. For actionable findings, sort into:
+Same surfaces, same lenses, same courses. Four things about its shape change how you read it:
 
-- **Actionable-clear.** Confident there's a real issue *and* what the correct change is — some `Fix-*` you'd stand behind. **Size is irrelevant** (one-line rename = structural redesign here). → Apply, re-engage the gate reviewer(s) by their own mechanism (request a bot, re-invoke skeptic), and **repeat to clean**: the gate's re-review sub-loop runs until every gate reviewer signs off on what you changed.
-- **Actionable-unclear.** A genuine judgement call: multiple viable approaches, the concern is real but the fix is contestable, or it's security/auth/data-model/API-contract-adjacent (the `Ask-user` default, surfaced at gate time). → Pause and ask the user before the loop runs; their answer may turn it into a clear fix (then re-review to clean) or a reject.
+- **Severity decides what holds the loop open, not what deserves thought.** Blocking findings (`CRITICAL`/`HIGH` by default) are what convergence is gauged on: every one must end at fixed, `Create-issue-and-close`, or `Reject-with-explanation` before that reviewer is happy. Non-blocking observations are triaged under the same lenses — take the cheap correct ones now, reject or defer the rest — and every one of them still gets a reply and a resolved thread, because the record is what stops it coming back. They just don't hold the loop open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your lenses may rate an item higher than it did. It cuts the other way too — a `MEDIUM` you leave unanswered and unfixed can return as a `HIGH`, since the cross-check raises a rung on any finding a round claimed to fix and left present.
+- **The buckets are evidence, and `unfixed` is the loud one.** A finding bucketed `unfixed` — raised earlier in this PR's history, touched by a fix round, still present — is the loop's characteristic failure caught red-handed, and it arrives already a severity higher. Treat it as a signal that the earlier fix was written against the scenario rather than the invariant ("Writing the fix without causing the next finding", above) and re-open that question rather than patching the new instance. A `re-raised` one is a concern you argued down that an independent reviewer found anyway: worth more weight than either read alone, and a reason to re-examine your own rationale rather than restate it.
+- **`settled` findings are not yours to re-litigate, and not yours to bury.** A prior thread weighed that consequence and the project chose otherwise — usually because *you* rejected or deferred it in an earlier round. They neither hold the loop open nor need a fix. But a *blocking* one gets named to the user with its count and thread, every time, because somebody decided to live with a `CRITICAL`. You are the author and the judge here; that line is the only thing keeping "converged" from meaning "rejected everything".
+- **`Ask-user` is unchanged and still the default** for security/auth, scope boundaries and architectural calls. A finding arriving with a confident severity attached is not extra authority to act unilaterally.
 
-The split is **certainty of the path, not size.** When a verdict mixes findings, the most conservative present outcome wins: any actionable-unclear routes the whole gate to `Ask-user` (you may still apply the unambiguous fixes in the same push), and the gate isn't satisfied until both the unclear question is settled and the reviewer has re-reviewed the result clean.
+## Recording the decision — disposition replies
 
-### Triaging a skeptic verdict
+**Every finding gets one, whatever its severity and whatever you decided.** A finding whose disposition isn't recorded on the PR is a finding the next round has no way to know was handled: its blind reviewers cannot see your fix commit's reasoning, and its cross-check settles a finding only against a thread that says what was decided. This is the mechanism that makes rounds cumulative. Skip it and the loop is a treadmill.
 
-Same three outcomes, reached from a returned review rather than from PR surfaces. Four things about its shape change how you read it:
+On the finding's own thread: reply with what you decided and why, then resolve the thread. End the reply with the marker line for the course you took:
 
-- **Severity decides what holds the gate, not what deserves thought.** Blocking findings (`CRITICAL`/`HIGH` by default) are the gate: every one must end at fixed, `Create-issue-and-close`, or `Reject-with-explanation` before the gate is satisfied. Non-blocking observations are still triaged under the same lenses — take the cheap correct ones now, defer the rest — but they don't hold the gate open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your lenses may rate an item higher than it did.
-- **A reviewer's `Reject-with-explanation` goes nowhere.** There is no thread to reply on and no bot to persuade, so a rejection is a note to yourself and to the summary — say which findings you rejected and why in what you report to the user, or the reasoning is lost the moment the run ends. This is the one course whose usual mechanics don't exist here.
-- **The buckets are evidence, and `unfixed` is the loud one.** A finding bucketed `unfixed` — raised earlier in this PR's history, touched by a fix round, still present — is the loop's characteristic failure caught red-handed, and it arrives already a severity higher. Treat it as a signal that the earlier fix was written against the scenario rather than the invariant ("Writing the fix without causing the next finding", above) and re-open that question, rather than patching the new instance. `settled` findings are not yours to re-litigate: a prior thread weighed that consequence and accepted it, so they neither hold the gate nor need a fix — but a *blocking* one still gets named to the user, because somebody decided to live with a CRITICAL and that decision should stay visible.
-- **`Ask-user` is unchanged and still the default** for security/auth, scope boundaries and architectural calls. The finding arriving with a confident severity attached is not extra authority to act unilaterally.
+```
+<!-- pr-review-loop: disposition=fixed -->      any Fix-* course
+<!-- pr-review-loop: disposition=rejected -->   Reject-with-explanation
+<!-- pr-review-loop: disposition=deferred -->   Create-issue-and-close
+```
+
+Nothing for `Ask-user` — that thread is still open, so leave it open and unmarked.
+
+The marker is machine-readable and the prose beside it is not, which is the point: the next run's cross-check takes the marker as decisive rather than inferring your intent from a sentence. But write the prose properly anyway. A rejection reading "rejected, see commit abc123" settles nothing for a reader who cannot see why, and the reader here includes the person reviewing your judgement later. Name the concern, say why the code is right as it stands, and keep it to a line or two.
+
+**Findings with no thread.** Some findings arrive with nothing to reply on: a skeptic verdict names the ones it could not anchor (a deleted path, code the change never touched), and a bot that puts a concern in its review body rather than on a line has the same shape. Those get one PR-level comment per round instead, listing each with its path, a one-line restatement, and its disposition marker, and ending with:
+
+```
+<!-- pr-review-loop: dispositions -->
+```
+
+One comment per round, not one per finding. Its next run reads the PR's issue comments as part of the history payload and matches these entries on substance. Without it, exactly the findings that have no thread are the ones that come back every round forever — which is the same failure as skipping the replies, arriving through the one door replies can't cover.
 
 ## Issue creation (when choosing `Create-issue-and-close`)
 
@@ -82,7 +97,7 @@ A review *summary* (`PullRequestReview`) has no REST reactions endpoint but is r
 
 ## Replies, line numbers, resolution
 
-- **Replies should be one line where possible.** @-mention a bot back only when the mention reaches that reviewer and it acts on mentions (`@codex` yes; Copilot's reviewer no — reply unmentioned). See `reference/mechanics.md`.
+- **Replies should be one line where possible** — but a rejection earns two, since its whole job is to carry reasoning forward. @-mention a bot back only when the mention reaches that reviewer and it acts on mentions (`@codex` yes; Copilot's reviewer no — reply unmentioned; skeptic never). See `reference/mechanics.md`.
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
-- **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen).
-- **Do NOT resolve when:** awaiting reviewer clarification (your reply asks the reviewer something); acknowledged-without-fix where discussion is still expected.
+- **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen). This is every course except `Ask-user`, and resolving is not optional bookkeeping — an unresolved thread is an undecided finding, and the next round treats it as one.
+- **Do NOT resolve when:** awaiting clarification from a human, or `Ask-user` pending. Both are genuinely still open. Note that neither applies to skeptic, which cannot answer a question — where its finding leaves you uncertain, the question goes to the user, and the thread stays open and unmarked until they answer it.

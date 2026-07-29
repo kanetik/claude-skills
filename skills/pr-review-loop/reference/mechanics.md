@@ -12,10 +12,10 @@ For each operation use the best tier your environment supports. Columns denote *
 | Get reviews / requested reviewers / decision | `gh pr view <num> --json reviews,reviewRequests,latestReviews,reviewDecision,comments` (`reviewRequests` drops bots — use the GraphQL form below for bot detection) | github MCP `get_pull_request`, `list_pull_request_reviews` | — |
 | Unresolved review threads with `isResolved` | GraphQL via `gh api graphql` (paginated — below) | github MCP `get_pull_request_review_threads` if it exposes resolution state | — |
 | Inline + file-level comments per review | REST `gh api repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` | github MCP `get_pull_request_review_comments` | — |
-| Bot-authored PR issue comments (verdict surface) | Paginated GraphQL `comments` connection (below) — carries `author.__typename` and numeric `databaseId`, both needed | github MCP `get_pull_request` | `gh pr view <num> --json comments` as a **non-authoritative** read only — no pagination, omits `__typename` and numeric `databaseId` |
+| PR issue comments (verdict surface, and the loop's own disposition records) | Paginated GraphQL `comments` connection (below) — carries `author.__typename` and numeric `databaseId`, both needed | github MCP `get_pull_request` | `gh pr view <num> --json comments` as a **non-authoritative** read only — no pagination, omits `__typename` and numeric `databaseId` |
 | Re-request Copilot review | `gh pr edit <num> --add-reviewer @copilot` (gh ≥ 2.85) | github MCP `request_copilot_review` | GraphQL `requestReviews` with `botIds` (gh < 2.85 — below) |
 | Trigger Codex review | `gh pr comment <num> --body "@codex review"` | — | `--body-file <path>`, or REST `gh api repos/{o}/{r}/issues/{n}/comments -X POST -f body="@codex review"` (below) |
-| Run the skeptic gate | Invoke the `pr-review-skeptic` skill (below) — no `gh` call, no PR trace | — | None. Absent the skill the gate can't run; pause and ask |
+| Engage the skeptic reviewer | Invoke the `pr-review-skeptic` skill (below) — no `gh` call, no wait; it posts its own review | — | None. Absent the skill it can't run; pause and ask |
 | Reply to a review thread | GraphQL `addPullRequestReviewThreadReply` | github MCP equivalent | — |
 | Resolve a review thread | GraphQL `resolveReviewThread` | github MCP equivalent | — |
 | Update PR description | `gh pr edit <num> --body-file <path>` | github MCP `update_pull_request` | — |
@@ -79,9 +79,9 @@ do {
 
 ### Other queries the loop needs
 
-- **Reviews with state, body, comment count, author type** (`__typename: Bot` identifies bot reviewers):
+- **Reviews with state, body, comment count, author type.** `__typename: Bot` identifies bot reviewers; **the body is not optional here**, because a review authored by a `User` carrying the marker line `<!-- pr-review-skeptic -->` is the skeptic reviewer, not a human. Classify on the marker first, author type second — a query that reads `__typename` and drops `body` cannot tell them apart, and the loop then skips its own reviewer as human participation:
   `reviews(last:100){nodes{author{login __typename} state body submittedAt comments{totalCount}}}`
-- **PR issue comments** (the third reviewer-state surface — some bots post findings or their whole clean verdict here, never as a `Review`). Drive with the **same cursor loop** as `reviewThreads`; page the full connection (or filter by `author`) since a verdict can be buried by later discussion. Use this `databaseId` for reactions/edits — `gh pr view --json comments` returns node IDs (`IC_…`), not the numeric ID:
+- **PR issue comments** (the third reviewer-state surface — some bots post findings or their whole clean verdict here, never as a `Review`; the loop's own threadless-finding dispositions also live here). Drive with the **same cursor loop** as `reviewThreads`; page the full connection (or filter by `author`) since a verdict can be buried by later discussion. Use this `databaseId` for reactions/edits — `gh pr view --json comments` returns node IDs (`IC_…`), not the numeric ID:
   `comments(first:100, after:$cursor){ pageInfo{ hasNextPage endCursor } nodes{ databaseId author{login __typename} body createdAt } }`
 - **`reviewRequests` including bots** — GraphQL, NOT `gh pr view --json reviewRequests` (which drops bots):
   `reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}`
@@ -149,15 +149,15 @@ If a shell mangles the body, fall back to `--body-file` (write `@codex review` t
 gh api graphql -f id="<node_id>" -f query='mutation($id:ID!){ deleteIssueComment(input:{id:$id}){ clientMutationId } }'
 ```
 
-## The skeptic gate — a local skill, not a bot
+## The skeptic reviewer — a local skill that posts to the PR
 
-`skeptic` in either gate list means the sibling **`pr-review-skeptic`** skill. None of the machinery above applies to it: nothing is requested, nothing is triggered, nothing is polled, and nothing it produces appears on the PR.
+`skeptic` in `reviewers` means the sibling **`pr-review-skeptic`** skill. Half the machinery above doesn't apply to it — nothing is requested, nothing is triggered, nothing is polled — but its output lands in exactly the same place a bot's does: a review on the PR, with a thread per finding. Everything downstream of that (step 5 evaluation, replies, resolution, step 4 convergence) is identical.
 
 ### Pre-flight (SKILL.md Preconditions)
 
-Run once at kickoff, before Phase 0, whenever `skeptic` is in a non-empty gate list.
+Run once at kickoff whenever `skeptic` is in `reviewers`. Three checks, all cheap, all needed before the first round.
 
-1. **Is the skill installed?** A `pr-review-skeptic` entry in the skills available to you is the answer — that listing covers every install layout (user-level, project-level, plugin bundle) without your having to know which one this environment uses. Don't go looking for it at a fixed path. Absent from the listing → pause; the gate can't run.
+1. **Is the skill installed?** A `pr-review-skeptic` entry in the skills available to you is the answer — that listing covers every install layout (user-level, project-level, plugin bundle) without your having to know which one this environment uses. Don't go looking for it at a fixed path. Absent from the listing → pause.
 2. **Are its five project keys filled?** They come from that skill's own config, merged low → high: its bundled `config/defaults.yml` (all five empty by design) < `~/.claude/pr-review-skeptic.config.yml` < the **PR repo's** `.github/pr-review-skeptic.config.yml`, read from the PR's **base** ref:
 
 ```bash
@@ -167,33 +167,38 @@ gh api -H "Accept: application/vnd.github.raw" \
 
 The raw `Accept` header returns the file's bytes directly. Don't take the default JSON response and decode `.content` yourself — that needs a `base64` whose decode flag differs across platforms (`-d` GNU, `-D` BSD), for a step that has a portable form.
 
-Non-empty `project`, `users`, `irreplaceable_data`, `production_status`, `architecture` after the merge → good to go. Any empty → pause.
+Non-empty `project`, `users`, `irreplaceable_data`, `production_status`, `architecture` after the merge → good. Any empty → pause. This check exists because an **agent-invoked** skeptic run does not interview for missing keys — it tears down and hands back what's missing. Discovering that inside the first round wastes a staging round and reads like a failure rather than a setup step.
 
-Read the base ref, not the working tree and not the PR head: that is the ref the skeptic skill itself reads, and a config the PR *adds* is a change under review describing the project to its own reviewers. A file sitting uncommitted in the working tree satisfies that skill (it falls back to the working copy when the file isn't part of the change) but only from a lasting checkout, so treat it as covering this run rather than as configured-for-good.
+3. **Does the repo allow agent-invoked posting?** The same file must carry `allow_agent_posting: true` — and it counts **only** from that committed project file at the base ref, which is why the one `gh api` call above answers checks 2 and 3 together. A user-level copy does not grant it, by that skill's own rule.
 
-The check exists because an **agent-invoked** skeptic run does not interview for missing keys — it tears down and hands back what's missing. Discovering that inside Phase 0 wastes a staging round and reads like a failure rather than a setup step.
+Read the base ref, not the working tree and not the PR head: that is the ref the skeptic skill itself reads, and a config the PR *adds* is a change under review describing the project to its own reviewers — or, for the posting key, granting itself permission to publish. For the five project keys, a file sitting uncommitted in the working tree does satisfy that skill (it falls back to the working copy when the file isn't part of the change), but only from a lasting checkout, so treat it as covering this run rather than as configured-for-good. For `allow_agent_posting` there is no such fallback: uncommitted is not granted.
+
+**Why check 3 is not a nicety.** Without it the skill still runs, still reviews, and still hands you a full verdict — and posts nothing. Every consequence is downstream and silent: no threads to reply to, so no disposition is recorded anywhere; no thread history, so its own next run's cross-check has nothing to bucket against and every finding you already answered comes back `new`; no severity escalation for a defect a fix round missed, since that bucket needs the prior thread. The loop then re-litigates the same findings every round until `max_iterations`. Report the missing key at kickoff, and if the user wants to run anyway, say that is what the run will look like.
 
 ### Invoking it
 
-Invoke the `pr-review-skeptic` skill with the PR reference and nothing more — `#<num>`, a URL, or `<owner>/<repo>#<num>` for a cross-repo PR. Then follow that skill's procedure as written, in particular its **Context discipline** section: the reviewer brief is filled by substitution from project config and the diff, and no summary of the change, its purpose, or its rationale goes into it or into any answer to a reviewer's question. You are the worst-placed caller for that rule — you may have written the code — which is exactly why it's stated as a hard guardrail there.
+Invoke the `pr-review-skeptic` skill with the PR reference and nothing more — `#<num>`, a URL, or `<owner>/<repo>#<num>` for a cross-repo PR. Then follow that skill's procedure as written, in particular its **Context discipline** section: the reviewer brief is filled by substitution from project config and the diff, and no summary of the change, its purpose, or its rationale goes into it or into any answer to a reviewer's question. You are the worst-placed caller for that rule — you may have written the code, and by round five you are also carrying every finding the earlier rounds settled — which is exactly why it's a hard guardrail there.
 
 Two of that skill's rules matter to you as caller and are not yours to override:
 
-- **It posts nothing.** An agent-invoked run returns its drafted review instead, and your reply is not a go-ahead. Don't ask it to post; if the user wants the verdict on the PR, that's them running `/pr-review-skeptic` themselves.
-- **It cleans up after itself.** It stages a worktree at the PR head and tears it down on every exit, including its stops. Your own checkout is untouched, so a gate run needs no preparation from you beyond a clean tree.
+- **Whether it posts is the repo's answer, not yours.** Don't instruct it to post and don't instruct it not to; it reads `allow_agent_posting` from the committed project config and acts on that. An earlier version of this skill told you to suppress posting — that instruction is retired, and a caller still following it would silence the reviewer this loop is built around.
+- **It cleans up after itself.** It stages a worktree at the PR head and tears it down on every exit, including its stops. Your own checkout is untouched, so a round needs no preparation from you beyond a clean tree.
 
 ### Reading what comes back
 
-The returned review carries a **verdict**, **blocking findings** (`CRITICAL`/`HIGH` by default, each with location, defect, consequence, fix), **non-blocking observations**, a **coverage** line, and — where the PR had prior review activity — a bucket per finding (`new` / `unfixed` / `re-raised` / `settled`). Triage: `reference/evaluation.md` → "Gate triage".
+Two channels, and use both. The skill **returns** a verdict, the findings with severities and buckets (`new` / `unfixed` / `re-raised` / `settled`), a coverage line, and where each finding was placed. It also **posts** that review, so the findings are on the PR as threads. Evaluate from the threads — they are what you reply to and resolve, and they are what survives into a context-less wake — and use the returned copy for the parts that never reach the PR: the coverage caveat, and which findings it could not give a thread to.
+
+That last one matters. Findings placed in the summary body rather than on a thread (a deleted path, code the change never touched) are yours to disposition in the PR-level comment described in `reference/evaluation.md`. Nothing else records them, and a finding with no record comes back every round.
 
 Failure modes, and what each means:
 
 | What comes back | Reading |
 |---|---|
-| A verdict with findings, or a clean verdict | Normal. Triage and proceed. |
+| A verdict with findings, or a clean verdict, posted to the PR | Normal. Triage from the threads and proceed. |
+| A verdict, but nothing posted | Check 3's condition, hit at run time. Not a reviewer this loop can converge — say so and ask whether to fix the config, drop `skeptic`, or proceed knowing rounds won't accumulate. |
 | "Config is required", listing missing project keys | Pre-flight missed it (a user-level config that turned out empty, say). Pause as in Preconditions. |
-| No unit reviewed — subagent tool unavailable, rate-limited, erroring | **Not a clean gate.** It is a whole-session condition, so it hits every unit at once. Say so and ask the user whether to retry, gate with a bot, or proceed ungated. |
-| A clean verdict qualified by unreviewed units, or a cross-check that didn't run | Gate passes on what was covered. Carry the qualification into what you tell the user, verbatim in substance. |
+| No unit reviewed — subagent tool unavailable, rate-limited, erroring | **Not a clean round.** It is a whole-session condition, so it hits every unit at once. Say so and ask the user whether to retry, use a bot, or proceed without it. |
+| A clean verdict qualified by unreviewed units, or a cross-check that didn't run | Counts as happy over what was covered. Carry the qualification into what you tell the user, verbatim in substance, and into the final summary. |
 | No PR found, or an empty diff | Something is wrong with the target, not with the change. Surface it; don't treat it as a pass. |
 
 The one reading to avoid: a run that produced no review is not the same as a run that found nothing. Both are quiet.
@@ -201,3 +206,5 @@ The one reading to avoid: a run that produced no review is not the same as a run
 ### Mentions in replies
 
 @-mention a bot in a reply only when the mention reaches the reviewing bot AND it acts on mentions. `@codex` does — lead Codex replies with it. Copilot's reviewer (`copilot-pull-request-reviewer`) does **not** act on reply mentions, and `@copilot` routes to a different bot (`copilot-swe-agent`) which misfires — reply to Copilot **without** a mention. For a new bot, mention only if you know its handle reaches the reviewer; if unsure, post unmentioned.
+
+**Never mention on a skeptic thread.** There is no account behind it to notify — the review posted under the user's own — so a mention either does nothing or pings the user about their own thread. Its next run reads the reply as text, from the thread; that is the whole channel. Write for that reader: state the disposition and the reasoning in the reply itself rather than pointing at a commit, since a bare "fixed in abc123" gives the cross-check nothing to match a re-found finding against.

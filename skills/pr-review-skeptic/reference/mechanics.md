@@ -161,6 +161,8 @@ For the cross-check stage only.
 gh pr view <num> --json body,reviews,comments,commits
 ```
 
+`comments` here is the PR's **issue** comments, not the review threads below, and it is the one field easy to mistake for redundant. It carries the disposition records for findings that never got a thread ([`cross-check.md`](cross-check.md)) — drop it and exactly those findings come back `new` on every run, which on a PR being driven through a loop is a round that repeats rather than accumulates.
+
 `commits` alone carries no paths — only `oid`, dates, and messages — so it cannot answer the question the `unfixed` bucket asks. Get the paths too, and pass those through with the threads:
 
 ```bash
@@ -246,9 +248,9 @@ Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows Pow
 
 **Anchoring.** `line` must be a line the diff touches at `commit_id`, or the API rejects the whole payload with 422 — one bad anchor loses every comment in the call, summary body included.
 
-Check each anchor yourself before building the payload: you already have `git diff "$BASE...$REVIEWED"`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not go in the **summary body** under a heading naming their path — a little less prominent, and it always works. Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
+Check each anchor yourself before building the payload: you already have `git diff "$BASE...$REVIEWED"`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not anchor drop to the next placement tier — a file-level comment where the path allows one, the summary body otherwise (below). Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
 
-**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search.
+**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, re-send the review once with **no** `comments[]` at all — one retry, not a search — then place each of those findings through the file-level path below, one call each, and put the ones that fail there in the summary body. That costs a round of separate calls, but it keeps each finding on a thread that can be resolved; folding them all into the body instead trades one bad anchor for a review whose every finding re-raises on the next run.
 
 **Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
 
@@ -291,6 +293,20 @@ The write-to-file rule governs **every** posting call, not just the review paylo
 
 So does the check-before-re-sending rule. This call is separate from the all-or-nothing review payload, so an ambiguous failure here has the same shape and the same cost — re-send blindly and the thread carries two identical replies, notifying every subscriber twice for one defect, which is what the reply path exists to avoid. Re-read the thread first and look for a reply carrying the marker; unknown means ask, not re-send.
 
-`subject_type: file` attaches a comment to a whole file, but it is a property of the standalone comment endpoint, not of the `comments[]` array in a review — sending it here is another 422 on the same all-or-nothing call. Knowing that is the point; it is not an invitation to use the other endpoint. A finding that will not anchor goes in the summary body, which costs one notification rather than N and is what the paragraph above already says.
+## File-level comments — the second placement tier
 
-Findings on code the PR did not touch cannot anchor anywhere, and neither can findings on a `D` path. Both belong in the body, under a heading that names the file — a defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it.
+`subject_type: file` attaches a comment to a whole file rather than a line. It is a property of the **standalone** comment endpoint, not of the `comments[]` array in a review — sending it inside the review payload is another 422 on the same all-or-nothing call, which is why these go out separately, **after** the review call has succeeded:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
+  -f commit_id="$REVIEWED" -f path="data/sync/Merge.kt" -f subject_type=file \
+  -F "body=@<tmp>/f-1.md"
+```
+
+This is the home for a finding whose path is in the diff and present at `$REVIEWED` but whose line the change never touched — a defect on line 40 of a file the diff only reaches at line 200 ([`SKILL.md`](../SKILL.md) stage 7, tier 2). It buys the one thing the summary body cannot: a real thread, which can be replied to and resolved, and which a later run's cross-check can read as evidence that the finding was dealt with. A finding with no thread comes back every round forever.
+
+One call per finding, so a failure costs that finding rather than the review. On failure — the path is not in the diff, the file no longer exists at `$REVIEWED`, any other rejection — do not retry variations: drop the finding into the summary body under a heading naming its path, and mark it as having no thread. The same ambiguous-failure rule as everywhere else applies: `gh` exits non-zero whether or not GitHub accepted the comment, so re-read the file's threads and look for the marker before re-sending, or one defect notifies everyone twice.
+
+Keep these to the findings that need them. Each is its own notification, which is the cost the summary body avoids — the trade is worth making for a finding that has to be settleable, and not worth making to move a paragraph out of the body for tidiness.
+
+**Findings that reach neither tier** — on a `D` path, or on a file the change never touched at all — go in the summary body under a heading that names the file, at full severity, listed as having no thread. A defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it. Say plainly in the body that these carry no thread: whoever dispositions the review needs to know which findings they cannot resolve on the PR, and where those dispositions have to go instead.

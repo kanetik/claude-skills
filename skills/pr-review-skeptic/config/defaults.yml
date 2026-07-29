@@ -40,10 +40,30 @@ files_per_unit: 12            # soft target when partitioning a PR across review
                               # module and subsystem boundaries first, this number second
 max_reviewers: 8              # cap on blind reviewers for one PR, counting the composition reviewer;
                               # a PR needing more gets larger units rather than a truncated review
-blocking_severities:          # severities that post as inline comments and hold the verdict;
-  - CRITICAL                  # everything below lands in the summary body as an observation
-  - HIGH
+blocking_severities:          # severities that hold the verdict. EVERY finding posts as its own thread
+  - CRITICAL                  # regardless of severity (SKILL.md stage 7); these are the ones whose
+  - HIGH                      # presence makes the verdict no-go.
 
 confirm_before_posting: false # false: post the review when a person asked for one. Set true to always
                               # show the findings and wait for a go-ahead first. SKILL.md stage 7 is
                               # the authority on when a run posts at all.
+
+# --- Agent-invoked posting ---------------------------------------------------
+# By default a run invoked by another skill or agent posts nothing: it returns the
+# drafted review to its caller instead, because the decision to publish under the
+# user's account belongs to the user. A repo can grant that permission standingly by
+# committing `allow_agent_posting: true` to its own .github/pr-review-skeptic.config.yml.
+#
+# It is honoured ONLY from that committed project file, read at the PR's BASE ref --
+# not from this bundled layer, not from ~/.claude/pr-review-skeptic.config.yml, and not
+# from an uncommitted working-tree copy. Deliberately unlike every other key, which
+# merges normally. Two reasons: reading it from the base ref means a PR cannot grant
+# itself posting rights in its own diff, and confining it to the project file keeps the
+# permission auditable by the repo's collaborators instead of riding on one machine's
+# user-level file into every repo that machine can reach -- including PRs in repos its
+# owner does not control. See reference/configuration.md.
+#
+# "don't post" / "just tell me" in the invocation still overrides this to no-post, and
+# confirm_before_posting: true still turns an allowed post into a preview -- but only
+# where there is a person to preview to, so an agent-invoked run treats it as no-post.
+allow_agent_posting: false
