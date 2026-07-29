@@ -15,7 +15,9 @@ One value the loop depends on is **not** its own: the severity floor that decide
 
 ### An empty `reviewers` is a configuration error, not a mode
 
-It reads like it should mean "engage nobody, just triage whatever turns up", and it cannot: with nothing to engage there is nothing to wait for, so step 3 returns immediately, step 4 finds the intersection vacuously happy, and the loop terminates having triaged nothing — reporting a *converged* run on a PR no reviewer has looked at. A clean finish on an unreviewed PR is worse than no run at all. So an empty merged `reviewers` stops at kickoff: say the list is empty, name the layer that emptied it, and ask.
+It reads like it should mean "engage nobody, just triage whatever turns up", and it cannot: with nothing to engage there is nothing to wait for, so step 3 returns immediately, step 4 finds the intersection vacuously happy, and the loop terminates having triaged nothing — reporting a *converged* run on a PR no reviewer has looked at. A clean finish on an unreviewed PR is worse than no run at all.
+
+So the non-empty requirement is an **invariant checked when step 2 runs**, not a validation of the config file. Checking only the merge leaves every other route to empty open, and there are three: a modifier that narrows the list to nothing, the Preconditions offer to drop an unusable `skeptic`, and the merge itself. Any of them landing on empty stops the run — say the list is empty and name what emptied it.
 
 The thing it was reaching for is legitimate and already works — a repo whose bots auto-review on push, needing no manual request. Put those bots in `reviewers` anyway: step 2's per-reviewer skip check sees each has already covered the current commit and requests nothing, so the loop waits for and converges on them without ever pinging one.
 
@@ -55,8 +57,8 @@ It also has a precondition a bot doesn't: the reviewed repo must have committed 
 Parse intent; don't require precise syntax:
 
 - "no iteration cap" / "until done" / "no max" → disable `max_iterations`. Say plainly that this removes the loop's only termination guarantee.
-- "only copilot" / "without codex" / "skip the skeptic" → narrow `reviewers` for this run. Only changes who the loop *engages*; a reviewer that shows up via auto-trigger is still evaluated.
-- "just fix what's there" / "one pass" → run steps 1 and 5–8 once and stop, without re-engaging or waiting.
+- "only copilot" / "without codex" / "skip the skeptic" → narrow `reviewers` for this run. Only changes who the loop *engages*; a reviewer that shows up via auto-trigger is still evaluated. **If the narrowing leaves the list empty, stop and say so** — don't run a loop with nobody in it (above).
+- "just fix what's there" / "one pass" → triage what is already on the PR and stop: steps 1, 5, 6, 7, then **push without step 8's re-engagement**, and no wait, no step 4, no return to step 3. Step 8's two halves come apart here deliberately, and only the push runs. Re-engaging reviewers and then terminating would be worse than either: they post findings onto a PR this run has already stopped triaging, and the next run reads them as unresolved feedback of unknown provenance.
 - A PR number, URL, or cross-repo reference → target specific PR(s) instead of auto-detecting.
 
 Build command is not configured — detect the project's verify command at the commit step.

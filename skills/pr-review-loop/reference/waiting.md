@@ -78,7 +78,9 @@ If `git pull` on wake brings in commits the loop didn't author (a teammate or au
 
 ## Timeout for unresponsive bots
 
-If a bot doesn't respond within ~20 minutes of being triggered (or ~20 min after the push that should have auto-triggered it), surface to the user — don't silently hang. **Before declaring it unresponsive, reconcile all three surfaces against HEAD** — its verdict may have arrived as an issue comment a prior poll didn't catch, in which case it's done. The user decides: skip it this iteration, wait longer, or terminate.
+If a bot doesn't respond within ~20 minutes of being triggered (or ~20 min after the push that should have auto-triggered it), surface to the user — don't silently hang. **Before declaring it unresponsive, reconcile all three surfaces against HEAD** — its verdict may have arrived as an issue comment a prior poll didn't catch, in which case it's done. The user decides: skip it, wait longer, or terminate.
+
+"Skip it" means **excused for the run**, not for this iteration (SKILL.md step 4). A bot skipped for one iteration is re-requested by the next step 8, stalls the next wait for another twenty minutes, and asks the user the same question again — ten times over, on a broken integration, before the cap report finally arrives. And because nothing removed it from `active ∩ reviewers`, the loop cannot terminate anyway: the run ends as *did not converge* even where every real finding was settled. So drop it from `active`, don't re-engage it, and name it in the summary as excused and unreviewed. Carry the excused set in the wake payload; an external push resets it, because new code nobody has seen is worth asking about again.
 
 ## Optional self-review — push BEFORE triggering, not during the wait
 
