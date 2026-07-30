@@ -4,9 +4,9 @@ description: >-
   Independent skeptical review of a pull request by reviewers who took no part
   in writing it: blind subagents read the changes at HEAD, treat comments and
   docs as claims to verify against the code, and produce a thread per finding
-  plus a go/no-go verdict — posted to the PR when a person asks for it there, or
-  when the reviewed repo's own committed config grants an agent caller standing
-  permission; shown in the terminal otherwise. Use when the user asks for a second
+  plus a go/no-go verdict — posted when a person asked for it to be published, or
+  when an agent caller has the reviewed repo's committed permission AND the ask
+  was not question-shaped; shown in the terminal otherwise. Use when the user asks for a second
   opinion or an independent skeptical review of a PR, or asks whether a PR is
   really ready to merge. Requires an existing PR; accepts a PR number, URL, or
   owner/repo#num, and modifiers like "don't post", "one reviewer", or
@@ -206,7 +206,9 @@ Where the review was posted, say the findings are on the PR, and say how many la
 
 **The offer is a human-path affordance.** It stands only where a person previewed — an agent-invoked run's returned draft carries no offer, and a caller asking for it is not a go-ahead (stage 7).
 
-Taking it up **re-runs stage 1's staging and nothing else** — carrying `$REVIEWED` across unchanged, since the point of the checks is to notice the head has moved away from what was reviewed. Order matters: **re-read `state` and the current head *before* re-staging**, per "Is this still the right commit?". Then re-stage at `$REVIEWED`, write the payload files again from the draft already shown, re-validate the anchors against the diff at `$REVIEWED`, and post — through all three placement tiers, so the previewed threads land as threads.
+Taking it up **re-runs stage 1's staging and nothing else** — carrying `$REVIEWED` across unchanged, since the point of the checks is to notice the head has moved away from what was reviewed. Order matters: **re-read `state` and the current head *before* re-staging**, per "Is this still the right commit?".
+
+One wrinkle on the cross-repo path: `$REPO` was the temp clone, and teardown deleted it, so the force-push test — which is `git -C "$REPO" …` — would run in a repository that no longer exists and exit 128 on every call. A missing `$REPO` is not the same as an unresolvable sha, and treating it as one posts at an orphaned `$REVIEWED` and 422s twice. So **re-clone first where the PR is cross-repo** (a bare clone with no worktree is enough for the fetch and `--is-ancestor`), then run the checks, then stage or skip staging as they direct. Then re-stage at `$REVIEWED`, write the payload files again from the draft already shown, re-validate the anchors against the diff at `$REVIEWED`, and post — through all three placement tiers, so the previewed threads land as threads.
 
 Checking first is what makes the force-push case survivable. Teardown deleted `refs/prskeptic/<num>`, so re-staging re-fetches `pull/<num>/head` — which after a force-push is a *different* commit, leaving `$REVIEWED` unresolvable: `cat-file -e` and `worktree add` both fail, and the skill's own force-push answer sits behind a step that cannot complete. So on a force-push, **skip staging entirely** and go straight to the body-only post against the current head. There are no anchors to re-validate, because none survive a force-push. A preview can sit for an hour while the PR is merged or force-pushed out from under it, which is what those checks are for. Do not re-run stages 2–6 — dispatching fresh reviewers would publish a draft the user never saw — and do not re-apply the post/preview decision, which they have already made. Telling someone to go read findings on a PR that has none is how a previewed run gets mistaken for a clean one.
 
