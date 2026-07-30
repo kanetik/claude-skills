@@ -27,7 +27,7 @@ The thing it was reaching for is legitimate and already works — a repo whose b
 
 ### `max_iterations` is load-bearing
 
-Under the old shape the loop converged on a bot going quiet, and the cap existed for the case where something had gone wrong. That is no longer true. Convergence is now "no reviewer has anything at or above the blocking severities" (SKILL.md step 4), and an adversarial reviewer with no severity floor will always have *something* — so the loop is not guaranteed to terminate on its own merits, and the cap is what guarantees it terminates at all. Two consequences:
+Under the old shape the loop converged on a bot going quiet, and the cap existed for the case where something had gone wrong. That is no longer true. Convergence is now a round that **changes no code** — nothing at or above the blocking severities outstanding, *and* nothing fixed that a reviewer has not since seen (SKILL.md step 4; both conditions, not just the first). An adversarial reviewer with no severity floor will always have *something*, and every round that acts on it moves HEAD and so owes another review — so the loop is not guaranteed to terminate on its own merits, and the cap is what guarantees it terminates at all. Two consequences:
 
 - **Reaching it is an outcome, not an error.** SKILL.md step 9 requires it be reported as "did not converge", with the count and every outstanding blocking finding, and distinguished in the summary from a clean finish.
 - **Its value is a real choice.** `10` suits a normal change. Raise it for a large one; lower it to keep an unattended run bounded. "no iteration cap" in the invocation disables it, which means asking for a loop with no termination guarantee — reasonable when supervised, not otherwise.

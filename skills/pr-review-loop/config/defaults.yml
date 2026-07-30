@@ -51,9 +51,11 @@ max_iterations: 10              # NOT a backstop -- see below
 # Where that is too much, lower max_reviewers there or max_iterations here.
 #
 # max_iterations is LOAD-BEARING. An adversarial reviewer with no severity floor always
-# finds something, so the loop terminates on "nothing left at or above the blocking
-# severities" rather than on silence -- and if the fix rounds keep producing new findings,
-# the cap is the only thing that ends it. Reaching it is a reported outcome ("did not
+# finds something, so the loop terminates on a round that CHANGES NO CODE rather than on
+# silence -- nothing blocking outstanding, and nothing fixed that a reviewer has not since
+# seen. Severity decides what must be fixed; it never decides what must be reviewed. If the
+# fix rounds keep producing findings, each one owes another review and the cap is the only
+# thing that ends it. Reaching it is a reported outcome ("did not
 # converge"), not a silent stop. Raise it for a large change; lower it to keep a run short.
 #
 # RETIRED KEYS. Earlier versions had four reviewer lists -- upfront_gate_reviewers,
