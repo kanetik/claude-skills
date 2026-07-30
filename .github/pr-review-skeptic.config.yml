@@ -1,0 +1,38 @@
+# Project facts handed to the blind reviewers in pr-review-skeptic.
+# These describe the PROJECT, never any individual change.
+
+project: >-
+  A collection of Claude Code skills, published as an installable plugin.
+  Not an application: no build, no tests, no runtime. The deliverable is
+  the prose inside each SKILL.md.
+
+users: >-
+  Claude Code users who install the plugin or copy individual skill folders
+  into ~/.claude/skills/. Public repo, small installed base; the author is
+  the primary user.
+
+irreplaceable_data: >-
+  Nothing in THIS repo is unrecoverable -- it is all versioned text. The
+  blast radius is on the consuming side: pr-review-loop and
+  pr-review-skeptic drive git and the GitHub API against other people's
+  repositories. A defect there posts a review under the user's account,
+  resolves threads, pushes commits, or removes a worktree and refs from a
+  checkout that is not the skill's own. None of that can be unsent, and
+  some of it cannot be undone.
+
+production_status: >-
+  Published and installable (Claude Code plugin, MIT, public). Skills are
+  loaded verbatim by other people's agents, so a bad instruction ships the
+  moment it merges -- no staged rollout, no runtime guard.
+
+architecture: >-
+  One folder per skill under skills/<name>/, each holding a SKILL.md (YAML
+  frontmatter + prose body) plus optional config/ and reference/ files it
+  loads on demand by relative path. .claude-plugin/plugin.json lists the
+  exported skills. There is no code -- the implementation is instructions
+  an agent reads.
+
+# Lets pr-review-loop's skeptic reviewer post its findings to the PR.
+# Only counts when committed to the default branch: it is read from the
+# PR's base ref, so a PR cannot grant itself posting rights in its own diff.
+allow_agent_posting: true
