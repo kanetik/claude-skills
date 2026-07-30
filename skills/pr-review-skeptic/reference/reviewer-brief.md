@@ -16,12 +16,14 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{UNIT}}` | this reviewer's slice of the partition | "the sync layer: `data/sync/**`, 9 files" |
 | `{{FILES}}` | newline list of paths in this unit, each with its `A`/`M`/`D` status | `M data/sync/Merge.kt` … |
 | `{{BASE}}` | merge-base of the PR, full 40-char oid from `git merge-base` | `a1b2c3d4e5f6…` |
-| `{{HEAD}}` | PR head sha, full 40-char oid from `gh pr view --json headRefOid` | `e4f5a6b7c8d9…` |
+| `{{HEAD}}` | `$REVIEWED` — the sha the worktree was staged at ([`mechanics.md`](mechanics.md)). **Never re-read from `gh`** | `e4f5a6b7c8d9…` |
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
 Every slot carries a fact about the project or the mechanics of reaching the code. None carries what the change is for, why it was built this way, or what anyone has said about it.
 
 `{{REPO_PATH}}` is the worktree staged in stage 1 — at the PR's head, in the PR's own repository. Reviewers read files there, so pointing them anywhere else has them reviewing code the PR does not contain.
+
+`{{HEAD}}` must be `$REVIEWED` and not a fresh `headRefOid` read, because the brief's first instruction has the reviewer assert `rev-parse HEAD` equals it. On a PR being pushed to mid-run — routine when `pr-review-loop` drives this skill — a freshly-read head disagrees with the staged worktree, so every reviewer aborts and reports the mismatch instead of reviewing, stage 4 re-dispatches twice for the same abort, and the unit is recorded unreviewed: a coverage hole in the verdict that does not exist in reality.
 
 ---
 
@@ -54,7 +56,9 @@ If it names a different commit, stop and report that instead of reviewing.
 
 Then read the change with `git -C "{{REPO_PATH}}" diff {{BASE}}...{{HEAD}} -- <path>`, and open files as `{{REPO_PATH}}/<path>` — never as `<path>` alone. Read whatever else you need beyond the diff — callers, types, tests, adjacent code — to judge it. A diff alone rarely shows enough to tell correct from incorrect.
 
-**Judge the tree as it stands, not the story of how it got here.** Your evidence is exactly two things: the working tree at {{HEAD}}, and `git diff {{BASE}}...{{HEAD}}`. Everything written *about* this change — its commit log, its pull-request description, the threads on it — is out of scope for you, by every route: no `git log`, `git blame`, or `git show` of a commit in this range, and no `gh` command at all. That material is where the author's reasoning and the earlier reviewers' arguments live, and reading it is how a reviewer ends up checking the account rather than the code. Someone else handles what has already been said; you are the one person looking at this cold, and that is the whole of your value here. If you want to know what the change is for, the code is the specification.
+**Judge the tree as it stands, not the story of how it got here.** Your evidence is exactly two things: the working tree at {{HEAD}}, and `git diff {{BASE}}...{{HEAD}}`. Everything written *about* this change — its commit log, its pull-request description, the threads on it, every review anyone has posted on it — is out of scope for you, by every route: no `git log`, `git blame`, or `git show` of a commit in this range, and no `gh` command at all. That material is where the author's reasoning and the earlier reviewers' arguments live, and reading it is how a reviewer ends up checking the account rather than the code. Someone else handles what has already been said; you are the one person looking at this cold, and that is the whole of your value here. If you want to know what the change is for, the code is the specification.
+
+This holds however much history the change has. A pull request that has been through many rounds carries prior reviews — possibly by reviewers briefed exactly as you are — along with the replies explaining why each finding was fixed, or why it was not. **Do not go looking for any of it, and do not weigh it if you stumble on it.** A defect that was raised, answered convincingly, and left in place is one you are expected to find again; you are supposed to be the reader who does not already know it was settled. Reporting something that turns out to have been discussed costs nothing — a later stage reconciles findings against that history, and it can only do so for findings you actually reported.
 
 Read, and only read. Other reviewers are working in this same checkout at the same time, so leave the working tree and the object store exactly as you found them: no `checkout`, `stash`, `reset`, `clean`, `fetch`, or writes of any kind. Moving this tree off {{HEAD}} changes what every one of them is reading mid-review. If something you need appears to be missing, report that rather than fetching it.
 

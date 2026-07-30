@@ -48,6 +48,14 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # outlast 30 minutes by itself), and once per reviewer dispatch. A lock that ages out under a
 # live run is worse than none: the second run stops asking and clears the worktree the first
 # run's reviewers are mid-read of.
+#
+# Stage boundaries are NOT enough on their own, because the two longest waits in the run sit
+# BETWEEN them: the concurrent blind pass (stage 4) and the cross-check (stage 6, the largest
+# prompt the skill builds). Either can outlast 30 minutes on a large PR. So also re-touch the
+# lock on a timer -- every ~10 minutes -- for as long as any subagent is outstanding. A second
+# run on the same PR is not hypothetical: the key is (owner, repo, num), pr-review-loop
+# re-invokes this skill on every fix push, and the user can run /pr-review-skeptic on the same
+# PR at the same time.
 if [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
   echo "LIVE-RUN-SUSPECTED"; exit 1     # stop here and ask; do NOT clear
 fi
@@ -125,7 +133,7 @@ rm -rf "<tmp>"                             # the whole per-PR directory, clone a
 
 `--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here.
 
-Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
+Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
 ## Scope the change
 
@@ -161,6 +169,8 @@ For the cross-check stage only.
 gh pr view <num> --json body,reviews,comments,commits
 ```
 
+`comments` here is the PR's **issue** comments, not the review threads below, and it is the one field easy to mistake for redundant. It carries the disposition records for findings that never got a thread ([`cross-check.md`](cross-check.md)) — drop it and exactly those findings come back `new` on every run, which on a PR being driven through a loop is a round that repeats rather than accumulates.
+
 `commits` alone carries no paths — only `oid`, dates, and messages — so it cannot answer the question the `unfixed` bucket asks. Get the paths too, and pass those through with the threads:
 
 ```bash
@@ -180,7 +190,7 @@ query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
     pullRequest(number:$num){
       reviewThreads(first:100,after:$cursor){
         pageInfo{hasNextPage endCursor}
-        nodes{ isResolved isOutdated path line originalLine originalStartLine
+        nodes{ isResolved isOutdated subjectType path line originalLine originalStartLine
                comments(first:50){nodes{databaseId author{login} body url createdAt}} }
       }}}}' -F owner=<owner> -F repo=<repo> -F num=<num>
 ```
@@ -189,7 +199,9 @@ Paginate on `hasNextPage`. A thread's resolution plus its replies is what separa
 
 `databaseId` is the id the replies endpoint needs, and it is how a run recognises its own earlier comments: every comment this skill posts ends with the marker line `<!-- pr-review-skeptic -->`. Without it there is nothing to recognise — these reviews are authored by the user's own account, indistinguishable from a hand-written one.
 
-`line` comes back **null on any outdated thread**, so match on `originalLine` when it does. Outdated is the common case here, not the rare one: a rebase or a formatting push marks every thread in the PR outdated at once, and the run that follows is exactly the one that needs to find its own earlier comment. Matching on path alone instead posts a second thread beside the first and notifies everyone twice for one defect.
+`line` comes back **null on any outdated thread**, so match on `originalLine` when it does. Outdated is the common case here, not the rare one: a rebase or a formatting push marks every thread in the PR outdated at once, and the run that follows is exactly the one that needs to find its own earlier comment.
+
+`subjectType` is why it is in the selection: a `FILE` thread — the file-level comments below — has `line` **and** `originalLine` null forever, outdated or not, so it is not distinguishable from an outdated `LINE` thread without it, and a line-based key matches no file-level thread ever. Match those on `path` plus the finding's substance ([`cross-check.md`](cross-check.md)). Getting this wrong posts a second thread beside the first and notifies everyone twice for one defect — on exactly the findings the file-level tier exists to make settleable.
 
 ## Post the review
 
@@ -222,7 +234,9 @@ gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/rev
 
 The heredoc rather than a file-writing tool because everything in this block has to agree on one path convention. Git Bash MSYS-converts a `/tmp/…` argument to the native directory before `jq` and `gh` see it; a file-writing tool takes the string literally and resolves the leading `/` against the current drive, so bodies written to `C:\tmp\…` are invisible to a `jq --rawfile` reading `C:\Users\…\AppData\Local\Temp\…`. `review.json` then never gets built, at the last step, after every reviewer has run. Use a file-writing tool here only with the native (`cygpath -w`) path.
 
-A clean verdict posts through this same path with no inline comments: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created — on exactly the outcome the skill most wants to report.
+A run with **no inline comments** posts through this same path: the `: >` leaves an empty `comments.jsonl`, `jq -s` yields `{"comments": []}`, and an empty array is a valid review. Skipping the truncate would instead have `jq` fail on a file that was never created.
+
+That is "no findings at all, or every finding in another tier" — **not** "a clean verdict". Severity decides the verdict, placement is decided separately, and every finding gets a thread whatever its severity ([`SKILL.md`](../SKILL.md) stage 7): a verdict with no `CRITICAL`/`HIGH` is clean and may still carry four `MEDIUM`s that each need an inline comment. Reading the two as the same thing posts a clean verdict with an empty comment array and drops those four off the PR entirely, where the next run's blind pass re-finds them as `new` forever.
 
 PowerShell, where a heredoc is a parse error and `ConvertTo-Json` does the encoding. Bodies come from files here too, for the same reason.
 
@@ -235,8 +249,16 @@ $payload = @{ commit_id = $REVIEWED; event = 'COMMENT'; body = $summary
   comments = @(@{ path = 'data/sync/Merge.kt'; line = 118; side = 'RIGHT'; body = $c1 })
 } | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText("<tmp>/review.json", $payload, (New-Object System.Text.UTF8Encoding $false))
+
+# High-water mark, BEFORE the POST -- same purpose and same timing as the Bash block's.
+$ids = gh api --paginate "repos/<owner>/<repo>/pulls/<num>/reviews" --jq '.[].id'
+$LASTID = if ($ids) { ($ids | ForEach-Object { [long]$_ } | Measure-Object -Maximum).Maximum } else { 0 }
+Write-Output "LASTID=$LASTID"      # carry it forward -- the check that needs it runs in a later shell
+
 gh api repos/<owner>/<repo>/pulls/<num>/reviews --method POST --input "<tmp>/review.json"
 ```
+
+**The `$LASTID` capture is not optional on this route.** It is easy to read as a Bash-block detail, and it is not: this is the route to take wherever standalone `jq` is missing, which on Windows with Git Bash is the default rather than the exception. Without it the ambiguous-failure check below compiles `select(.id > )`, jq errors, the `||` fires, and every ambiguous failure lands on the `<unverifiable>` branch — the one branch that cannot answer the question and has to ask a human, which on an agent-invoked run means nobody. `ForEach-Object { [long]$_ }` because the ids arrive as strings and `Measure-Object -Maximum` would otherwise compare them lexically, making `id 9` beat `id 10`.
 
 `ReadAllText` rather than `Get-Content -Raw`, for two reasons that both land on Windows PowerShell 5.1: `-Raw` returns a decorated PSObject that `ConvertTo-Json` serializes as an object (`"body": {"value": …, "PSPath": …}`) which GitHub rejects outright, and it decodes UTF-8 through the ANSI codepage, so every em dash and arrow in a finding posts as mojibake. Both surface only at the last step, after every reviewer has run.
 
@@ -246,9 +268,9 @@ Write the file BOM-free. `Set-Content -Encoding utf8` emits a BOM on Windows Pow
 
 **Anchoring.** `line` must be a line the diff touches at `commit_id`, or the API rejects the whole payload with 422 — one bad anchor loses every comment in the call, summary body included.
 
-Check each anchor yourself before building the payload: you already have `git diff "$BASE...$REVIEWED"`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not go in the **summary body** under a heading naming their path — a little less prominent, and it always works. Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
+Check each anchor yourself before building the payload: you already have `git diff "$BASE...$REVIEWED"`, so a finding's `line` either falls inside a **new-side** hunk range (the `+` half of `@@ -a,b +c,d @@`) for its `path` or it does not. New-side because `side` is always `RIGHT` — which also means a finding on a `D` path can never anchor: a deleted file's only hunk range is on the left, and an old-side line number that happens to look plausible passes a careless check and then 422s the whole call. Ones that do not anchor drop to the next placement tier — a file-level comment where the path allows one, the summary body otherwise (below). Doing this up front is what makes the step decidable at all: GitHub's 422 does not say *which* entry it rejected, so a run that skips the check has nothing to act on when the call fails.
 
-**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, move **all** the inline comments into the summary body under path headings and send the single review call once more — one retry, not a search.
+**Recovering from a 422.** The call posted nothing, so a retry cannot duplicate. Since the response names no offending entry, rebuild the body with a line saying the inline anchors were rejected and the findings follow as separate comments, re-send the review once with **no** `comments[]` at all — one retry, not a search — then place each of those findings through the file-level path below, one call each, reporting any that fail. That costs a round of separate calls, but it keeps each finding on a thread that can be resolved; folding them all into the body instead trades one bad anchor for a review whose every finding re-raises on the next run. Rebuild the body *before* the retry, for the reason in that section: once it posts, there is no amending it.
 
 **Any other failure — check before re-sending.** The no-duplicate guarantee above belongs to the 422 alone: a timeout, a connection reset, or a 502 can arrive *after* GitHub accepted the review, and `gh` exits non-zero either way. Re-sending then posts the whole review twice, every inline comment duplicated, everyone notified again. So look first:
 
@@ -291,6 +313,27 @@ The write-to-file rule governs **every** posting call, not just the review paylo
 
 So does the check-before-re-sending rule. This call is separate from the all-or-nothing review payload, so an ambiguous failure here has the same shape and the same cost — re-send blindly and the thread carries two identical replies, notifying every subscriber twice for one defect, which is what the reply path exists to avoid. Re-read the thread first and look for a reply carrying the marker; unknown means ask, not re-send.
 
-`subject_type: file` attaches a comment to a whole file, but it is a property of the standalone comment endpoint, not of the `comments[]` array in a review — sending it here is another 422 on the same all-or-nothing call. Knowing that is the point; it is not an invitation to use the other endpoint. A finding that will not anchor goes in the summary body, which costs one notification rather than N and is what the paragraph above already says.
+## File-level comments — the second placement tier
 
-Findings on code the PR did not touch cannot anchor anywhere, and neither can findings on a `D` path. Both belong in the body, under a heading that names the file — a defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it.
+`subject_type: file` attaches a comment to a whole file rather than a line. It is a property of the **standalone** comment endpoint, not of the `comments[]` array in a review — sending it inside the review payload is another 422 on the same all-or-nothing call, which is why these go out separately, **after** the review call has succeeded:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
+  -f commit_id="$REVIEWED" -f path="data/sync/Merge.kt" -f subject_type=file \
+  -F "body=@<tmp>/f-1.md"
+```
+
+This is the home for a finding whose path is in the diff and present at `$REVIEWED` but whose line the change never touched — a defect on line 40 of a file the diff only reaches at line 200 ([`SKILL.md`](../SKILL.md) stage 7, tier 2). It buys the one thing the summary body cannot: a real thread, which can be replied to and resolved, and which a later run's cross-check can read as evidence that the finding was dealt with. A finding with no thread comes back every round forever.
+
+**Every finding that qualifies for this tier gets one.** The extra notification is the price of a settleable finding, and it is worth paying at any severity — a `LOW` with no thread re-raises just as forever as a `HIGH` with none. Don't ration them by importance; the only question is whether the tier applies.
+
+**Order matters, and the failure path is why.** The review call publishes the summary body, and nothing in this skill can amend a published body afterwards — there is no edit step. So a tier-2 failure discovered *after* the review call cannot be "moved into the body"; the body is already on the PR. Two consequences:
+
+- **Decide tier 3 before the review call, not after.** Tier 3 is the findings that could never anchor — a `D` path, a file the change never touched, a path absent from the diff. Those are knowable from the diff you already have, so the body is built with them in it and the placement is correct when it posts.
+- **A tier-2 call that fails anyway is reported, not relocated.** Say so in the terminal and in stage 8's report, naming the finding and its path. Do not silently drop it: stage 8 would otherwise count it as placed on a thread when it is nowhere at all.
+
+One call per finding, so a failure costs that finding rather than the review. On failure — a secondary rate limit, a 502, a path the API rejects — do not retry variations.
+
+The ambiguous-failure rule applies here too, but **the marker is not a usable test on this path**. `gh` exits non-zero whether or not GitHub accepted the comment, and by now this same run's inline comments are already on the PR carrying the same marker, quite possibly on the same file — so "look for the marker" answers yes for a comment that never landed. Test for *this finding* instead: capture the comment `databaseId`s on that path before the tier-2 batch begins, and look for one newer than the high-water mark whose body matches this finding (the same shape as `$LASTID` for the review call). Where you cannot establish that, report the finding as unplaced rather than assuming it landed — an unplaced finding the user is told about is recoverable; one silently counted as posted is not.
+
+**Findings that reach neither tier** — on a `D` path, or on a file the change never touched at all — go in the summary body under a heading that names the file, at full severity, listed as having no thread. A defect in code the change depends on is still worth reporting, and it is worth saying that the change is what surfaced it. Say plainly in the body that these carry no thread: whoever dispositions the review needs to know which findings they cannot resolve on the PR, and where those dispositions have to go instead.

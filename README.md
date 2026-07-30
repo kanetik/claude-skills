@@ -11,8 +11,8 @@ The skills here are deliberately small and single-purpose. Each one does **one j
 | [`/translate-strings`](skills/translate-strings/SKILL.md) | Translate Android `values/strings.xml` keys into every sibling `values-{locale}/strings.xml`. Preserves placeholders, escapes, plurals, HTML, `translatable="false"`. Always writes locale files alphabetized by key. Supports `--add <locale>` for onboarding and `--retranslate <key>` to force a fresh pass. |
 | [`/translate-content`](skills/translate-content/SKILL.md) | Translate prose — Play Store release notes, app descriptions, FAQs, marketing copy. Reads a per-repo config for output layout, target locales, and char limits. Handles cross-sentence consistency, tone, and the 500-char Play Store limit. |
 | [`/whats-new`](skills/whats-new/SKILL.md) | Author Play Store "What's New" release notes from your commit log (English only). Pulls commits since the last release tag, drafts bullets within Play's 500-char limit, waits for approval, then writes the source-locale file and hands off to `/translate-content` for the other locales. |
-| [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop on a repo's open PR(s): request AI reviewers (Copilot, Codex, any bot that posts), wait for their reviews, evaluate each thread under a weighted project/PR/item judgement, then fix, push back, or file follow-up issues, and repeat until every reviewer driving the loop is satisfied (other bots that show up are triaged, but don't hold it open). Bookended by two deep-review gates that must clear before the loop starts and after it converges — by default `/pr-review-skeptic`, run locally rather than requested on the PR. Bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
-| [`/pr-review-skeptic`](skills/pr-review-skeptic/SKILL.md) | Get an honest second opinion on a PR from reviewers with no stake in it. Blind subagents read the changes at HEAD knowing the project but nothing about why the change exists, treating comments and docs as claims to check against the code. Large PRs are partitioned across reviewers plus a pass on how the pieces compose. Only afterwards does the PR's own review history filter what they found — settled decisions drop out, a defect raised and patched before and still present comes back a severity higher, and a concern that was dismissed once and independently found again comes back flagged with the thread that dismissed it. Produces inline findings plus a go/no-go verdict: posted to the PR when you invoke `/pr-review-skeptic` or ask for it to be posted, shown in the terminal first for question-shaped asks like "is this ready to merge?". |
+| [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop with a strict role split: reviewers review and post findings to the PR, and this skill is the author — the only thing that touches code. It reads every finding off the PR, decides each one (fix / reject with a public rationale / file a follow-up issue), replies, resolves the thread, pushes, and asks for review again, until a round changes no code — nothing blocking outstanding, and nothing fixed that a reviewer hasn't since seen. Reviewers can be bots (Copilot, Codex, anything that posts a review) or `/pr-review-skeptic`, which it re-runs on every fix push. Bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
+| [`/pr-review-skeptic`](skills/pr-review-skeptic/SKILL.md) | Get an honest second opinion on a PR from reviewers with no stake in it. Blind subagents read the changes at HEAD knowing the project but nothing about why the change exists, treating comments and docs as claims to check against the code. Large PRs are partitioned across reviewers plus a pass on how the pieces compose. Only afterwards does the PR's own review history filter what they found — a decision that was already weighed stops blocking but stays named in the verdict with the thread that settled it, a defect raised and patched before and still present comes back a severity higher, and a concern that was dismissed once and independently found again comes back flagged with the thread that dismissed it. Every finding gets its own thread, plus a go/no-go verdict: posted when you invoke `/pr-review-skeptic` or ask for it on the PR, shown in the terminal first for question-shaped asks like "is this ready to merge?". |
 
 ## Typical workflow
 
@@ -28,13 +28,22 @@ Forgot to translate before merge? *"translate the strings from the last PR"* —
 
 Cutting a release? `/whats-new` drafts the English release notes from your commits, you approve, then `/translate-content` propagates to the other locales.
 
-Just opened a PR? `/pr-review-loop` takes it from there, in three phases: a deep review before anything else, then the bot loop — requesting reviewers, waiting, working through their feedback (fixing, pushing back, or filing follow-ups) until they're satisfied — then the same deep review again over what the fix rounds produced. Unlike the translation skills, this one *is* about git/PR work, so it drives those operations itself rather than leaving them to you.
+Just opened a PR? `/pr-review-loop` takes it from there. It is one loop with one rule about who does what: **the reviewer reviews and never fixes; the loop is the author and the only thing that touches code.** Reviewers post their findings to the PR as threads. The loop reads them, decides each one — fix it, reject it with a rationale, or file a follow-up issue — replies, resolves the thread, pushes, and asks for review again. That repeats until a round changes no code: nothing blocking left, and nothing fixed that a reviewer hasn't since seen. Severity decides what has to be fixed; it never decides what has to be reviewed. Unlike the translation skills, this one *is* about git/PR work, so it drives those operations itself rather than leaving them to you.
 
-The deep review at either end is `/pr-review-skeptic`, which reviews the PR with fresh reviewers who had no hand in writing it and are told nothing about why the change exists. Up front it catches an approach that's wrong from the start, before the loop spends ten rounds polishing it; at the end it reads code that has accumulated a day's worth of confident comments explaining why it's fine, and its history pass drops the ground the loop already settled while flagging a defect a fix round patched and left present. The loop invokes it locally, so those runs post nothing to the PR — their verdicts come back in the loop's summary.
+A reviewer can be a bot (Copilot out of the box) or `/pr-review-skeptic`, and the pairing is what the loop is built for:
 
-Two things follow from that default. It needs the skeptic skill installed and its five project keys configured (below); the loop checks at kickoff and asks rather than gating on invented project facts. And you can turn it off or swap it — *"skip the gates"*, or *"gate with codex"* to use a review bot on the bookends instead.
+```yaml
+# .github/pr-review-loop.config.yml
+reviewers: [skeptic]        # or [copilot, skeptic]
+```
 
-You can also run `/pr-review-skeptic` yourself, on its own, whenever you want a colder read — that's the same skill, posting under your account. One wrinkle if you run it *before* the loop: `/pr-review-loop` reads human review participation as a sign the PR is already mid-flight, so it will skip its own upfront gate and tell you that's why. Usually what you want, since you just ran it.
+Skeptic's reviewers are blind — they read the code at HEAD knowing the project and nothing about why the change exists, so they judge the code rather than the argument for it. Because it re-runs on every fix push, it also reads the code the fix rounds produced, which is the code with the least review behind it and the most accumulated confidence that it's fine. And its history pass is what keeps rounds from repeating: on each run it buckets what its blind reviewers found against the PR's own threads, so ground you already settled comes back marked settled rather than re-litigated, and a defect a fix round patched and left present comes back a severity higher.
+
+That last part is why the loop replies to *every* finding and resolves its thread, not just the blocking ones — the reply is the record the next round reads. It's also why rejections are public and specific: a rejection with reasoning settles the finding, and a settled blocking finding still shows up in the verdict with its count and thread, so a bad rejection stays visible instead of quietly disappearing.
+
+Three things to know before turning skeptic on. It needs the skill installed and its five project keys configured (below). It needs `allow_agent_posting: true` committed to the reviewed repo's `.github/pr-review-skeptic.config.yml` — an agent-invoked review posts nothing without it, and a reviewer that leaves no trace on the PR can't record decisions, so the loop just re-finds the same things every round. And `max_iterations` genuinely matters here: an adversarial reviewer with no severity floor always finds *something*, and every round that acts on it moves HEAD and so owes another review — so the loop terminates on a round that changes no code rather than on silence, and reaching the cap is a reported outcome ("did not converge"), not a quiet stop. The loop checks all of that at kickoff and tells you what's missing rather than starting a run that can't finish.
+
+You can also run `/pr-review-skeptic` yourself, on its own, whenever you want a colder read — same skill, posting under your account. If you run it during a loop, the loop recognises the review by its marker and folds it into the current round rather than re-running the reviewers over the same commit.
 
 ## Installation
 
@@ -90,7 +99,7 @@ cp -r ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/
 ```
 
-Installing a subset is fine, with one pairing to know about: `/pr-review-loop` uses `/pr-review-skeptic` for its two gates by default, so taking the loop without the skeptic means the loop stops at kickoff to ask whether to run ungated. Take both, or tell the loop *"skip the gates"*.
+Installing a subset is fine. The loop ships defaulting to Copilot, so it works on its own; add the skeptic when you want the pairing described above, and the loop will tell you at kickoff if it's configured for skeptic and can't find it.
 
 ## Per-project setup
 
@@ -164,7 +173,7 @@ You can also skip the config entirely and drive `/translate-content` ad-hoc: *"t
 
 ### For `/pr-review-skeptic`
 
-Worth two minutes: add `.github/pr-review-skeptic.config.yml` to the repo you review. Run directly, the skill asks on first run without it (drafting answers from your README/CLAUDE.md for you to confirm) and offers to write the file. Run **as a gate from `/pr-review-loop`**, there's nobody to interview — so the loop checks the config at kickoff and pauses to ask you, rather than gating your PR on five invented facts about your project. Committing the file to your default branch settles it for good: the config is read from the PR's base ref, so a committed one covers every run from anywhere.
+Worth two minutes: add `.github/pr-review-skeptic.config.yml` to the repo you review. Run directly, the skill asks on first run without it (drafting answers from your README/CLAUDE.md for you to confirm) and offers to write the file. Run **from `/pr-review-loop`**, there's nobody to interview — so the loop checks the config at kickoff and pauses to ask you, rather than reviewing your PR against five invented facts about your project. Committing the file to your default branch settles it for good: the config is read from the PR's base ref, so a committed one covers every run from anywhere.
 
 | Key | Required | Purpose |
 |---|---|---|
@@ -173,11 +182,12 @@ Worth two minutes: add `.github/pr-review-skeptic.config.yml` to the repo you re
 | `irreplaceable_data` | yes | What can't be recovered if a change destroys it — the key that does the most work, since it turns "data loss" into a named thing the reviewer goes hunting for |
 | `production_status` | yes | Shipping, staged, pre-release, internal — sets what a regression costs |
 | `architecture` | yes | The shape of the system, in two sentences |
+| `allow_agent_posting` | for the loop | `true` lets a review invoked by another skill or agent post to the PR. Required for `/pr-review-loop` to use the skeptic as a reviewer — see below |
 | `priorities` | no | Blast-radius order in your own domain's words (has a sensible seven-rung default) |
 | `files_per_unit` | no | Soft target when splitting a large PR across reviewers (default 12) |
 | `max_reviewers` | no | Cap for one PR (default 8); past it, units grow rather than files going unreviewed |
-| `blocking_severities` | no | Which severities post inline and hold the verdict (default `[CRITICAL, HIGH]`) |
-| `confirm_before_posting` | no | `true` to always preview the review before it's posted (default `false`) |
+| `blocking_severities` | no | Which severities hold the verdict (default `[CRITICAL, HIGH]`). Not which ones post — every finding gets its own thread |
+| `confirm_before_posting` | no | `true` to preview the review before it's posted, when a person asked for it (default `false`). On an agent-invoked run there's nobody to preview to, so it reverts that run to posting nothing — which **cancels `allow_agent_posting`**. Don't set both |
 
 ```yaml
 project: "An offline-first note-taking app for Android."
@@ -185,9 +195,16 @@ users: "Consumers on phones and tablets; a few thousand daily."
 irreplaceable_data: "User-authored note bodies. Everything else re-syncs from the server."
 production_status: "Shipping on Play, staged rollout."
 architecture: "Compose UI over a Room database, with a WorkManager sync worker reconciling against a REST backend."
+
+# Only if /pr-review-loop will drive the skeptic in this repo -- see below.
+# allow_agent_posting: true
 ```
 
 Nothing about any individual change belongs in this file — it describes the project, and it's the only thing the reviewers are allowed to take on faith.
+
+**About `allow_agent_posting`.** Leave it out unless you're running `/pr-review-loop` against this repo. By default a review invoked by another skill or agent posts nothing: it hands the draft back to whoever called it, because the decision to publish under your GitHub account is yours. This key is how a repository gives that up standingly — any skill or agent that invokes the skeptic here can then publish a review under the invoking user's account, notifying every collaborator, with no preview. That's the right trade when a review loop needs threads to reply to, and it isn't part of the minimal setup.
+
+It's deliberately the one key that doesn't follow the usual merge rules: it counts only from this file, committed, read at the PR's base ref. Not from `~/.claude/`, not from an uncommitted copy in your tree. So a PR can't grant itself the right to publish in its own diff, the permission is visible and revocable by everyone who works on the repo, and it can't ride your machine's user-level config into someone else's project. It never overrides *"don't post"*, never posts on a merged or closed PR, and `confirm_before_posting: true` cancels it outright.
 
 ## Design principles
 

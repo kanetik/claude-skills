@@ -8,7 +8,7 @@ Read [`../config/defaults.yml`](../config/defaults.yml), then merge per key, low
 2. `~/.claude/pr-review-skeptic.config.yml` (optional, user-level)
 3. `<repo>/.github/pr-review-skeptic.config.yml` (project; wins)
 
-Per-key merge: a layer setting one key inherits the rest from below. Read layer 3 from the repo the PR lives in — the project description has to describe the project being reviewed.
+Per-key merge: a layer setting one key inherits the rest from below. Read layer 3 from the repo the PR lives in — the project description has to describe the project being reviewed. One key is exempt from this merge: `allow_agent_posting`, below.
 
 **Read layer 3 from the PR's base ref, never from the staged head worktree**: `git -C "$REPO" show "$BASETIP":.github/pr-review-skeptic.config.yml`, using the repo root and base tip captured in [`mechanics.md`](mechanics.md).
 
@@ -26,8 +26,25 @@ On a PR that is **not `OPEN`**, read it from `$BASE` instead. The base tip of a 
 | `priorities` | seven-rung ladder | Blast-radius order, highest first. Override in your domain's own words. |
 | `files_per_unit` | `12` | Soft target when partitioning across reviewers. Module and subsystem boundaries decide the cut; this decides roughly how fine. |
 | `max_reviewers` | `8` | Cap on total reviewers for one PR, the composition reviewer included. Reached, units grow — coverage stays complete. |
-| `blocking_severities` | `[CRITICAL, HIGH]` | Which severities post inline and hold the verdict. |
-| `confirm_before_posting` | `false` | `true` shows findings and waits before posting. `SKILL.md` stage 7 decides whether a run posts at all — a question, a "don't post", or an agent caller never does, whatever this is set to. |
+| `blocking_severities` | `[CRITICAL, HIGH]` | Which severities hold the verdict. **Not** which ones post: every finding posts as its own thread (`SKILL.md` stage 7). |
+| `confirm_before_posting` | `false` | `true` shows findings and waits before posting. `SKILL.md` stage 7 decides whether a run posts at all — a question or a "don't post" never does, whatever this is set to. |
+| `allow_agent_posting` | `false` | `true` lets a run invoked by another skill or agent post its review. Project layer only — see below. |
+
+## `allow_agent_posting` — the one key that does not merge
+
+Every other key merges per layer, low → high. This one is honoured **only from the repo's own `.github/pr-review-skeptic.config.yml`, read at the PR's base ref, committed there.** Set anywhere else — the bundled layer, `~/.claude/pr-review-skeptic.config.yml`, an uncommitted working-tree copy — it is ignored.
+
+Where one of those layers sets it **`true`**, say so and name the layer: that is a permission the user believes they granted and did not. Don't warn on a `false`; the bundled layer sets `allow_agent_posting: false` on every run, so a warning that fires on any value at all fires always, and the one message that matters arrives as the one the user has learned to skip.
+
+Three properties follow from the exception, and the key is not worth having without them:
+
+- **Read at the base ref**, so a PR cannot grant itself posting rights in its own diff. Same reason the five project keys are read there.
+- **Committed**, so the permission is a fact about the repository that its collaborators can see and revoke, rather than an assertion made in a prompt or a file on one machine.
+- **Per-repo**, so it cannot ride a user-level file into every repository that machine can reach. A cross-repo PR is the case that makes this concrete: the review posts under the invoking user's account, on someone else's project, and that project's own config is the only layer entitled to authorize it.
+
+The working-tree fallback below covers the five project keys, which are a description. It does not extend here, which is a permission: a file the user has not committed is not yet an auditable grant.
+
+What the key does **not** do: it never overrides "don't post" / "just tell me" in the invocation, never posts on a merged or closed PR, and never posts a run in which nothing was reviewed. `confirm_before_posting: true` has nobody to confirm with on an agent-invoked run, so it reverts that run to no-post rather than hanging on a preview no person will see. `SKILL.md` stage 7 is the authority on all of it.
 
 ## First run in a repo
 
