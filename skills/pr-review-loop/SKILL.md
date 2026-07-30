@@ -6,8 +6,8 @@ description: >-
   skill); this skill is the author, and the only thing that touches code. It
   reads every finding off the PR, decides each one (fix / reject with a public
   rationale / file a follow-up issue), replies, resolves the thread, pushes, and
-  re-requests review — repeating until no reviewer has anything left at or above
-  the blocking severities. Self-contained and self-paces its polling waits.
+  re-requests review — repeating until a round changes no code: nothing blocking
+  left, and nothing fixed that a reviewer has not since seen. Self-contained and self-paces its polling waits.
   Auto-invoke immediately and WITHOUT asking permission right after a PR is
   created (gh pr create, a commit-push-PR flow, or equivalent), and when the user
   says "start a PR review", "respond to PR comments", "handle PR feedback", says
@@ -41,7 +41,9 @@ There is one loop and one path from a finding to its resolution, and the two rol
 Everything below is the mechanics of that. Two rules are worth stating before them, because most of the ways this loop fails are one of the two coming apart:
 
 - **Every finding gets a decision, and the decision goes on the PR.** Not "the blocking ones" — every one. A finding you fix, a finding you reject, a finding you defer to an issue: each gets a reply saying which, and its thread resolved. That reply is not politeness. It is the only record the next round has that this finding was dealt with, and without it the next round finds it again, and the round after that.
-- **Convergence is the absence of blocking findings, not the absence of findings.** An adversarial reviewer with no severity floor always has something — a phrasing, a test that could be stronger, a name. Waiting for silence is waiting forever. See step 4.
+- **If you changed code, it gets reviewed. No exceptions, and severity has nothing to do with it.** Severity decides what *must be fixed*. It never decides what must be *reviewed*. A round where you fixed only `MEDIUM` and `LOW` findings still moved HEAD, so that HEAD is unreviewed, and the run is not done — "the findings were non-blocking" is not a reason to skip review, it is a statement about the findings you were given, not about the code you then wrote. This is the rule the loop exists to enforce, and the one it is easiest to talk yourself out of at the end of a long run, because the remaining findings look small and the fixes feel obvious. The fixes that feel obvious are the ones that have been breaking things all along.
+
+**So what does terminate it?** A round that **changes no code**. Fix nothing and there is nothing new to review, and the reviewer is satisfied — whether that round ended in rejections, deferrals, already-fixed replies, or a clean verdict. The same holds for a round whose findings are only re-raises of things you have already rejected on the record: nothing new was said, so nothing new needs saying. That is the fixed point, and it is a fact about the *diff*, not about severities. See step 4.
 
 This skill is self-contained. The files below live in this skill's own directory, beside this `SKILL.md` — read them from there (paths are relative to this file, not the working directory). Load on demand:
 
@@ -147,12 +149,19 @@ For bots: **poll on a timer — no events reach a local terminal to wait on.** A
 
 ### 4. Detect "this reviewer is happy"
 
-**Happy means nothing left at or above the blocking severities — not nothing left at all.** This is the loop's termination condition and the one place a wrong reading costs an unbounded number of rounds. A reviewer whose latest verdict carries three `MEDIUM` observations and no `CRITICAL`/`HIGH` is **happy**, and the loop terminates with those three on the PR — dispositioned, replied to, resolved, but not treated as blocking. Hold out for an empty verdict and the loop never ends: a reviewer that reports everything real it sees, with no floor, always sees something.
+**Two conditions, and they do different jobs. Both must hold.**
+
+1. **Nothing left at or above the blocking severities** — not nothing left at all. A reviewer whose latest verdict carries three `MEDIUM` observations and no `CRITICAL`/`HIGH` has nothing *blocking*. Hold out for an empty verdict and the loop never ends: a reviewer that reports everything real it sees, with no floor, always sees something.
+2. **The current HEAD has been reviewed.** If the round that dispositioned those three `MEDIUM`s *fixed* any of them, HEAD moved and nobody has looked at it. That round is not terminal, however small the fixes were — push and go round again.
+
+Condition 1 is about the findings you were handed. Condition 2 is about the code you wrote in response, and it is the one that gets skipped, because at the end of a long run the remaining findings look minor and the fixes feel safe. Six rounds of this loop's own history say fixes are where the defects come from, and the smallest-looking round is not exempt.
+
+**What actually terminates the loop is a round that changes no code.** Reject, defer, reply already-fixed, or find nothing — any of those leave HEAD where it was, so there is nothing new for a reviewer to see and the reviewer is satisfied. A round whose findings are only re-raises of things you have already rejected on the record terminates too: the reviewer said nothing new, and re-answering it would just be the previous round again. Terminating is a property of the diff, not of the severities.
 
 Which severities block is `blocking_severities` in the skeptic config (`[CRITICAL, HIGH]` by default), and the equivalent judgement for a bot that doesn't tag severities: does its latest verdict raise anything that would change the code on a path users reach, or is it down to polish? Read it as a person would.
 
 For each reviewer **still in the active set**, all must hold:
-- Zero unresolved threads attributed to it that carry a **blocking** finding. Non-blocking threads may remain unresolved without holding the loop open — though step 5 asks you to resolve them anyway, so in practice there shouldn't be many.
+- Zero unresolved threads attributed to it that carry a **blocking** finding. A non-blocking thread left unresolved does not by itself hold the loop open — but step 5 requires every finding be dispositioned and resolved, so in a round done properly there are none. It is never a licence to leave findings unanswered and call the round terminal.
 - Its latest verdict *for the current HEAD* (formal review/body or an issue comment) names no blocking finding — judged from what it wrote per "Reading reviewer state."
 - That signal is at/after the most recent push.
 
@@ -204,7 +213,7 @@ So: **a blocking finding you have dispositioned and resolved on the PR no longer
 The test is **whether HEAD moved, not which course you took.** `rejected` and `deferred` never move it. Neither does the third no-op course, which is easy to miss because it wears a `fixed` marker: *already-fixed*, where you reply that an earlier round handled the finding and resolve the thread (`reference/evaluation.md`). A round of nothing but already-fixed dispositions produces no commit and no push, so a rule phrased as "only `Fix-*` needs a re-review" leaves it unable to converge — the reviewer's verdict still names the finding and nothing can refresh it. Only a course that actually changed HEAD needs the reviewer to look again.
 
 ### 5. Evaluate each finding, and record the decision
-Threads are the unit of evaluation; also read each review's body, and read human replies as evaluation input (not a post-hoc check). Hold the weighted project/PR/item lenses + mindset as one integrated judgement. Courses: `Fix-as-suggested`, `Fix-differently`, `Fix-broader`, `Already-fixed`, `Reject-with-explanation`, `Create-issue-and-close`, `Ask-user`. Default to `Ask-user` for security/auth, scope-creep boundaries, conflicting asks, big architectural feedback. **The loop's own defects mostly arrive *in* fixes**, so on any fix with behavioural content — which includes a rule written in prose, where the prose is what an agent executes — write against the invariant rather than the reviewer's scenario, **grep out every other place that rule is stated and fix the stale restatements in the same commit**, treat a third patch on one rule as a sign to restate the rule instead, prefer the seam the codebase already has, and confirm the fix didn't weaken a test. Full checks: `reference/evaluation.md`.
+Threads are the unit of evaluation; also read each review's body, and read human replies as evaluation input (not a post-hoc check). Hold the weighted project/PR/item lenses + mindset as one integrated judgement for the triage. **Then, when writing the fix, apply the same three lenses in order — project, then PR, then line** (`reference/evaluation.md`): a suggested fix that fails at the project or PR level is not the fix, and where the reviewer suggested nothing, start at the project lens rather than reaching for the smallest edit that makes the finding go away. Courses: `Fix-as-suggested`, `Fix-differently`, `Fix-broader`, `Already-fixed`, `Reject-with-explanation`, `Create-issue-and-close`, `Ask-user`. Default to `Ask-user` for security/auth, scope-creep boundaries, conflicting asks, big architectural feedback. **The loop's own defects mostly arrive *in* fixes**, so on any fix with behavioural content — which includes a rule written in prose, where the prose is what an agent executes — write against the invariant rather than the reviewer's scenario, **grep out every other place that rule is stated and fix the stale restatements in the same commit**, treat a third patch on one rule as a sign to restate the rule instead, prefer the seam the codebase already has, and confirm the fix didn't weaken a test. Full checks: `reference/evaluation.md`.
 
 **Every finding gets a course, and every course gets posted.** Reply on the thread saying what you decided and why, stamp the reply with the disposition marker, and resolve the thread. Not only the blocking ones: a `MEDIUM` you silently leave alone is a `MEDIUM` the next round finds again, and the round after that — and that is what turns a four-round loop into a fifteen-round one. A finding that arrived with no thread — one skeptic could not anchor, or a concern a bot left in its review body — is dispositioned in a PR-level comment instead, which is the only place the next round can read it.
 
