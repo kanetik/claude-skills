@@ -18,6 +18,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{BASE}}` | merge-base of the PR, full 40-char oid from `git merge-base` | `a1b2c3d4e5f6…` |
 | `{{HEAD}}` | `$REVIEWED` — the sha the worktree was staged at ([`mechanics.md`](mechanics.md)). **Never re-read from `gh`** | `e4f5a6b7c8d9…` |
 | `{{DIFF_RANGE}}` | the range this reviewer reads. First run, and every composition reviewer: `{{BASE}}...{{HEAD}}`. A later run's content reviewer: `$LASTREVIEWED..{{HEAD}}` (SKILL.md stage 3) | `a1b2c3…..e4f5a6…` |
+| `{{PR_RANGE}}` | **always `{{BASE}}...{{HEAD}}`, for every reviewer.** The pull request's own range, which a finding's `line` has to fall inside to anchor. Identical to `{{DIFF_RANGE}}` except for a later run's content reviewer — which is exactly the reviewer that needs it, and the one that could not otherwise compute it | `a1b2c3…...e4f5a6…` |
 | `{{PRIOR_REVIEW}}` | on a later run, with `$LASTREVIEWED` substituted: the **Already reviewed** block below for a content reviewer, the **composition** variant at the end of this file for the composition reviewer — they say different things about the range and are not interchangeable. **Empty on a first run** | see below |
 | `{{SETTLED}}` | on a later run with settled decisions, the **Already decided** block below. **Empty on a first run**, and empty on a later run with nothing settled | see below |
 | `{{SETTLED_LIST}}` | the decision lines inside that block — one per accepted consequence, no rationale. **`deferred` only, and only below the blocking severities** (SKILL.md stage 3 says why a rejected, acknowledged or blocking one must stay re-findable) | "Accepted: a trimmed cache directory fails the refresh rather than degrading (thread #12)" |
@@ -127,7 +128,7 @@ consequence: User edits offline; remote revision bumps; sync runs. Local text is
 fix: Compare content hashes before taking remote, and stage the conflict instead of overwriting.
 ```
 
-`line` is a line present in the pull request's diff at {{HEAD}}, so the finding can be anchored where a reader will see it. Where your range is narrower than the pull request's, a line anywhere in the request's diff still anchors — it does not have to fall inside your range.
+`line` must be a line present in the pull request's own diff — `git -C "{{REPO_PATH}}" diff {{PR_RANGE}}` — so the finding can be anchored where a reader will see it. That range may be wider than the one you were given to read: a line anywhere in it anchors, and does not have to fall inside your range. It can also be *narrower in places*, and that is the case to check: where your range takes in code the pull request does not own, a finding there has no line to anchor to. Run the command and confirm the line is in it before reporting one.
 
 **When a part of your slice is sound, say so** and name what you verified:
 

@@ -158,7 +158,7 @@ awk -F'\t' 'NR==FNR{p[$0];next} ($2 in p)' "<tmp>/prfiles.txt" "<tmp>/delta.txt"
 
 Partitioning the raw delta instead breaks in two ways, and the second is silent. `$LASTREVIEWED..$REVIEWED` is a plain two-endpoint diff, so **after the base branch is merged into the PR branch** — one click of "Update branch" between rounds — it contains all the upstream code, while `$BASE` has moved forward so the PR's own diff does not. Reviewers are then dispatched over files the pull request does not modify, and any finding they return cannot anchor: the anchor check tests new-side hunks of `$BASE...$REVIEWED`, where those lines do not appear. Every such finding falls to tier 3, in the body with no thread, which is the tier that comes back `new` every round forever.
 
-**What the intersection buys, and what it leaves.** It keeps the reviewed **file set** inside the pull request's own, which is what stops whole upstream files being handed out as units and keeps `max_reviewers` sized against work the PR owns. It does **not** narrow the range within a file: a content reviewer's `{{DIFF_RANGE}}` is still `$LASTREVIEWED..$REVIEWED`, so for a file both the PR and the merge touched — a build file, a lockfile, a version catalog — the reviewer still reads upstream hunks, and where the PR's own edit predates `$LASTREVIEWED`, everything it reads there is upstream. That residue is why the brief's rule that a finding's `line` must be present in the pull request's diff at `{{HEAD}}` is load-bearing rather than belt-and-braces, and why the anchor check below is what actually catches it. (`$LASTREVIEWED...$REVIEWED` is not a fix — `$LASTREVIEWED` is an ancestor, so the two forms name the same range.)
+**What the intersection buys, and what it leaves.** It keeps the reviewed **file set** inside the pull request's own, which is what stops whole upstream files being handed out as units and keeps `max_reviewers` sized against work the PR owns. It does **not** narrow the range within a file: a content reviewer's `{{DIFF_RANGE}}` is still `$LASTREVIEWED..$REVIEWED`, so for a file both the PR and the merge touched — a build file, a lockfile, a version catalog — the reviewer still reads upstream hunks, and where the PR's own edit predates `$LASTREVIEWED`, everything it reads there is upstream. That residue is why the brief's rule that a finding's `line` must be present in the pull request's own diff is load-bearing rather than belt-and-braces — and why the brief gives every reviewer a `{{PR_RANGE}}` slot holding `{{BASE}}...{{HEAD}}`. Without it a delta-scoped content reviewer is told to test against a range it has no way to compute and is barred from discovering, so the rule reads as enforceable and is not; the anchor check below would then be the only thing catching it, one tier-3 body entry per round for the life of the PR. (`$LASTREVIEWED...$REVIEWED` is not a fix — `$LASTREVIEWED` is an ancestor, so the two forms name the same range.)
 
 And skipping the delta form entirely — building units from the whole-change list while filling `{{DIFF_RANGE}}` with `$LASTREVIEWED..{{HEAD}}` — hands a reviewer a large unit of which a few files have any content in its range, leaves `max_reviewers` sized against the full change so the cap keeps forcing oversized units, and delivers none of the attention saving the delta scope exists for while looking like it worked.
 
@@ -188,7 +188,7 @@ Read by two stages now, for different things: **stage 3** takes the last-reviewe
 The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and the commit its reviewers actually read. **Derive first, then guard — in that order, and run the guard once, on the final value.** Reversing them tests a value the next line discards, which on the force-push route is precisely the case the guard exists for.
 
 ```bash
-# 1. Prefer the coverage record this skill writes into its own review body (stage 7).
+# 1. Read the coverage record this skill writes into its own review body (stage 7).
 #    That sha is what the reviewers read; `commit_id` is not, on the force-push route,
 #    which posts body-only against the CURRENT head so GitHub stamps the review with a
 #    commit nobody reviewed.
@@ -196,21 +196,20 @@ LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
   --jq '.[] | select(.body | contains("<!-- pr-review-skeptic")) | .body' \
   | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
 
-# 2. Fall back to commit_id ONLY where no record was found -- an unconditional second
-#    assignment empties the value on every PR whose last review predates the record,
-#    which is every PR in flight when it lands, and the incremental scope then never
-#    engages while looking like it did.
-[ -n "$LASTREVIEWED" ] || LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" \
-  --paginate --jq '.[] | select(.body | contains("<!-- pr-review-skeptic -->")) | .commit_id' | tail -1)
-
-# Both reads emit one line per matching review and reduce in the shell. NOT `| last |`
+# There is deliberately NO fallback to the review's commit_id. It is wrong on the
+#    force-push route, and a review with no coverage record cannot tell you whether that
+#    run left units unreviewed -- which sends the run to first-run scope anyway
+#    ([`SKILL.md`](../SKILL.md) stage 3), so any value derived from commit_id would be
+#    discarded. Empty here means first run, full stop.
+#
+# The read emits one line per matching review and reduces in the shell. NOT `| last |`
 # inside the --jq: --jq runs PER PAGE (see "Any other failure" below, which solves the
 # identical problem for $LASTID), so on a PR with more than 30 reviews -- the loop-driven
 # PR this scope exists for, and the only case where --paginate does anything -- that form
 # emits one value per page and $LASTREVIEWED comes back multi-line.
 
-# 3. Empty after both -> no prior run of this skill -> first run.
-# 4. Otherwise test that it is still on the branch, on THIS value:
+# 2. Empty -> no prior run carrying a record -> first run.
+# 3. Otherwise test that it is still on the branch, on THIS value:
 git -C "$REPO" merge-base --is-ancestor "$LASTREVIEWED" "$REVIEWED"
 # 0 = still on the branch      -> later run
 # 1 = force-pushed off it      -> first-run scope
