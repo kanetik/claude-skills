@@ -3,7 +3,8 @@ name: pr-review-skeptic
 description: >-
   Independent skeptical review of a pull request by reviewers who took no part
   in writing it: blind subagents read the changes at HEAD, treat comments and
-  docs as claims to verify against the code, and produce a thread per finding
+  docs as claims to verify against the code, report what is materially wrong
+  rather than what is merely imperfect, and produce a thread per finding
   plus a go/no-go verdict — posted when a person asked for it to be published, or
   when an agent caller has the reviewed repo's committed permission AND the ask
   was not question-shaped; shown in the terminal otherwise. Use when the user asks for a second
@@ -24,7 +25,9 @@ allowed-tools:
 
 # PR Review Skeptic
 
-An honest second opinion on a pull request, from reviewers with no stake in it. Work that has been iterated on — by a person, by a bot loop, by the agent that wrote it — accumulates its own justification: comments explaining why each decision is right, a description arguing the design, threads recording what was already considered. Read alongside the code, that justification is persuasive, and the reviewer starts verifying the story instead of the code. This skill puts **blind** reviewers on the diff first — they see the project and the code, and nothing about why the change exists — and only afterwards lets the PR's own history filter what they found.
+An honest second opinion on a pull request, from reviewers with no stake in it. Work that has been iterated on — by a person, by a bot loop, by the agent that wrote it — accumulates its own justification: comments explaining why each decision is right, a description arguing the design, commit messages narrating the intent. Read alongside the code, that justification is persuasive, and the reviewer starts verifying the story instead of the code. This skill puts **blind** reviewers on the diff — they see the project and the code, and nothing about why the change exists or what its author was trying to do.
+
+**Blind to the author, not to the review.** Those are different bodies of knowledge and only the first one compromises a reviewer. Where this skill is run repeatedly over one pull request — the normal case under `pr-review-loop` — the first run reads the whole change cold, and later runs stay just as cold on the author's account while being told two things the review process itself produced: which code has already been reviewed, and which consequences the project has already weighed and decided about. That is not a head start on judging the code; it is the difference between reviewing a change and re-reviewing it eight times. See **Context discipline**.
 
 This skill is self-contained. The files below live in this skill's own directory, beside this `SKILL.md` — read them from there (paths are relative to this file, not the working directory). Load on demand:
 
@@ -50,11 +53,24 @@ Read [`config/defaults.yml`](config/defaults.yml), then merge overrides per key,
 
 The blind pass is the whole value of this skill, and it is lost quietly — not by a decision to abandon it, but by one helpful sentence of preamble explaining what the change does.
 
-So the brief is **built by substitution, not written**: fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) from config values and from the mechanics of reaching the code — project facts, file list, base and head shas, CI status — and hand the result to the subagent as the complete prompt. Every slot has a source that is a fact about the project or about how to find the diff. Between filling the last slot and dispatching, there is nothing left to add.
+So the brief is **built by substitution, not written**: fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) from config values, from the mechanics of reaching the code, and — on a later run — from the review record, then hand the result to the subagent as the complete prompt. Every slot has a source that is a fact about the project, about how to find the diff, or about what this review process has already covered and decided. Between filling the last slot and dispatching, there is nothing left to add.
 
-The one hard guardrail, because it cannot be phrased as a target: **no summary of the change, its purpose, its history, or its author's reasoning reaches a blind reviewer** — not in the brief, not in a follow-up message, not in an answer to a question it asks. When a reviewer asks what the change is for, the answer is that the code is the specification. History has exactly one entry point into this skill, and it is stage 6.
+The one hard guardrail, because it cannot be phrased as a target: **no account of the change reaches a blind reviewer** — not its purpose, not what its author was trying to do, not their reasoning for any of it, and not in the brief, a follow-up message, or an answer to a question the reviewer asks. When a reviewer asks what the change is for, the answer is that the code is the specification.
 
-**The rule gets harder to hold as runs accumulate, and more load-bearing.** By the tenth run over one PR, the history the blind pass must not see includes this skill's own nine previous reviews, every thread the author replied to, and every rationale they wrote for a rejection. That material is the most tempting thing to pass along — it reads like a head start, and handing a reviewer "here's what was already found and answered" would visibly cut the duplicate findings. It would also end the review: a reviewer told what nine predecessors concluded is checking their work, and the one thing this skill is for is a reader who has not been told. The duplicate findings are stage 6's job to remove, *after* they exist. So the brief is filled from the same slots on run ten as on run one, and the fact that a finding was raised before is something the reviewer must not know and the cross-check must.
+### What a later run may be told, and what it may not
+
+The blindness that matters is blindness to the **author's account**. Blindness to the **review's own record** is a separate thing, it costs a great deal, and it buys much less than it looks like it does. Under `pr-review-loop` this skill may run eight times over one pull request; re-blinded every time, run eight dispatches its reviewers over the whole accumulated diff — most of which is repair work from earlier rounds — to re-derive findings that were answered in round two, so that stage 6 can filter them out again. The duplicate findings cost real attention to produce and the filtering is imperfect.
+
+So a later run gets exactly two things, and both are products of the review rather than of the author:
+
+- **What has already been reviewed, and at which commit.** The reviewer's slice becomes the code that has changed since — with everything before it available to read, because judging new code requires reading what it sits in, but not there to be re-reviewed. Stage 3.
+- **Which consequences the project has already weighed and decided about**, stated as decisions. Not "a reviewer found X and the author replied Y" — that is the author's account arriving by the back door. Just the consequence, and that it was accepted.
+
+Everything else is withheld exactly as on run one: the PR description, the commit messages, the author's rationale prose, the arguments on any thread, and what earlier reviewers concluded about code that has not changed since.
+
+**The settled list is not a "do not report" list, and phrasing it as one would break the mechanism it protects.** A reviewer is told which consequences are settled so it does not re-raise a decision — but a decision covers the consequence it weighed and nothing more. Where the code presents a consequence that decision did not account for, that is a finding, and it is one of the most valuable this skill produces: a defect argued down once and independently re-found is worth more than either verdict alone. The discriminator is the consequence, not the topic or the line — the same test stage 6 applies, moved to where it saves work instead of filtering it afterwards.
+
+**Say what you withheld.** A run scoped to a delta reviewed less than a full run did, and the verdict must not read as though it covered everything. Stage 7's coverage line carries it.
 
 ## 1. Resolve the PR and stage a checkout
 
@@ -92,15 +108,37 @@ Collect the merge-base, the head sha, CI status, and the changed file list ([`re
 - Both shas resolve and `git -C "$REPO" rev-list --count "$BASE..$REVIEWED"` is non-zero → the PR genuinely has no net change (an empty commit, or a change and its own revert). Say that.
 - Anything else → the diff ran against the wrong revisions. Say that. Either way, tear down first (stage 9) — staging has already happened, and a stop is not a reason to leave a worktree and a ref in the user's repository. The difference matters to the user, who otherwise goes hunting a revision bug that isn't there.
 
-Partition the changed files into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
+### First run or later run?
 
-Where the partition yields more than one unit, spend one of those reviewers on a **composition unit**: it takes the whole file list and the seams between the other units, and asks how the pieces behave together. Functions that are each correct alone and wrong in the arrangement production actually uses are invisible to every reviewer holding only one of them. A single-unit partition has no seams, so it gets no composition reviewer.
+Look for this skill's own most recent review on the PR — a review whose body carries the `<!-- pr-review-skeptic -->` marker — and take the commit it was posted against as **`$LASTREVIEWED`** ([`mechanics.md`](mechanics.md)). It decides the scope of everything below.
 
-**Done when** every changed file belongs to exactly one content unit, the composition unit (where there is one) spans all of them, the total reviewer count is within `max_reviewers`, and the partition is recorded for the report.
+**No such review, or `$LASTREVIEWED` no longer resolves in the repository** (a force-push orphaned it) → this is a **first run**: content units partition the whole change, `$BASE...$REVIEWED`, exactly as before. A run that cannot establish what was reviewed last has not established it, and reviewing everything is the safe direction to be wrong in.
+
+**Otherwise** → a **later run**, and content units partition the **delta**, `$LASTREVIEWED..$REVIEWED` — the code written since the last review, which under `pr-review-loop` is the fix rounds, and which is the code with the least review behind it and the most accumulated confidence that it is fine. Where the delta is empty, there is nothing new to review: say so and stop, rather than dispatching reviewers over code that has already been read. Where it fails to resolve for any other reason, fall back to the first-run scope and say the run did so.
+
+**Then build the settled-decision list**, from the PR's threads and its dispositions comment ([`mechanics.md`](mechanics.md)): every finding the author closed as `rejected`, `acknowledged`, or `deferred`. One line each — **the consequence that was accepted, and where it was decided.** Nothing else: not the rationale, not who wrote it, not the argument that preceded it, not what the original finding claimed beyond the consequence itself. Those replies are where the author's account of the change lives, and passing them through is how blindness is lost by a route that looks like bookkeeping. A `fixed` disposition is not settled — it is a claim the code no longer has the problem, and testing that claim is exactly what a reviewer is for.
+
+Where the list would run long, keep every entry rather than summarising: they are one line each by construction, and a dropped entry comes back as a re-raised finding.
+
+### Partition
+
+Partition the files in scope into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
+
+Spend one reviewer on a **composition unit**: it takes the whole file list and the seams between the other units, and asks how the pieces behave together. Functions that are each correct alone and wrong in the arrangement production actually uses are invisible to every reviewer holding only one of them.
+
+**When there is no composition reviewer, and it is only one case.** On a **first run** whose partition yields a single unit, there are no seams — one reviewer already holds the whole change — so there is no composition reviewer and nothing is lost.
+
+**A later run always gets one, however few units the delta yields**, and this is the case the rule above would get wrong if read as "more than one unit". A late round's delta is often one small unit, so a unit-count test would drop the composition reviewer precisely when it is most valuable: the seams it reads are seams of the *whole change*, which has them whether or not this round's delta does, and the interactions it is looking for are between code written rounds apart. Count units to size the content reviewers; never to decide whether the whole change gets read.
+
+**On a later run the composition unit is not scoped to the delta. It takes the whole change, `$BASE...$REVIEWED`, every time.** This is the load-bearing half of incremental review and skipping it would give back more than the scoping saves. The defect class that survives every other kind of review is two changes that are each correct in isolation and wrong in combination — and across rounds, that pairing is *made* by the fix rounds: round three's repair is right, round five's repair is right, and their product deletes something. Neither round's delta shows it. Only the whole diff does. So the content reviewers get the new code and the composition reviewer stays cold on all of it, on every run.
+
+**Done when** every file in scope belongs to exactly one content unit, the composition unit (where there is one) spans the whole change, the total reviewer count is within `max_reviewers`, and the partition — with the scope it was built from — is recorded for the report.
 
 ## 4. Blind pass
 
 For each unit, fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) and dispatch a subagent with the filled brief as its entire prompt — see **Context discipline** above. The composition unit gets the same brief with its slice paragraph swapped for the composition variant at the end of that file. Dispatch all units concurrently; they are independent.
+
+**On a later run** (stage 3), two more slots are filled from the review record: the commit already reviewed, and the settled-decision list. Both are described in that file, and both are governed by the rule above — a decision and the consequence it accepted, never the argument that produced it. The composition reviewer gets those slots too; what it does not get is a narrowed scope.
 
 Each reviewer returns `FINDING` and `SOUND` blocks. A reviewer that returns neither has not reviewed its unit — dispatch it again rather than recording silence as a clean unit, up to twice. Still nothing after that, the unit is **unreviewed**: carry it forward, name it in the coverage line at stage 7 and in the report at stage 8, and keep going. An unreviewed unit is a hole in the review that the user has to know about; retrying it forever posts nothing at all.
 
@@ -118,7 +156,7 @@ Where the PR has prior review activity, dispatch one subagent with the merged fi
 
 Where the PR has no prior review activity, every finding is `new`. Skip the stage. Where "ignore the review history" was asked for, dispatch the marker-only variant at the end of that file instead — a duplicate thread posted beside this skill's own earlier one is not something the user opted into.
 
-**This stage is what makes repeat runs cumulative rather than repetitive**, and it carries the whole weight of that on a PR being driven through an iterative loop, where this skill may run ten times. Without it, round ten's blind reviewers — who by design cannot see rounds one through nine — hand back round one's findings verbatim, and the loop never terminates. So the history payload must be complete: threads with their replies and resolution state, review bodies, the PR description, the commit list **with the paths each commit touched**, and **the PR's issue comments** ([`reference/mechanics.md`](reference/mechanics.md)). The last of those is easy to omit and matters for one specific case: findings this skill could not give a thread to (stage 7, tier 3) are dispositioned in a PR-level comment instead, and that comment is the only record that they were dealt with. Drop it and exactly those findings re-raise every round.
+**This stage is what makes repeat runs cumulative rather than repetitive**, and it used to carry the whole weight of that alone. It no longer does: on a later run the reviewers are already scoped to new code and already told which consequences are settled (stage 3, **Context discipline**), so most duplicates are never produced rather than filtered afterwards. What still reaches this stage is what that cannot catch — a finding in new code that names a concern raised before, and the composition reviewer's findings, which come from the whole change every run and so can legitimately restate old ground. Expect a smaller payload and fewer buckets than the numbers this stage once handled; that is the mechanism working, not a thin run. So the history payload must be complete: threads with their replies and resolution state, review bodies, the PR description, the commit list **with the paths each commit touched**, and **the PR's issue comments** ([`reference/mechanics.md`](reference/mechanics.md)). The last of those is easy to omit and matters for one specific case: findings this skill could not give a thread to (stage 7, tier 3) are dispositioned in a PR-level comment instead, and that comment is the only record that they were dealt with. Drop it and exactly those findings re-raise every round.
 
 The evidence a disposition leaves is a reply — on a thread, or in that PR-level comment — and where the author is an agent it carries a machine-readable marker saying which disposition it was. Treat that marker as decisive when it says a finding was rejected on the merits: the point of an author recording a rejection publicly is that the next round does not re-litigate it. What keeps that from quietly burying real defects is not skepticism here but stage 7's rule that a **blocking** finding bucketed `settled` is still named in the verdict, with its count and its thread. Settled means decided, not silent.
 
@@ -130,9 +168,10 @@ This is the largest single prompt the skill builds — every finding plus the wh
 
 **Blocking findings** are those at `blocking_severities` after the cross-check's severity changes. Any → the verdict names how many and what the worst one is.
 
-None → the change is good to go, and the verdict says so **plainly only when the run earned it**. Two things qualify it, both because the verdict is the line collaborators act on and a note further down the body does not undo it:
+None → the change is good to go, and the verdict says so **plainly only when the run earned it**. Three things qualify it, all because the verdict is the line collaborators act on and a note further down the body does not undo it:
 
 - Units carried forward unreviewed from stage 4 → "no blocking findings in the N of M units reviewed, U unreviewed".
+- A later run's content reviewers saw only the code written since the last review (stage 3) → say so and name the commit: "no blocking findings in the changes since `<sha>`; the whole change was read by the composition reviewer". A reader must not take a delta-scoped clean verdict for a fresh full-change one, and the composition reviewer is the reason it is still a statement about the whole change rather than only about the last round's work.
 - Findings at a blocking severity that stage 6 bucketed `settled` → say how many. A CRITICAL that a prior thread weighed and accepted is still a CRITICAL somebody decided to live with, and burying it in a list under an unqualified good-to-go is how the decision stops being visible.
 
 ### Does this run post at all?
@@ -192,7 +231,7 @@ Tier 3 is a hole in the settle-and-move-on mechanism, not a tidy fallback. Keep 
 Whether it is posted or shown, the review is one `event: COMMENT` review, plus any tier-2 comments after it ([`reference/mechanics.md`](reference/mechanics.md)):
 
 - **Comments** — one per finding, carrying its severity, the defect, its consequence, and the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread — or cite the dispositions comment — where the concern was dismissed. Every comment ends with the marker line `<!-- pr-review-skeptic -->`, which is how a later run recognises its own work: these reviews post under the user's account and are otherwise indistinguishable from a hand-written one.
-- **A summary body** — the verdict; the coverage (files reviewed, units, how many reviewers, whether the cap forced larger units, and any unit left unreviewed); the tier-3 findings under their own heading, at full severity, marked as having no thread; the `settled` list with the thread or dispositions-comment record that decided each; and, when a run was narrowed by a modifier, what it did not cover. It ends with the same marker line the comments carry — invisible in the rendered body, and the only way a later run can tell whether a review it could not confirm actually landed. A clean verdict has no comments at all, so without it there would be nothing on the PR to recognise.
+- **A summary body** — the verdict; the coverage (the scope the content reviewers were given — the whole change, or the changes since a named commit — plus files reviewed, units, how many reviewers, whether the cap forced larger units, and any unit left unreviewed); the tier-3 findings under their own heading, at full severity, marked as having no thread; the `settled` list with the thread or dispositions-comment record that decided each; and, when a run was narrowed by a modifier, what it did not cover. It ends with the same marker line the comments carry — invisible in the rendered body, and the only way a later run can tell whether a review it could not confirm actually landed. A clean verdict has no comments at all, so without it there would be nothing on the PR to recognise.
 
 The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
 
@@ -200,7 +239,7 @@ The verdict belongs in the body, where a person reads it and decides. Report cov
 
 ## 8. Report
 
-One short block to the user: the verdict, counts by severity, the PR URL, what the reviewers confirmed sound, and anything the run could not cover.
+One short block to the user: the verdict, counts by severity, the PR URL, what the reviewers confirmed sound, the scope the content reviewers were given (the whole change, or the changes since a named commit — stage 3), and anything the run could not cover.
 
 Where the review was posted, say the findings are on the PR, and say how many landed as threads versus in the body with none. Where it was previewed, they are in the draft already shown and the offer to post stands. Where an agent invoked the run and the repo has not granted `allow_agent_posting`, say that too, and name the file that would grant it — a caller that expects threads and gets none has no other way to learn why.
 

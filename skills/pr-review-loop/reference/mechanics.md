@@ -19,7 +19,7 @@ For each operation use the best tier your environment supports. Columns denote *
 | Reply to a review thread | GraphQL `addPullRequestReviewThreadReply` | github MCP equivalent | — |
 | Resolve a review thread | GraphQL `resolveReviewThread` | github MCP equivalent | — |
 | Update PR description | `gh pr edit <num> --body-file <path>` | github MCP `update_pull_request` | — |
-| Create scope-creep issue | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review` | github MCP `create_issue` | — |
+| Create follow-up issue (unrelated work only) | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review` | github MCP `create_issue` | — |
 | Push commits | `git push` | — | — |
 
 Defer committing to the host (`commit-commands:commit` skill if installed; else plain `git commit`) and loop scheduling to the host scheduler.

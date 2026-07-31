@@ -33,16 +33,19 @@ The discriminator between `settled` and `re-raised` is the consequence, not the 
 Where the pull request is being driven by an agent, the author's replies carry a machine-readable line saying what they decided:
 
 ```
-<!-- pr-review-loop: disposition=fixed -->      the concern was accepted and a change was made
-<!-- pr-review-loop: disposition=rejected -->   the concern was understood and the code kept as-is, with a rationale
-<!-- pr-review-loop: disposition=deferred -->   the concern was accepted as real and tracked elsewhere, out of scope here
+<!-- pr-review-loop: disposition=fixed -->          the concern was accepted and a change was made
+<!-- pr-review-loop: disposition=rejected -->       the concern was understood and the code kept as-is, with a rationale
+<!-- pr-review-loop: disposition=acknowledged -->   the concern was agreed to be correct, and judged not a problem worth changing
+<!-- pr-review-loop: disposition=deferred -->       the concern was accepted as real and tracked elsewhere, out of scope here
 ```
 
 They appear as a reply on the finding's own thread. For findings the earlier run could not give a thread to, they appear instead as entries in a PR-level issue comment ending `<!-- pr-review-loop: dispositions -->`, each entry naming the path and restating the finding — match those on the finding's substance, since there is no line to match on.
 
-Where a record matches a finding, it is the best evidence available for **what was decided**: `rejected` and `deferred` mean the concern was weighed and the project chose otherwise; `fixed` on a finding a reviewer still sees at HEAD → `unfixed`, with the severity rise, because a direct claim that this concern was fixed is exactly what that bucket is about.
+Where a record matches a finding, it is the best evidence available for **what was decided**: `rejected`, `acknowledged` and `deferred` all mean the concern was weighed and the project chose otherwise; `fixed` on a finding a reviewer still sees at HEAD → `unfixed`, with the severity rise, because a direct claim that this concern was fixed is exactly what that bucket is about.
 
-**It does not decide the bucket on its own, and the consequence test above still governs.** A `rejected` or `deferred` record buckets the finding `settled` only where the finding names no consequence the recorded rationale failed to account for — the same discriminator as any other prior thread. Where the finding names an outcome that rationale never considered, it is `re-raised` at its stated severity, citing the record. Otherwise the `re-raised` bucket would be unreachable on any agent-driven PR, since those stamp a record on every finding they answer, and one rejection would immunise a defect against every later independent re-discovery — which is the failure the whole blind pass exists to catch.
+`acknowledged` is the author agreeing the observation was correct and judging it not worth changing — a decision about **materiality**, not about correctness. So do not treat the finding's correctness as evidence against it: a reviewer re-finding the same true thing is expected and is not a reason to escalate. What *would* stand is a finding naming a consequence that judgement did not weigh — the ordinary test below, applied to a decision about whether something matters rather than about whether it is right.
+
+**It does not decide the bucket on its own, and the consequence test above still governs.** A `rejected`, `acknowledged` or `deferred` record buckets the finding `settled` only where the finding names no consequence the recorded rationale failed to account for — the same discriminator as any other prior thread. Where the finding names an outcome that rationale never considered, it is `re-raised` at its stated severity, citing the record. Otherwise the `re-raised` bucket would be unreachable on any agent-driven PR, since those stamp a record on every finding they answer, and one rejection would immunise a defect against every later independent re-discovery — which is the failure the whole blind pass exists to catch.
 
 What you must not do is re-argue a rationale that *does* cover the finding's consequence. Take that at face value even where you find it unconvincing: re-opening it is what these records exist to stop, and the check on a bad rejection is that a blocking `settled` finding is still reported in the verdict rather than hidden.
 

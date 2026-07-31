@@ -14,11 +14,56 @@ Hold three lenses and the mindset as a **single integrated judgement**, not a se
 
 **Mindset:** Steelman the reviewer's underlying concern — their suggested fix is one possible response, not necessarily the best; separate "is there a real issue?" from "is their fix the right one?" The decision space is broader than {accept their fix, reject}. Don't get into pissing contests or be defensive about prior choices; equally, don't capitulate to taste asks when the lens-weighted view says the code is correct. `Reject-with-explanation` is for "concern understood AND lenses support the current code" — not stylistic disagreement.
 
+## Is the problem real, and is it ours?
+
+Two questions, in that order, before any course is chosen. They are what separate a round worth running from a round that manufactures work, and neither is a question about severity.
+
+**1. Is the finding correct, and is the problem real?**
+
+Correct and real are different, and treating them as one predicate is the single largest source of churn this loop produces. A reviewer with no severity floor is usually correct — correctness is not the bar, because an adversarial reader of code, and far more so of prose, can always say something true. The bar is whether there is a **problem**: the code does something wrong, a claim about it is false, or a real cost lands on someone.
+
+- **Materially wrong** — someone relying on this gets a wrong answer, is led toward reintroducing a defect, or pays a cost you can name. A real problem.
+- **Not quite right** — imprecise, incomplete, could be phrased better, could assert more. Correct, and not a problem.
+
+**Comments, tests and PR descriptions need to be correct, not perfect**, and that is where the worst churn lives. A comment asserting something false is a real problem: a confident claim beside subtly wrong code tells every later reader to stop looking. A comment that is true but could be sharper is polish — and polishing it costs a round, which owes a review, and the reviewer of the rewrite will find something true to say about *it*. Prose has no falsifier: a wrong line of code can be pinned by a failing test, so the reviewer is one check among two, but a wrong sentence has only the reviewer. That asymmetry is why this floor has to be applied here, by the author, rather than hoped for from the reviewer.
+
+**2. Is it related to what this PR is doing?**
+
+Not "did the diff touch this line" — is it part of the job this change came to do. A defect this change is responsible for is related even where the line predates it (a change that makes a broken path newly reachable owns that path). Work the change merely happens to sit near is not.
+
+| Correct? | Real problem? | Related? | Course |
+|---|---|---|---|
+| Yes | Yes | Yes | **Fix it** — cost shapes *how*, never *whether* |
+| Yes | Yes | No | `Create-issue-and-close` |
+| Yes | No — correct, not a problem | — | `Acknowledge-no-change` |
+| No | — | — | `Reject-with-explanation` |
+| — | Uncertain, security/auth, architectural | — | `Ask-user` |
+
+**A real, related problem gets fixed in this PR.** Deferring it is not on the table. What merges should work, and an issue filed against a defect this change is responsible for is that defect shipping with a note attached. `Create-issue-and-close` means one thing — work that is genuinely not what this PR is about — and every use outside that meaning trades a bounded round now for an unbounded backlog later. If issues are opening faster than they close, this is the leak.
+
+**Cost to own is a question about the fix, not about whether to fix.** Ask it, because it goes unasked and it is where the loop's worst rounds come from: a fix cheap to *write* and expensive to *own* — one boolean on a stateful object, one latch, one exception to a general rule — lands among lifecycle, concurrency or caching neighbours and produces defects for three rounds afterwards. The answer changes the fix's **shape**: revert rather than patch, restate the rule rather than add the exception, take the seam that already exists. Only a genuinely ridiculous cost changes the *decision*, and then the course is `Ask-user`, never a quiet deferral.
+
 ## Courses of action
 
-`Fix-as-suggested` · `Fix-differently` (better way to address the same concern) · `Fix-broader` (the real issue is bigger) · `Already-fixed` (an earlier round handled it and the reviewer re-raised it against stale code — reply naming the commit, stamp `disposition=fixed`, resolve; changes no code, so it is one of the three no-op courses) · `Reject-with-explanation` · `Create-issue-and-close` (real but genuine scope-creep — NOT "broken, fix later") · `Ask-user` (genuinely uncertain).
+`Fix-as-suggested` · `Fix-differently` (better way to address the same concern) · `Fix-broader` (the real issue is bigger) · `Already-fixed` (an earlier round handled it and the reviewer re-raised it against stale code — reply naming the commit, stamp `disposition=fixed`, resolve; changes no code, so it is one of the four no-op courses) · `Acknowledge-no-change` (correct, and not a problem worth changing — reply agreeing, stamp `disposition=acknowledged`, resolve; changes no code) · `Reject-with-explanation` · `Create-issue-and-close` (real, and genuinely not what this PR is about — NOT "broken, fix later") · `Ask-user` (genuinely uncertain).
 
-**Default to `Ask-user` for:** security/auth-adjacent changes; scope-creep boundary calls; conflicting reviewer asks; big-impact architectural feedback.
+**`Acknowledge-no-change` and `Reject-with-explanation` are not interchangeable, and the reply says which.** Reject asserts the reviewer is wrong or the code is right as it stands. Acknowledge says the reviewer is right and this is not worth changing. Writing "rejected" over a finding you know is correct puts a false statement in the record the next round reads, and hides the count of things you agreed with and declined — which is exactly the number a person reviewing your judgement needs to see.
+
+**`Acknowledge-no-change` is not available at a blocking severity.** A `CRITICAL` or `HIGH` is a real problem by definition, so it ends at fixed, `Create-issue-and-close` (only if genuinely unrelated), `Reject-with-explanation` on the merits, or `Ask-user`. The course is a licence to stop polishing, not a licence to converge by agreeing with everything.
+
+**Default to `Ask-user` for:** security/auth-adjacent changes; relatedness boundary calls; conflicting reviewer asks; big-impact architectural feedback; a fix whose cost to own looks ridiculous.
+
+## Whose code is this finding about?
+
+By round six a reviewer reading HEAD is mostly reading **your repair work**, not the change the PR came to make. It cannot know that — its blindness is the point — and nothing tells you either unless you look. So look: it is one cheap lookup and it changes the triage.
+
+Blame the line the finding names, find the commit that introduced it, and read whether that commit carries a `PR-Review-Loop: <N>` trailer (SKILL.md step 6 stamps every loop commit with one). Three answers:
+
+- **original** — the change under review. Normal triage.
+- **repair** — code this loop wrote in an earlier round. The finding is a defect in a fix, so re-open the question that fix was answering rather than patching the new instance. See the revert lever below.
+- **pre-existing** — neither the PR nor the loop touched it. Strong evidence for *unrelated*, and the commonest thing a long run gets wrong in the other direction: after five rounds patching one subsystem, a sixth finding in that subsystem reads as the fifth defect in your own latch when it is actually a defect that predates the change and that your fix never covered. Ripping out the fix then re-opens the window the finding is about. **Evidence, not a verdict** — a change that makes a broken path newly reachable owns that path, and the best single finding in this loop's recorded history was exactly that shape.
+
+Provenance is also the round-level signal that the work has changed character. Where most of a round's findings are `repair`, the loop is reviewing itself, and that belongs in the run's report (SKILL.md step 9) — say it plainly. A finding that exists because this loop wrote the code it is about is worth naming as such, both to the user and on the thread where it helps.
 
 ## Writing the fix without causing the next finding
 
@@ -45,6 +90,10 @@ The checks below are the mechanics of doing that well. They are not a substitute
 - **Ask what already does this.** Before writing a predicate, a dispatcher, a null check — look for the seam that exists. Re-implementing a rule the codebase already encodes (a `Ref.isEmpty`, a project `ioDispatcher`) means the copy drifts from the original the first time either changes. A hand-rolled duplicate of an existing rule is a defect with a delay fuse.
 - **Check the fix didn't weaken the tests.** A test edited while fixing a finding can end up asserting less than it did before, and it still passes — that is what makes it invisible. If a guard is added, disable it and confirm its test fails; if a fixture is changed, confirm the assertion still depends on what it claims to prove. Where there is no test suite, the equivalent is to re-read the fix as an executor rather than an author: follow it literally, from the top, and see whether it can be carried out.
 
+**The revert lever — when a repair keeps producing repairs.** The bullet above says a third patch on one rule means restating the rule. The same holds for code, and it is the check with no equivalent anywhere else in this loop: the `re-raised` bucket catches a *reviewer* repeating itself, and nothing catches the *author* failing repeatedly at the same thing. So: **a repair whose own repair produced a finding is a candidate for revert**, not a third patch. Take the whole chain out and go back to the finding that started it — then restate the rule, `Acknowledge-no-change` it, or, where it is genuinely separable, `Create-issue-and-close`. Two consecutive rounds of net-negative work is a thing you can only see by looking for it, and by the third round the patches are interacting with each other rather than with the original defect.
+
+This is not a rule about diff size or round count, and it must not be read as one. A round that grows the diff can be the round that finds the defect which would otherwise ship; runs in this loop's recorded history found permanent-failure and wrong-data-shown-to-users defects well after the diff had ballooned. What the lever keys on is a **chain** — repair on repair on repair — not volume, and killing the chain leaves the loop free to keep finding real defects in the original change.
+
 **Then read the neighbourhood, not the line.** Before committing, re-read what surrounds every edit — the paragraph above and below, the other members of the list you changed, the section that cites this one. A fix that is locally right and regionally wrong reads perfectly at the diff and fails on the first literal execution.
 
 **Say what the fix might have broken.** In the round's report, name any rule you changed that is stated elsewhere, and whether you checked those places. That line is what lets the next round's reviewer look where you were least certain, and it costs a sentence.
@@ -53,9 +102,9 @@ The checks below are the mechanics of doing that well. They are not a substitute
 
 Same surfaces, same lenses, same courses. Four things about its shape change how you read it:
 
-- **Severity decides what holds the loop open, not what deserves thought.** Blocking findings (`CRITICAL`/`HIGH` by default) are what convergence is gauged on: every one must end at fixed, `Create-issue-and-close`, or `Reject-with-explanation` before that reviewer is happy. A course that leaves HEAD unmoved satisfies it **without a re-review** — nothing about the code changed, so there is nothing for the reviewer to look at again (SKILL.md step 4). That is all three no-op courses: `Reject-with-explanation`, `Create-issue-and-close`, and *already-fixed*. Phrase the test as "did HEAD move", never as "was it a `Fix-*`": already-fixed carries a `fixed` marker and moves nothing, so the course-name form leaves a round of already-fixed dispositions unable to converge. Non-blocking observations are triaged under the same lenses — take the cheap correct ones now, reject or defer the rest — and every one of them still gets a reply and a resolved thread, because the record is what stops it coming back. They just don't hold the loop open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your lenses may rate an item higher than it did. It cuts the other way too — a `MEDIUM` you reply to as `fixed` and leave present comes back a rung higher, as a blocking `HIGH`, since that is exactly the evidence the cross-check's `unfixed` bucket looks for.
+- **Severity decides what holds the loop open, not what deserves thought.** Blocking findings (`CRITICAL`/`HIGH` by default) are what convergence is gauged on: every one must end at fixed, `Create-issue-and-close`, or `Reject-with-explanation` before that reviewer is happy. A course that leaves HEAD unmoved satisfies it **without a re-review** — nothing about the code changed, so there is nothing for the reviewer to look at again (SKILL.md step 4). That is all four no-op courses: `Reject-with-explanation`, `Create-issue-and-close`, `Acknowledge-no-change`, and *already-fixed*. Phrase the test as "did HEAD move", never as "was it a `Fix-*`": already-fixed carries a `fixed` marker and moves nothing, so the course-name form leaves a round of already-fixed dispositions unable to converge. Non-blocking observations go through the same two questions as anything else ("Is the problem real, and is it ours?") — a real, related problem is fixed here whatever its severity; a correct observation that names no problem is acknowledged and closed. Every one still gets a reply and a resolved thread, because the record is what stops it coming back. They just don't hold the loop open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your judgement may rate an item higher than it did. It cuts the other way too — a `MEDIUM` you reply to as `fixed` and leave present comes back a rung higher, as a blocking `HIGH`, since that is exactly the evidence the cross-check's `unfixed` bucket looks for.
 - **The buckets are evidence, and `unfixed` is the loud one.** A finding bucketed `unfixed` — raised earlier in this PR's history, touched by a fix round, still present — is the loop's characteristic failure caught red-handed, and it arrives already a severity higher. Treat it as a signal that the earlier fix was written against the scenario rather than the invariant ("Writing the fix without causing the next finding", above) and re-open that question rather than patching the new instance. A `re-raised` one is a concern you argued down that an independent reviewer found anyway: worth more weight than either read alone, and a reason to re-examine your own rationale rather than restate it.
-- **`settled` findings are not yours to re-litigate, and not yours to bury.** A prior thread weighed that consequence and the project chose otherwise — usually because *you* rejected or deferred it in an earlier round. They neither hold the loop open nor need a fix. But a *blocking* one gets named to the user with its count and thread, every time, because somebody decided to live with a `CRITICAL`. You are the author and the judge here; that line is the only thing keeping "converged" from meaning "rejected everything".
+- **`settled` findings are not yours to re-litigate, and not yours to bury.** A prior thread weighed that consequence and the project chose otherwise — usually because *you* rejected, acknowledged, or deferred it in an earlier round. They neither hold the loop open nor need a fix. But a *blocking* one gets named to the user with its count and thread, every time, because somebody decided to live with a `CRITICAL`. You are the author and the judge here; that line is the only thing keeping "converged" from meaning "rejected everything".
 - **`Ask-user` is unchanged and still the default** for security/auth, scope boundaries and architectural calls. A finding arriving with a confident severity attached is not extra authority to act unilaterally.
 
 ## Recording the decision — disposition replies
@@ -65,12 +114,15 @@ Same surfaces, same lenses, same courses. Four things about its shape change how
 On the finding's own thread: reply with what you decided and why, then resolve the thread. End the reply with the marker line for the course you took:
 
 ```
-<!-- pr-review-loop: disposition=fixed -->      any Fix-* course
-<!-- pr-review-loop: disposition=rejected -->   Reject-with-explanation
-<!-- pr-review-loop: disposition=deferred -->   Create-issue-and-close
+<!-- pr-review-loop: disposition=fixed -->          any Fix-* course
+<!-- pr-review-loop: disposition=rejected -->       Reject-with-explanation
+<!-- pr-review-loop: disposition=acknowledged -->   Acknowledge-no-change
+<!-- pr-review-loop: disposition=deferred -->       Create-issue-and-close
 ```
 
 Nothing for `Ask-user` — that thread is still open, so leave it open and unmarked.
+
+**`acknowledged` earns a real sentence, not a shrug.** Say what you agree with and why it isn't worth changing — "true; the phrasing is loose but nothing reads it to decide anything, so leaving it" — because the reviewer was right and the reply is the only place that is recorded. A bare "acknowledged" reads as a brush-off to the person who has to judge whether you were being disciplined or lazy, and it gives the next round's cross-check nothing to settle the finding against.
 
 The marker is machine-readable and the prose beside it is not, which is the point: the next run's cross-check takes the marker as decisive rather than inferring your intent from a sentence. But write the prose properly anyway. A rejection reading "rejected, see commit abc123" settles nothing for a reader who cannot see why, and the reader here includes the person reviewing your judgement later. Name the concern, say why the code is right as it stands, and keep it to a line or two.
 
@@ -83,6 +135,8 @@ The marker is machine-readable and the prose beside it is not, which is the poin
 One comment per round, not one per finding. Its next run reads the PR's issue comments as part of the history payload and matches these entries on substance. Without it, exactly the findings that have no thread are the ones that come back every round forever — which is the same failure as skipping the replies, arriving through the one door replies can't cover.
 
 ## Issue creation (when choosing `Create-issue-and-close`)
+
+**Check the course first.** An issue is right only where the work is genuinely not what this PR is about. A real problem the change is responsible for is fixed here, and a correct observation that names no problem is `Acknowledge-no-change` — neither is an issue. Filing one in either case looks like progress on the round and is how a backlog outgrows the team that maintains it.
 
 Auto-create only if confident; else ask. Ensure the label exists, then create:
 
@@ -97,8 +151,8 @@ The first line is a no-op when the label exists. The issue body links to the ori
 
 Some reviewers invite a 👍/👎 reaction on whether a comment was useful (Codex is the current example). This applies **only** to a bot that both (a) invites the reaction in its comment body and (b) reads standard GitHub reactions. When present, react — mapped to whether you **accepted or rejected the underlying concern**, not whether you took its exact suggestion:
 
-- **Accepted → 👍 (`+1`):** any `Fix-*` course or `Create-issue-and-close` (a real issue worth acting on, however addressed).
-- **Rejected → 👎 (`-1`):** `Reject-with-explanation`.
+- **Accepted → 👍 (`+1`):** any `Fix-*` course, `Create-issue-and-close`, or `Acknowledge-no-change`. The reaction tracks whether the comment was *right*, and acknowledge concedes that it was — the decision not to act is carried by the reply, not by a thumbs-down.
+- **Rejected → 👎 (`-1`):** `Reject-with-explanation`, and only that — the one course that says the comment was wrong.
 - `Ask-user` or a thread still awaiting clarification → don't react yet.
 
 **Not every 👍/👎 is a standard reaction.** Copilot's review comments render their own "was this helpful" widget (a closed Copilot-UI control, no API) — that is not a reaction invitation, so don't treat a Copilot finding as one. The reactions this skill uses are the standard emoji-picker reactions, and the invitation must be in the comment body.
@@ -118,7 +172,7 @@ A review *summary* (`PullRequestReview`) has no REST reactions endpoint but is r
 
 - **Replies should be one line where possible** — but a rejection earns two, since its whole job is to carry reasoning forward. @-mention a bot back only when the mention reaches that reviewer and it acts on mentions (`@codex` yes; Copilot's reviewer no — reply unmentioned; skeptic never). See `reference/mechanics.md`.
 - **Comment line numbers may be stale** — locate by content if the line doesn't match.
-- **Resolve a thread when:** Fixed (any variant), already-fixed, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen). This is every course except `Ask-user`, and resolving is not optional bookkeeping — an unresolved thread is an undecided finding, and the next round treats it as one.
-- **`already-fixed` is a course, not just a resolve category.** An earlier round handled the finding and the reviewer re-raised it against stale code: reply saying which commit, stamp `disposition=fixed`, resolve. It changes no code, so it is one of the three no-op dispositions that close a round without a push (SKILL.md step 4) — the one that is easy to miss, because its marker says `fixed`.
-- **In a *terminating* round the courses are `rejected`, `deferred` and `Ask-user`** (SKILL.md step 4). `Ask-user` keeps the thread open and unmarked and routes the run to the paused outcome, so the security/auth default is not overridden by the round happening to be the last one. That pass pushes nothing, so "take the cheap correct ones now" does not apply to it: a non-blocking finding worth fixing makes the round non-terminal instead, and it goes through the normal fix→push→re-review path so the reviewer sees the result.
+- **Resolve a thread when:** Fixed (any variant), already-fixed, acknowledged, kicked-to-issue, OR Explanation-no-change (you've stated your reasoning; the reviewer can reopen). This is every course except `Ask-user`, and resolving is not optional bookkeeping — an unresolved thread is an undecided finding, and the next round treats it as one.
+- **`already-fixed` is a course, not just a resolve category.** An earlier round handled the finding and the reviewer re-raised it against stale code: reply saying which commit, stamp `disposition=fixed`, resolve. It changes no code, so it is one of the four no-op dispositions that close a round without a push (SKILL.md step 4) — the one that is easy to miss, because its marker says `fixed`.
+- **In a *terminating* round the courses are `rejected`, `acknowledged`, `deferred` and `Ask-user`** (SKILL.md step 4). `Ask-user` keeps the thread open and unmarked and routes the run to the paused outcome, so the security/auth default is not overridden by the round happening to be the last one. That pass pushes nothing, so it cannot fix: a finding that *is* a real, related problem makes the round non-terminal instead, and goes through the normal fix→push→re-review path so the reviewer sees the result. `acknowledged` is the course that makes most terminating rounds honest — a clean verdict carrying three correct `LOW` observations that name no problem is the commonest terminating round there is.
 - **Do NOT resolve when:** awaiting clarification from a human, or `Ask-user` pending. Both are genuinely still open. Note that neither applies to skeptic, which cannot answer a question — where its finding leaves you uncertain, the question goes to the user, and the thread stays open and unmarked until they answer it.

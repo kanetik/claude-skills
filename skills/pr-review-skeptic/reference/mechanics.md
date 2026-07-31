@@ -163,7 +163,22 @@ Fills `{{CI}}`: the failing check names and what they report, or that everything
 
 ## Prior review history
 
-For the cross-check stage only.
+Read by two stages now, for different things: **stage 3** takes the last-reviewed commit and the settled decisions from it, and **stage 6** takes the whole payload for bucketing.
+
+### `$LASTREVIEWED` — the commit this skill last reviewed (stage 3)
+
+The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and the commit it was posted against. Reviews carry `commit_id` only on the REST representation, so:
+
+```bash
+gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
+  --jq '[.[] | select(.body | contains("<!-- pr-review-skeptic -->"))] | last | .commit_id'
+```
+
+Empty output → no prior run of this skill → **first run** ([`SKILL.md`](../SKILL.md) stage 3). A value that no longer resolves (`git -C "$REPO" cat-file -e "$LASTREVIEWED"` fails — a force-push orphaned it) is the same answer: fall back to first-run scope, and say so.
+
+**Match on the marker, not on the author** — these reviews post under the user's own account and are otherwise indistinguishable from a hand-written one, so an author filter finds nothing and silently makes every run a first run. And take the *last* such review, not the first: taking the first re-reviews every round's work on every round, which is the behaviour the delta scope exists to end.
+
+### The full payload (stage 6)
 
 ```bash
 gh pr view <num> --json body,reviews,comments,commits
