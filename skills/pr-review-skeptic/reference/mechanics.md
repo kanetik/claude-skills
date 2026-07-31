@@ -151,10 +151,14 @@ git -C "<tmp>/pr-<num>" -c core.quotePath=false \
     diff --name-status --no-renames "$LASTREVIEWED..$REVIEWED" > "<tmp>/delta.txt"
 git -C "<tmp>/pr-<num>" -c core.quotePath=false \
     diff --name-only --no-renames "$BASE...$REVIEWED" | sort > "<tmp>/prfiles.txt"
-awk 'NR==FNR{p[$0];next} ($2 in p)' "<tmp>/prfiles.txt" "<tmp>/delta.txt"   # content units
+awk -F'\t' 'NR==FNR{p[$0];next} ($2 in p)' "<tmp>/prfiles.txt" "<tmp>/delta.txt"   # content units
 ```
 
-Partitioning the raw delta instead breaks in two ways, and the second is silent. `$LASTREVIEWED..$REVIEWED` is a plain two-endpoint diff, so **after the base branch is merged into the PR branch** — one click of "Update branch" between rounds — it contains all the upstream code, while `$BASE` has moved forward so the PR's own diff does not. Reviewers are then dispatched over files the pull request does not modify, and any finding they return cannot anchor: the anchor check tests new-side hunks of `$BASE...$REVIEWED`, where those lines do not appear. Every such finding falls to tier 3, in the body with no thread, which is the tier that comes back `new` every round forever. The intersection is what keeps a content reviewer's range inside the pull request's own.
+**`-F'\t'` is load-bearing.** `--name-status` separates the status from the path with a tab, and `core.quotePath=false` does not quote a path containing a space, so awk's default whitespace splitting turns `M<TAB>docs/release notes.md` into `$2 = docs/release`, which matches no key. The file drops out of the content units silently, no content reviewer reads it, and stage 7 still reports the delta as reviewed — the same class of hole `core.quotePath=false` and `--no-renames` are already here to prevent, on a path shape far commoner than a non-ASCII byte.
+
+Partitioning the raw delta instead breaks in two ways, and the second is silent. `$LASTREVIEWED..$REVIEWED` is a plain two-endpoint diff, so **after the base branch is merged into the PR branch** — one click of "Update branch" between rounds — it contains all the upstream code, while `$BASE` has moved forward so the PR's own diff does not. Reviewers are then dispatched over files the pull request does not modify, and any finding they return cannot anchor: the anchor check tests new-side hunks of `$BASE...$REVIEWED`, where those lines do not appear. Every such finding falls to tier 3, in the body with no thread, which is the tier that comes back `new` every round forever.
+
+**What the intersection buys, and what it leaves.** It keeps the reviewed **file set** inside the pull request's own, which is what stops whole upstream files being handed out as units and keeps `max_reviewers` sized against work the PR owns. It does **not** narrow the range within a file: a content reviewer's `{{DIFF_RANGE}}` is still `$LASTREVIEWED..$REVIEWED`, so for a file both the PR and the merge touched — a build file, a lockfile, a version catalog — the reviewer still reads upstream hunks, and where the PR's own edit predates `$LASTREVIEWED`, everything it reads there is upstream. That residue is why the brief's rule that a finding's `line` must be present in the pull request's diff at `{{HEAD}}` is load-bearing rather than belt-and-braces, and why the anchor check below is what actually catches it. (`$LASTREVIEWED...$REVIEWED` is not a fix — `$LASTREVIEWED` is an ancestor, so the two forms name the same range.)
 
 And skipping the delta form entirely — building units from the whole-change list while filling `{{DIFF_RANGE}}` with `$LASTREVIEWED..{{HEAD}}` — hands a reviewer a large unit of which a few files have any content in its range, leaves `max_reviewers` sized against the full change so the cap keeps forcing oversized units, and delivers none of the attention saving the delta scope exists for while looking like it worked.
 
@@ -195,7 +199,18 @@ LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
   --jq '.[] | select(.body | contains("<!-- pr-review-skeptic -->")) | .commit_id' | tail -1)
 ```
 
-Empty output → no prior run of this skill → **first run** ([`SKILL.md`](../SKILL.md) stage 3). A value that no longer resolves (`git -C "$REPO" cat-file -e "$LASTREVIEWED"` fails — a force-push orphaned it) is the same answer: fall back to first-run scope, and say so.
+Empty output → no prior run of this skill → **first run** ([`SKILL.md`](../SKILL.md) stage 3).
+
+**Then test that it is still on the branch**, with the ancestry test rather than a resolves-or-not test:
+
+```bash
+git -C "$REPO" merge-base --is-ancestor "$LASTREVIEWED" "$REVIEWED"
+# 0 = still on the branch      -> later run
+# 1 = force-pushed off it      -> first-run scope
+# anything else = unanswered   -> first-run scope
+```
+
+`cat-file -e` is the wrong test and fails open. Teardown removes `refs/prskeptic/<num>` but not the objects behind it, so on a same-repo PR — the `pr-review-loop`-driven case — an orphaned commit stays in the object database until it is pruned, weeks later, and resolves fine. The guard would never fire: the run would diff `$LASTREVIEWED..$REVIEWED` across a rewrite, which after a rebase is upstream churn that the PR-file intersection then reduces to nearly nothing, so stage 3 takes the empty-delta stop and posts no review at all on the PR that most needs one. Only the cross-repo path escapes it, and only because its clone is rebuilt each run.
 
 **Prefer the coverage record in the review body over `commit_id`.** A review this skill posts carries `<!-- pr-review-skeptic: reviewed=<sha> unreviewed-units=<n> -->` (stage 7), and that sha is the one reviewers actually read. `commit_id` is not, on one path that matters: the force-push route posts body-only against the *current* head, so GitHub stamps the review with a commit no reviewer read. Take `commit_id` only when the record is absent.
 
