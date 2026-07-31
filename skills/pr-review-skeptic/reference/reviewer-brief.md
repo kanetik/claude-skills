@@ -18,9 +18,9 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{BASE}}` | merge-base of the PR, full 40-char oid from `git merge-base` | `a1b2c3d4e5f6…` |
 | `{{HEAD}}` | `$REVIEWED` — the sha the worktree was staged at ([`mechanics.md`](mechanics.md)). **Never re-read from `gh`** | `e4f5a6b7c8d9…` |
 | `{{DIFF_RANGE}}` | the range this reviewer reads. First run, and every composition reviewer: `{{BASE}}...{{HEAD}}`. A later run's content reviewer: `$LASTREVIEWED..{{HEAD}}` (SKILL.md stage 3) | `a1b2c3…..e4f5a6…` |
-| `{{PRIOR_REVIEW}}` | on a later run, the **Already reviewed** block below, with `$LASTREVIEWED` substituted. **Empty on a first run** | see below |
+| `{{PRIOR_REVIEW}}` | on a later run, with `$LASTREVIEWED` substituted: the **Already reviewed** block below for a content reviewer, the **composition** variant at the end of this file for the composition reviewer — they say different things about the range and are not interchangeable. **Empty on a first run** | see below |
 | `{{SETTLED}}` | on a later run with settled decisions, the **Already decided** block below. **Empty on a first run**, and empty on a later run with nothing settled | see below |
-| `{{SETTLED_LIST}}` | the decision lines that go inside that block — one per accepted consequence, no rationale (SKILL.md stage 3 builds them) | "Accepted: a trimmed cache directory fails the refresh rather than degrading (thread #12)" |
+| `{{SETTLED_LIST}}` | the decision lines inside that block — one per accepted consequence, no rationale. **`acknowledged` and `deferred` only, and only below the blocking severities** (SKILL.md stage 3 says why a rejected or blocking one must stay re-findable) | "Accepted: a trimmed cache directory fails the refresh rather than degrading (thread #12)" |
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
 Every slot carries a fact about the project, about the mechanics of reaching the code, or about what this review process has already covered and decided. **None carries what the change is for, why it was built this way, or what anyone argued about it** — that includes `{{SETTLED}}`, whose entries state a consequence the project accepted and stop there.
@@ -147,7 +147,11 @@ Return only `FINDING` and `SOUND` blocks.
 
 The reviewer that takes the seams rather than a slice gets the same brief with **"Your slice" replaced by the paragraph below**, and `{{FILES}}` holding the whole change. Everything else — the claims posture, the priorities, the test rule, the reporting bar, the severities, the output format — is unchanged.
 
-**`{{DIFF_RANGE}}` for this reviewer is always `{{BASE}}...{{HEAD}}`,** on a first run and on a tenth. It still gets `{{PRIOR_REVIEW}}` and `{{SETTLED}}` — it is not re-litigating decisions either — but its range is never narrowed, and the paragraph below says why in the reviewer's own terms.
+**`{{DIFF_RANGE}}` for this reviewer is always `{{BASE}}...{{HEAD}}`,** on a first run and on a tenth. `{{SETTLED}}` is filled exactly as for a content reviewer — it is not re-litigating decisions either — but **`{{PRIOR_REVIEW}}` must be the composition variant below, not the content reviewers' block.** That block tells its reader "your range starts there … report on what is in your range", which is false here and contradicts the whole-change instruction in the same prompt; a reviewer resolving the contradiction toward the narrower reading confines itself to the delta, and since the content reviewers are already scoped there, nothing reports on the older code at all while the verdict claims the whole change was read.
+
+### The composition `{{PRIOR_REVIEW}}` block
+
+> **This change has been reviewed before, at `$LASTREVIEWED`.** That is context, not a boundary: **your range is deliberately the whole change**, and a finding anywhere in it is yours to report, however long ago that code was written. Other reviewers on this run are reading only what changed since `$LASTREVIEWED`, so the earlier code has no one else looking at it this time. What you are not doing is checking anyone's conclusions — nothing about what earlier reviewers decided has been passed to you, and the parts that interact here were often written rounds apart.
 
 > **Your slice is the joins.** Every other reviewer on this change is holding one part of it and cannot see past their own edges. You are holding all of it, so read for the things that are only visible from here: a caller and a callee that each look right but disagree about what may be null, or about units, ordering, or who owns a lock; a contract changed on one side of a boundary and not the other; two functions that are each tested in isolation and never in the arrangement production actually composes them in; state written by one part and read by another under different assumptions about when it exists.
 >

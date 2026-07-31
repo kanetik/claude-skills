@@ -64,7 +64,7 @@ The blindness that matters is blindness to the **author's account**. Blindness t
 So a later run gets exactly two things, and both are products of the review rather than of the author:
 
 - **What has already been reviewed, and at which commit.** The reviewer's slice becomes the code that has changed since — with everything before it available to read, because judging new code requires reading what it sits in, but not there to be re-reviewed. Stage 3.
-- **Which consequences the project has already weighed and decided about**, stated as decisions. Not "a reviewer found X and the author replied Y" — that is the author's account arriving by the back door. Just the consequence, and that it was accepted.
+- **Which consequences the project has already weighed and accepted**, stated as decisions. Not "a reviewer found X and the author replied Y" — that is the author's account arriving by the back door. Just the consequence, and that it was accepted. Only genuine acceptances, and only below the blocking severities: a disputed finding and a blocking one both stay re-findable, for reasons stage 3 gives.
 
 Everything else is withheld exactly as on run one: the PR description, the commit messages, the author's rationale prose, the arguments on any thread, and what earlier reviewers concluded about code that has not changed since.
 
@@ -112,11 +112,29 @@ Collect the merge-base, the head sha, CI status, and the changed file list ([`re
 
 Look for this skill's own most recent review on the PR — a review whose body carries the `<!-- pr-review-skeptic -->` marker — and take the commit it was posted against as **`$LASTREVIEWED`** ([`mechanics.md`](mechanics.md)). It decides the scope of everything below.
 
-**No such review, or `$LASTREVIEWED` no longer resolves in the repository** (a force-push orphaned it) → this is a **first run**: content units partition the whole change, `$BASE...$REVIEWED`, exactly as before. A run that cannot establish what was reviewed last has not established it, and reviewing everything is the safe direction to be wrong in.
+Take it from the **coverage record** the last review carries — `<!-- pr-review-skeptic: reviewed=<sha> unreviewed-units=<n> -->` (stage 7) — falling back to the review's `commit_id` only where no record is present. The record exists because `commit_id` is wrong on one path: a review posted through the force-push route goes out body-only against the *current* head, so GitHub stamps it with a commit no reviewer read, and a later run that trusted it would scope past the entire rewritten change while claiming the earlier code was already reviewed.
+
+**Fall back to a first run — content units partition the whole change, `$BASE...$REVIEWED` — in any of these cases:**
+
+- No prior review of this skill's own on the PR.
+- `$LASTREVIEWED` no longer resolves in the repository (a force-push orphaned it).
+- The last review's record says `unreviewed-units` was non-zero. Those files were never read by any content reviewer, and delta-scoping past them would leave a permanent hole while `{{PRIOR_REVIEW}}` told the new reviewers that code had already been read. One repeated full pass is cheaper than a coverage claim that is false for the rest of the PR's life.
+
+- **"ignore the review history" was asked for.** That modifier means a cold full-change read, so it forces first-run scope here and an empty settled list below, as well as the marker-only cross-check at stage 6 ([`reference/configuration.md`](reference/configuration.md)). Honouring it only at stage 6 would deliver the opposite of what it asks: reviewers still narrowed to the last delta and still told which consequences not to report, with the one stage that could have reported what was suppressed switched off.
+
+A run that cannot establish what was reviewed last has not established it, and reviewing everything is the safe direction to be wrong in. Say which of these fired.
 
 **Otherwise** → a **later run**, and content units partition the **delta**, `$LASTREVIEWED..$REVIEWED` — the code written since the last review, which under `pr-review-loop` is the fix rounds, and which is the code with the least review behind it and the most accumulated confidence that it is fine. Where the delta is empty, there is nothing new to review: say so and stop, rather than dispatching reviewers over code that has already been read. Where it fails to resolve for any other reason, fall back to the first-run scope and say the run did so.
 
-**Then build the settled-decision list**, from the PR's threads and its dispositions comment ([`mechanics.md`](mechanics.md)): every finding the author closed as `rejected`, `acknowledged`, or `deferred`. One line each — **the consequence that was accepted, and where it was decided.** Nothing else: not the rationale, not who wrote it, not the argument that preceded it, not what the original finding claimed beyond the consequence itself. Those replies are where the author's account of the change lives, and passing them through is how blindness is lost by a route that looks like bookkeeping. A `fixed` disposition is not settled — it is a claim the code no longer has the problem, and testing that claim is exactly what a reviewer is for.
+**Then build the settled-decision list**, from the PR's threads and its dispositions comment ([`mechanics.md`](mechanics.md)). One line each — **the consequence that was accepted, and where it was decided.** Nothing else: not the rationale, not who wrote it, not the argument that preceded it, not what the original finding claimed beyond the consequence itself. Those replies are where the author's account of the change lives, and passing them through is how blindness is lost by a route that looks like bookkeeping.
+
+**Only two dispositions qualify, and only below the blocking severities.** The list is narrow by design, because everything on it is something no reviewer will report again:
+
+- **`acknowledged` and `deferred` go on it.** Both accept that the consequence is real — one judges it not worth changing, the other tracks it elsewhere — so an independent reviewer naming that same consequence again adds nothing.
+- **`rejected` never goes on it.** A rejection says the author *disputed* the finding; no consequence was accepted, and listing one as decided states as settled the very thing in dispute. It is also the disposition most worth testing: a defect argued down on a wrong rationale and then independently re-found is among the most valuable results this skill produces, and it can only happen if a reviewer is still free to report it. Rejections stay visible to stage 6, where the consequence test and the verdict disclosure still apply.
+- **Nothing at a blocking severity goes on it, whatever its disposition.** Stage 7 discloses blocking findings that came back `settled`, and its only input is findings reviewers actually produced. Suppress them here and that count reads zero forever after the round that decided them, so a `CRITICAL` somebody chose to live with disappears from every later verdict — which is the one thing both this skill and [`cross-check.md`](reference/cross-check.md) name as keeping a bad decision from burying a real defect.
+
+A `fixed` disposition is not settled either — it is a claim the code no longer has the problem, and testing that claim is exactly what a reviewer is for.
 
 Where the list would run long, keep every entry rather than summarising: they are one line each by construction, and a dropped entry comes back as a re-raised finding.
 
@@ -138,7 +156,7 @@ Spend one reviewer on a **composition unit**: it takes the whole file list and t
 
 For each unit, fill the slots in [`reference/reviewer-brief.md`](reference/reviewer-brief.md) and dispatch a subagent with the filled brief as its entire prompt — see **Context discipline** above. The composition unit gets the same brief with its slice paragraph swapped for the composition variant at the end of that file. Dispatch all units concurrently; they are independent.
 
-**On a later run** (stage 3), two more slots are filled from the review record: the commit already reviewed, and the settled-decision list. Both are described in that file, and both are governed by the rule above — a decision and the consequence it accepted, never the argument that produced it. The composition reviewer gets those slots too; what it does not get is a narrowed scope.
+**On a later run** (stage 3), two more slots are filled from the review record: the commit already reviewed, and the settled-decision list. Both are described in that file, and both are governed by the rule above — a decision and the consequence it accepted, never the argument that produced it. The composition reviewer gets both slots too, but **`{{PRIOR_REVIEW}}` has a composition variant and that is the one it gets**: the content reviewers' wording tells its reader the range starts at the last-reviewed commit, which for this reviewer is false and contradicts its own instruction to read the whole change.
 
 Each reviewer returns `FINDING` and `SOUND` blocks. A reviewer that returns neither has not reviewed its unit — dispatch it again rather than recording silence as a clean unit, up to twice. Still nothing after that, the unit is **unreviewed**: carry it forward, name it in the coverage line at stage 7 and in the report at stage 8, and keep going. An unreviewed unit is a hole in the review that the user has to know about; retrying it forever posts nothing at all.
 
@@ -232,6 +250,14 @@ Whether it is posted or shown, the review is one `event: COMMENT` review, plus a
 
 - **Comments** — one per finding, carrying its severity, the defect, its consequence, and the fix. `unfixed` findings say how many rounds have already touched that code; `re-raised` ones link the thread — or cite the dispositions comment — where the concern was dismissed. Every comment ends with the marker line `<!-- pr-review-skeptic -->`, which is how a later run recognises its own work: these reviews post under the user's account and are otherwise indistinguishable from a hand-written one.
 - **A summary body** — the verdict; the coverage (the scope the content reviewers were given — the whole change, or the changes since a named commit — plus files reviewed, units, how many reviewers, whether the cap forced larger units, and any unit left unreviewed); the tier-3 findings under their own heading, at full severity, marked as having no thread; the `settled` list with the thread or dispositions-comment record that decided each; and, when a run was narrowed by a modifier, what it did not cover. It ends with the same marker line the comments carry — invisible in the rendered body, and the only way a later run can tell whether a review it could not confirm actually landed. A clean verdict has no comments at all, so without it there would be nothing on the PR to recognise.
+
+  **Immediately before that marker, write the coverage record**, on its own line and in exactly this form:
+
+  ```
+  <!-- pr-review-skeptic: reviewed=<$REVIEWED> unreviewed-units=<n> -->
+  ```
+
+  `<$REVIEWED>` is the sha the blind reviewers actually read, and `<n>` the number of units stage 4 carried forward unreviewed (`0` on a normal run). It is what the next run's stage 3 reads to scope itself, and both fields exist because the alternatives are wrong in ways nothing surfaces: the review's `commit_id` is the *current* head rather than the reviewed one on the force-push path, and a coverage hole recorded only in English prose cannot stop the next run from scoping past it. Write it on every posted review, clean verdict included.
 
 The verdict belongs in the body, where a person reads it and decides. Report coverage even when the verdict is clean — a thorough clean review and a shallow one read identically without it.
 

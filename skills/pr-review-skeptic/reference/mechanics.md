@@ -144,6 +144,20 @@ git -C "<tmp>/pr-<num>" -c core.quotePath=false \
     diff --name-status --no-renames "$BASE...$REVIEWED"      # the file list
 ```
 
+**Two file lists on a later run, and they feed different reviewers** ([`SKILL.md`](../SKILL.md) stage 3). The command above is the **composition** reviewer's list, on every run. The **content** reviewers' list is the delta since the last review, intersected with it:
+
+```bash
+git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+    diff --name-status --no-renames "$LASTREVIEWED..$REVIEWED" > "<tmp>/delta.txt"
+git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+    diff --name-only --no-renames "$BASE...$REVIEWED" | sort > "<tmp>/prfiles.txt"
+awk 'NR==FNR{p[$0];next} ($2 in p)' "<tmp>/prfiles.txt" "<tmp>/delta.txt"   # content units
+```
+
+Partitioning the raw delta instead breaks in two ways, and the second is silent. `$LASTREVIEWED..$REVIEWED` is a plain two-endpoint diff, so **after the base branch is merged into the PR branch** — one click of "Update branch" between rounds — it contains all the upstream code, while `$BASE` has moved forward so the PR's own diff does not. Reviewers are then dispatched over files the pull request does not modify, and any finding they return cannot anchor: the anchor check tests new-side hunks of `$BASE...$REVIEWED`, where those lines do not appear. Every such finding falls to tier 3, in the body with no thread, which is the tier that comes back `new` every round forever. The intersection is what keeps a content reviewer's range inside the pull request's own.
+
+And skipping the delta form entirely — building units from the whole-change list while filling `{{DIFF_RANGE}}` with `$LASTREVIEWED..{{HEAD}}` — hands a reviewer a large unit of which a few files have any content in its range, leaves `max_reviewers` sized against the full change so the cap keeps forcing oversized units, and delivers none of the attention saving the delta scope exists for while looking like it worked.
+
 Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `$BASE` and `$REVIEWED` fill the `{{BASE}}` and `{{HEAD}}` slots. Downstream of the staging block, `$REVIEWED` is the name for the reviewed head — `<headRefOid>` appears only above, where it is the value being read for the first time.
 
 `--name-status` rather than `--name-only` because the status matters downstream: a `D` path is in the change but not in the worktree, and a reviewer sent to open it finds nothing and — following the brief's report-what's-missing rule — turns a deletion into a finding about an absent file. Mark deleted paths as deleted when they reach `{{FILES}}`; they are reviewed through the diff.
@@ -170,11 +184,26 @@ Read by two stages now, for different things: **stage 3** takes the last-reviewe
 The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and the commit it was posted against. Reviews carry `commit_id` only on the REST representation, so:
 
 ```bash
-gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
-  --jq '[.[] | select(.body | contains("<!-- pr-review-skeptic -->"))] | last | .commit_id'
+# Emit one line per matching review and reduce in the shell. NOT `| last | .commit_id`
+# inside the --jq: --jq runs PER PAGE (see "Any other failure" below, which solves the
+# identical problem for $LASTID), so on a PR with more than 30 reviews -- the loop-driven
+# PR this scope exists for, and the only case where --paginate does anything -- that form
+# emits one value per page, `null` for pages holding no skeptic review. $LASTREVIEWED
+# becomes multi-line, `cat-file -e` fails, and every round silently takes the first-run
+# fallback: the incremental scope never engages on exactly the PRs it was built for.
+LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
+  --jq '.[] | select(.body | contains("<!-- pr-review-skeptic -->")) | .commit_id' | tail -1)
 ```
 
 Empty output → no prior run of this skill → **first run** ([`SKILL.md`](../SKILL.md) stage 3). A value that no longer resolves (`git -C "$REPO" cat-file -e "$LASTREVIEWED"` fails — a force-push orphaned it) is the same answer: fall back to first-run scope, and say so.
+
+**Prefer the coverage record in the review body over `commit_id`.** A review this skill posts carries `<!-- pr-review-skeptic: reviewed=<sha> unreviewed-units=<n> -->` (stage 7), and that sha is the one reviewers actually read. `commit_id` is not, on one path that matters: the force-push route posts body-only against the *current* head, so GitHub stamps the review with a commit no reviewer read. Take `commit_id` only when the record is absent.
+
+```bash
+LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
+  --jq '.[] | select(.body | contains("<!-- pr-review-skeptic")) | .body' \
+  | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
+```
 
 **Match on the marker, not on the author** — these reviews post under the user's own account and are otherwise indistinguishable from a hand-written one, so an author filter finds nothing and silently makes every run a first run. And take the *last* such review, not the first: taking the first re-reviews every round's work on every round, which is the behaviour the delta scope exists to end.
 

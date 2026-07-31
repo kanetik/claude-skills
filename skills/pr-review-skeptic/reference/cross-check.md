@@ -1,6 +1,8 @@
 # Cross-check brief
 
-Runs once, after every blind reviewer has returned. This is the only point in the skill where the PR's review history is read, and the findings are already fixed in writing before it starts — so history can filter them, never form them.
+Runs once, after every blind reviewer has returned. This is the stage that **reconciles** findings against the PR's review history: the findings are already fixed in writing before it starts, so nothing here can shape what was found — only how it is bucketed.
+
+Stage 3 reads that history too, for the two things it hands the reviewers up front (which commit was last reviewed, and which non-blocking consequences the project has accepted). So this is no longer the only route history takes into a run, and the guarantee to state precisely is the narrow one: **by the time this brief is built, every finding below already exists.**
 
 Hand this to one subagent, with the merged findings and the PR's prior review history: threads with their replies, resolution state, and `isOutdated` flag; review bodies; **the PR's issue comments**; the PR description; and the commit list with the paths each commit touched ([`mechanics.md`](mechanics.md)). The commits and `isOutdated` are what let it tell a concern that was *changed* in response from one that was only argued about — without them the `unfixed` / `re-raised` split is a guess, and a wrong guess raises a severity and posts a blocking comment. The issue comments carry dispositions for findings that had no thread to reply on; omit them and exactly those findings come back `new` every round.
 
