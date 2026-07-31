@@ -149,12 +149,20 @@ The reviewer that takes the seams rather than a slice gets the same brief with *
 
 **`{{DIFF_RANGE}}` for this reviewer is always `{{BASE}}...{{HEAD}}`,** on a first run and on a tenth. `{{SETTLED}}` is filled exactly as for a content reviewer — it is not re-litigating decisions either — but **`{{PRIOR_REVIEW}}` must be the composition variant below, not the content reviewers' block.** That block tells its reader "your range starts there … report on what is in your range", which is false here and contradicts the whole-change instruction in the same prompt; a reviewer resolving the contradiction toward the narrower reading confines itself to the delta, and since the content reviewers are already scoped there, nothing reports on the older code at all while the verdict claims the whole change was read.
 
-### The composition `{{PRIOR_REVIEW}}` block
+The two blocks below are **not** interchangeable and are filled on different conditions. The slice replacement goes in on **every** run; the `{{PRIOR_REVIEW}}` block, like the content reviewers', is empty on a first run.
+
+### The composition `{{PRIOR_REVIEW}}` block — later runs only, empty on a first run
 
 > **This change has been reviewed before, at `$LASTREVIEWED`.** That is context, not a boundary: **your range is deliberately the whole change**, and a finding anywhere in it is yours to report, however long ago that code was written. Other reviewers on this run are reading only what changed since `$LASTREVIEWED`, so the earlier code has no one else looking at it this time. What you are not doing is checking anyone's conclusions — nothing about what earlier reviewers decided has been passed to you, and the parts that interact here were often written rounds apart.
+
+### The slice replacement — every run, first and tenth alike
+
+This is the paragraph that replaces "Your slice". It is not part of `{{PRIOR_REVIEW}}` and is never omitted: drop it and the composition reviewer becomes a second content reviewer over the whole change, with no seam instruction, while the coverage line still reports a composition pass.
 
 > **Your slice is the joins.** Every other reviewer on this change is holding one part of it and cannot see past their own edges. You are holding all of it, so read for the things that are only visible from here: a caller and a callee that each look right but disagree about what may be null, or about units, ordering, or who owns a lock; a contract changed on one side of a boundary and not the other; two functions that are each tested in isolation and never in the arrangement production actually composes them in; state written by one part and read by another under different assumptions about when it exists.
 >
 > **This is why your range is the whole change while other reviewers may have a narrower one.** Where a change has been revised over several rounds, the parts that interact were often written rounds apart — each correct when it landed, each read by someone who could not see the other. A defect made by two such changes together appears in neither of their diffs and belongs to neither of their reviewers. It is visible from here and nowhere else, so read pairs of things that changed at different times with as much attention as anything new.
 >
-> Read the parts as deeply as you need to judge how they meet, and leave defects wholly inside one part to the reviewer holding it. A change where every piece is correct alone and wrong together is the kind that survives every other kind of review.
+> Read the parts as deeply as you need to judge how they meet, and leave defects wholly inside one part to the reviewer holding it — **but only where someone is holding it.** Where other reviewers have been given a narrower range than yours, the parts outside it have nobody else reading them this run, and a defect wholly inside one of those is yours to report like any other. Deferring is for work another reviewer is doing, never for work nobody is doing.
+>
+> A change where every piece is correct alone and wrong together is the kind that survives every other kind of review.
