@@ -33,7 +33,7 @@ An adversarial reviewer with no severity floor will always have *something*, and
 
 So a run that burns to the cap is a **signal**, and usually a triage one: correct observations read as real problems, each fix owing another review, the loop reviewing its own repairs. Three consequences:
 
-- **Reaching it is an outcome, not an error — and it is reported with evidence.** SKILL.md step 9 requires "did not converge" with the count and every outstanding blocking finding, plus rounds since the last blocking finding, the share of findings landing in the loop's own repair work, the longest repair chain, and diff growth. Growth alerts; it never stops. The user is otherwise choosing on the author's narration.
+- **Reaching it is an outcome, not an error — and it is reported with evidence.** SKILL.md step 9 requires "did not converge" with the count and every outstanding blocking finding, plus rounds since the last blocking finding, the share of findings landing in the loop's own repair work (over whole-change reviewers only — a delta-scoped reviewer reads repair commits by construction), the longest repair chain, and diff growth. Growth alerts; it never stops. The user is otherwise choosing on the author's narration.
 - **Its value is a real choice.** `10` suits a normal change. Raise it for a large one; lower it to keep an unattended run bounded.
 - **"no iteration cap" is no longer a request for an unterminating loop**, since the cap is not the only guarantee — but it does remove the one thing that surfaces a triage failure as a stop. Say that when honouring it.
 
