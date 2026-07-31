@@ -185,25 +185,32 @@ Read by two stages now, for different things: **stage 3** takes the last-reviewe
 
 ### `$LASTREVIEWED` — the commit this skill last reviewed (stage 3)
 
-The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and the commit it was posted against. Reviews carry `commit_id` only on the REST representation, so:
+The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and the commit its reviewers actually read. **Derive first, then guard — in that order, and run the guard once, on the final value.** Reversing them tests a value the next line discards, which on the force-push route is precisely the case the guard exists for.
 
 ```bash
-# Emit one line per matching review and reduce in the shell. NOT `| last | .commit_id`
+# 1. Prefer the coverage record this skill writes into its own review body (stage 7).
+#    That sha is what the reviewers read; `commit_id` is not, on the force-push route,
+#    which posts body-only against the CURRENT head so GitHub stamps the review with a
+#    commit nobody reviewed.
+LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
+  --jq '.[] | select(.body | contains("<!-- pr-review-skeptic")) | .body' \
+  | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
+
+# 2. Fall back to commit_id ONLY where no record was found -- an unconditional second
+#    assignment empties the value on every PR whose last review predates the record,
+#    which is every PR in flight when it lands, and the incremental scope then never
+#    engages while looking like it did.
+[ -n "$LASTREVIEWED" ] || LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" \
+  --paginate --jq '.[] | select(.body | contains("<!-- pr-review-skeptic -->")) | .commit_id' | tail -1)
+
+# Both reads emit one line per matching review and reduce in the shell. NOT `| last |`
 # inside the --jq: --jq runs PER PAGE (see "Any other failure" below, which solves the
 # identical problem for $LASTID), so on a PR with more than 30 reviews -- the loop-driven
 # PR this scope exists for, and the only case where --paginate does anything -- that form
-# emits one value per page, `null` for pages holding no skeptic review. $LASTREVIEWED
-# becomes multi-line, `cat-file -e` fails, and every round silently takes the first-run
-# fallback: the incremental scope never engages on exactly the PRs it was built for.
-LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
-  --jq '.[] | select(.body | contains("<!-- pr-review-skeptic -->")) | .commit_id' | tail -1)
-```
+# emits one value per page and $LASTREVIEWED comes back multi-line.
 
-Empty output → no prior run of this skill → **first run** ([`SKILL.md`](../SKILL.md) stage 3).
-
-**Then test that it is still on the branch**, with the ancestry test rather than a resolves-or-not test:
-
-```bash
+# 3. Empty after both -> no prior run of this skill -> first run.
+# 4. Otherwise test that it is still on the branch, on THIS value:
 git -C "$REPO" merge-base --is-ancestor "$LASTREVIEWED" "$REVIEWED"
 # 0 = still on the branch      -> later run
 # 1 = force-pushed off it      -> first-run scope
@@ -212,13 +219,7 @@ git -C "$REPO" merge-base --is-ancestor "$LASTREVIEWED" "$REVIEWED"
 
 `cat-file -e` is the wrong test and fails open. Teardown removes `refs/prskeptic/<num>` but not the objects behind it, so on a same-repo PR — the `pr-review-loop`-driven case — an orphaned commit stays in the object database until it is pruned, weeks later, and resolves fine. The guard would never fire: the run would diff `$LASTREVIEWED..$REVIEWED` across a rewrite, which after a rebase is upstream churn that the PR-file intersection then reduces to nearly nothing, so stage 3 takes the empty-delta stop and posts no review at all on the PR that most needs one. Only the cross-repo path escapes it, and only because its clone is rebuilt each run.
 
-**Prefer the coverage record in the review body over `commit_id`.** A review this skill posts carries `<!-- pr-review-skeptic: reviewed=<sha> unreviewed-units=<n> -->` (stage 7), and that sha is the one reviewers actually read. `commit_id` is not, on one path that matters: the force-push route posts body-only against the *current* head, so GitHub stamps the review with a commit no reviewer read. Take `commit_id` only when the record is absent.
-
-```bash
-LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
-  --jq '.[] | select(.body | contains("<!-- pr-review-skeptic")) | .body' \
-  | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
-```
+This ordering is what makes the guard meaningful on the force-push route: `commit_id` there is the current head, an ancestor of any later `$REVIEWED`, so a guard run against it answers "later run" — and the orphaned sha from the record, the one that would have failed, is never tested.
 
 **Match on the marker, not on the author** — these reviews post under the user's own account and are otherwise indistinguishable from a hand-written one, so an author filter finds nothing and silently makes every run a first run. And take the *last* such review, not the first: taking the first re-reviews every round's work on every round, which is the behaviour the delta scope exists to end.
 
