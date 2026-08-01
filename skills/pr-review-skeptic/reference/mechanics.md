@@ -204,9 +204,12 @@ The most recent review whose body carries the `<!-- pr-review-skeptic -->` marke
 #    This is the same trust boundary the project keys and `allow_agent_posting` are read at
 #    the base ref for: PR-side content must not steer the review of itself. The marker
 #    identifies this skill's work only WITHIN that account's reviews.
+# gh's --jq takes exactly ONE argument, the filter -- it has no --arg passthrough, so
+# interpolate the login into the filter string (double quotes) as the $LASTID block does.
+# `--jq --arg me "$ME" '…'` fails with "accepts 1 arg(s), received 4".
 ME=$(gh api user --jq .login)
 LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
-  --jq --arg me "$ME" '.[] | select(.user.login == $me) | select(.body | contains("<!-- pr-review-skeptic")) | .body' \
+  --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-skeptic\")) | .body" \
   | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
 
 # There is deliberately NO fallback to the review's commit_id. It is wrong on the
