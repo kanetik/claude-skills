@@ -14,9 +14,9 @@ Hold three lenses and the mindset as a **single integrated judgement**, not a se
 
 **Mindset:** Steelman the reviewer's underlying concern — their suggested fix is one possible response, not necessarily the best; separate "is there a real issue?" from "is their fix the right one?" The decision space is broader than {accept their fix, reject}. Don't get into pissing contests or be defensive about prior choices; equally, don't capitulate to taste asks when the lens-weighted view says the code is correct. `Reject-with-explanation` is for "concern understood AND lenses support the current code" — not stylistic disagreement.
 
-## Is the problem real, and is it ours?
+## Is the problem real, is it worth acting on, and is it ours?
 
-Two questions, in that order, before any course is chosen. They are what separate a round worth running from a round that manufactures work, and neither is a question about severity.
+Three questions, in that order, before any course is chosen. They are what separate a round worth running from a round that manufactures work, and none of them is a question about severity.
 
 **1. Is the finding correct, and is the problem real?**
 
@@ -27,21 +27,36 @@ Correct and real are different, and treating them as one predicate is the single
 
 **Comments, tests and PR descriptions need to be correct, not perfect**, and that is where the worst churn lives. A comment asserting something false is a real problem: a confident claim beside subtly wrong code tells every later reader to stop looking. A comment that is true but could be sharper is polish — and polishing it costs a round, which owes a review, and the reviewer of the rewrite will find something true to say about *it*. Prose has no falsifier: a wrong line of code can be pinned by a failing test, so the reviewer is one check among two, but a wrong sentence has only the reviewer. That asymmetry is why this floor has to be applied here, by the author, rather than hoped for from the reviewer.
 
-**2. Is it related to what this PR is doing?**
+**2. Is it worth acting on?**
+
+Real is not the same as worth another round, and collapsing the two is what turns a converging loop into a grinding one. Every fix costs a round, and that round owes a review, and that review finds things — so a fix has to buy more than it costs.
+
+**What makes it worth acting on: someone reaches a wrong outcome.** Data goes wrong, behaviour goes wrong, a verdict or a report says something false, a boundary lets through what it exists to stop, a reader is led into reintroducing a defect. Size does not matter here and neither does effort — a one-word fix to a security boundary is worth it, and so is a large fix to a wrong result.
+
+**What usually is not: a cost that lands only on the next reader, in a place that is already correct enough to act on.** A report that omits one of four numbers. A precondition you discover a round later than you could have. An ambiguity in a corner that needs two unusual settings at once to reach. Documentation, comments, PR descriptions and test names belong here more often than anywhere else — **they need to be correct, not perfect**, and this is the second gate that says so. A comment that asserts something *false* fails question 1 and gets fixed. A comment that is true, and could be clearer, or is missing a caveat that changes nobody's decision, is real and is **not worth the round**.
+
+The honest test is a trade, so make it out loud: *what does this cost if left, against what the round to fix it costs?* Where the answer is "a later reader is mildly worse off, and the round costs a full review of everything the fix touches", leave it.
+
+**Two guards, because this gate is the one that can be abused.** It is **never available at a blocking severity** — a `CRITICAL` or `HIGH` is worth acting on by definition. And leaving a real problem is a decision you are making on the project's behalf, so it is recorded as one: the reply says the finding is right, says what it costs to leave, and says you are leaving it. That is a different claim from "this is not a problem" and must not be written as if it were.
+
+**3. Is it related to what this PR is doing?**
 
 Not "did the diff touch this line" — is it part of the job this change came to do. A defect this change is responsible for is related even where the line predates it (a change that makes a broken path newly reachable owns that path). Work the change merely happens to sit near is not.
 
 **First ask whether HEAD still has it.** A reviewer re-raising a finding against stale code is `Already-fixed` — reply naming the commit, stamp `disposition=fixed`, resolve. The table below has no row for it, and both routes through it record something false: `acknowledged` says the defect is there and being lived with, `rejected` says the code was kept as-is on the merits. Either one lies to the next round's cross-check and inflates a count a reader is told to audit your judgement by.
 
-| Correct? | Real problem? | Related? | Course |
-|---|---|---|---|
-| Yes | Yes | Yes | **Fix it** — cost shapes *how*, never *whether* |
-| Yes | Yes | No | `Create-issue-and-close` |
-| Yes | No — correct, not a problem | — | `Acknowledge-no-change` — **but not at a blocking severity**; there, `Reject-with-explanation` on the merits or `Ask-user` |
-| No | — | — | `Reject-with-explanation` |
-| — | Uncertain, security/auth, architectural | — | `Ask-user` |
+| Correct? | Real problem? | Worth acting on? | Related? | Course |
+|---|---|---|---|---|
+| Yes | Yes | Yes | Yes | **Fix it** — cost shapes *how*, never *whether* |
+| Yes | Yes | Yes | No | `Create-issue-and-close` |
+| Yes | Yes | **No — real, not worth the round** | — | `Acknowledge-no-change`, reply saying it is right and what leaving it costs |
+| Yes | No — correct, not a problem | — | — | `Acknowledge-no-change` |
+| No | — | — | — | `Reject-with-explanation` |
+| — | Uncertain, security/auth, architectural, or blocking-and-you-think-immaterial | — | — | `Ask-user` |
 
-**Severity is not one of the two questions, and it still closes one course.** It does not decide whether a problem is real — that is the first question, and a `HIGH` you judge immaterial is still answered by the first question. What it decides is which courses remain: at a blocking severity `Acknowledge-no-change` is unavailable, because a run that converges by agreeing with a `HIGH` is the outcome the course's bar exists to forbid. Stamping `rejected` on a finding you agree with is not the way out either — that puts a false statement in the record. Where you genuinely think a blocking finding is immaterial, that is an `Ask-user`.
+**`Acknowledge-no-change` covers two different claims and the reply must say which.** *"You are right and this is not a problem"* and *"you are right, it is a problem, and it is not worth a round"* are both closes-without-change, but the second is a decision to ship a known defect and the summary counts them separately. Never write the second as the first.
+
+**Severity is not one of the three questions, and it still closes one course.** It does not decide whether a problem is real — that is the first question, and a `HIGH` you judge immaterial is still answered by the first question. What it decides is which courses remain: at a blocking severity `Acknowledge-no-change` is unavailable, because a run that converges by agreeing with a `HIGH` is the outcome the course's bar exists to forbid. Stamping `rejected` on a finding you agree with is not the way out either — that puts a false statement in the record. Where you genuinely think a blocking finding is immaterial, that is an `Ask-user`.
 
 **A real, related problem gets fixed in this PR.** Deferring it is not on the table. What merges should work, and an issue filed against a defect this change is responsible for is that defect shipping with a note attached. `Create-issue-and-close` means one thing — work that is genuinely not what this PR is about — and every use outside that meaning trades a bounded round now for an unbounded backlog later. If issues are opening faster than they close, this is the leak.
 
@@ -49,7 +64,7 @@ Not "did the diff touch this line" — is it part of the job this change came to
 
 ## Courses of action
 
-`Fix-as-suggested` · `Fix-differently` (better way to address the same concern) · `Fix-broader` (the real issue is bigger) · `Already-fixed` (an earlier round handled it and the reviewer re-raised it against stale code — reply naming the commit, stamp `disposition=fixed`, resolve; changes no code, so it is one of the four no-op courses) · `Acknowledge-no-change` (correct, and not a problem worth changing — reply agreeing, stamp `disposition=acknowledged`, resolve; changes no code) · `Reject-with-explanation` · `Create-issue-and-close` (real, and genuinely not what this PR is about — NOT "broken, fix later") · `Ask-user` (genuinely uncertain).
+`Fix-as-suggested` · `Fix-differently` (better way to address the same concern) · `Fix-broader` (the real issue is bigger) · `Already-fixed` (an earlier round handled it and the reviewer re-raised it against stale code — reply naming the commit, stamp `disposition=fixed`, resolve; changes no code, so it is one of the four no-op courses) · `Acknowledge-no-change` (correct, and either not a problem or not worth the round it would cost — reply agreeing and saying which, stamp `disposition=acknowledged`, resolve; changes no code) · `Reject-with-explanation` · `Create-issue-and-close` (real, and genuinely not what this PR is about — NOT "broken, fix later") · `Ask-user` (genuinely uncertain).
 
 **`Acknowledge-no-change` and `Reject-with-explanation` are not interchangeable, and the reply says which.** Reject asserts the reviewer is wrong or the code is right as it stands. Acknowledge says the reviewer is right and this is not worth changing. Writing "rejected" over a finding you know is correct puts a false statement in the record the next round reads, and hides the count of things you agreed with and declined — which is exactly the number a person reviewing your judgement needs to see.
 
@@ -118,7 +133,7 @@ Same surfaces, same lenses, same courses. Four things about its shape change how
 
 **Two different questions, and conflating them is how a blocking finding gets talked away.** *Is this course a no-op?* asks whether HEAD moved: all four of `Reject-with-explanation`, `Create-issue-and-close`, `Acknowledge-no-change` and *already-fixed* are no-ops, and none of them owes a re-review. *Is this course available for this finding?* is a separate question with a separate answer, and at a blocking severity `Acknowledge-no-change` is **not available** — a `CRITICAL` or `HIGH` is a real problem by definition, so it ends at fixed, `Create-issue-and-close` (only if genuinely unrelated), `Reject-with-explanation` on the merits, or `Ask-user`. Reading "no-op" as "available" is what turns the course into the licence to converge by agreeing with everything that its bar exists to forbid.
 
-Phrase the no-op test as "did HEAD move", never as "was it a `Fix-*`": already-fixed carries a `fixed` marker and moves nothing, so the course-name form leaves a round of already-fixed dispositions unable to converge. Non-blocking observations go through the same two questions as anything else ("Is the problem real, and is it ours?") — a real, related problem is fixed here whatever its severity; a correct observation that names no problem is acknowledged and closed. Every one still gets a reply and a resolved thread, because the record is what stops it coming back. They just don't hold the loop open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your judgement may rate an item higher than it did. It cuts the other way too — a `MEDIUM` you reply to as `fixed` and leave present comes back a rung higher, as a blocking `HIGH`, since that is exactly the evidence the cross-check's `unfixed` bucket looks for.
+Phrase the no-op test as "did HEAD move", never as "was it a `Fix-*`": already-fixed carries a `fixed` marker and moves nothing, so the course-name form leaves a round of already-fixed dispositions unable to converge. Non-blocking observations go through the same three questions as anything else ("Is the problem real, is it worth acting on, and is it ours?") — a real, related problem is fixed here whatever its severity; a correct observation that names no problem is acknowledged and closed. Every one still gets a reply and a resolved thread, because the record is what stops it coming back. They just don't hold the loop open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your judgement may rate an item higher than it did. It cuts the other way too — a `MEDIUM` you reply to as `fixed` and leave present comes back a rung higher, as a blocking `HIGH`, since that is exactly the evidence the cross-check's `unfixed` bucket looks for.
 - **The buckets are evidence, and `unfixed` is the loud one.** A finding bucketed `unfixed` — raised earlier in this PR's history, touched by a fix round, still present — is the loop's characteristic failure caught red-handed, and it arrives already a severity higher. Treat it as a signal that the earlier fix was written against the scenario rather than the invariant ("Writing the fix without causing the next finding", above) and re-open that question rather than patching the new instance. A `re-raised` one is a concern you argued down that an independent reviewer found anyway: worth more weight than either read alone, and a reason to re-examine your own rationale rather than restate it.
 - **`settled` findings are not yours to re-litigate, and not yours to bury.** A prior thread weighed that consequence and the project chose otherwise — usually because *you* rejected, acknowledged, or deferred it in an earlier round. They neither hold the loop open nor need a fix. But a *blocking* one gets named to the user with its count and thread, every time, because somebody decided to live with a `CRITICAL`. You are the author and the judge here; that line is the only thing keeping "converged" from meaning "rejected everything".
 - **`Ask-user` is unchanged and still the default** for security/auth, scope boundaries and architectural calls. A finding arriving with a confident severity attached is not extra authority to act unilaterally.
@@ -138,7 +153,7 @@ On the finding's own thread: reply with what you decided and why, then resolve t
 
 Nothing for `Ask-user` — that thread is still open, so leave it open and unmarked.
 
-**`acknowledged` earns a real sentence, not a shrug.** Say what you agree with and why it isn't worth changing — "true; the phrasing is loose but nothing reads it to decide anything, so leaving it" — because the reviewer was right and the reply is the only place that is recorded. A bare "acknowledged" reads as a brush-off to the person who has to judge whether you were being disciplined or lazy, and it gives the next round's cross-check nothing to settle the finding against.
+**`acknowledged` earns a real sentence, not a shrug, and it says which of the two claims it is.** For a finding that names no problem: "true; the phrasing is loose but nothing reads it to decide anything, so leaving it." For a real one you are choosing not to spend a round on: **say it is right, say what leaving it costs, and say that is the trade** — "right, and the report will omit this number until someone hits it; not worth a round and the review it owes." The reviewer was right either way and the reply is the only place that is recorded. A bare "acknowledged" reads as a brush-off to the person who has to judge whether you were being disciplined or lazy, and it gives the next round's cross-check nothing to settle the finding against.
 
 The marker is machine-readable and the prose beside it is not, which is the point: the next run's cross-check takes the marker as decisive rather than inferring your intent from a sentence. But write the prose properly anyway. A rejection reading "rejected, see commit abc123" settles nothing for a reader who cannot see why, and the reader here includes the person reviewing your judgement later. Name the concern, say why the code is right as it stands, and keep it to a line or two.
 
