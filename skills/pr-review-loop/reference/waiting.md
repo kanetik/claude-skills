@@ -43,7 +43,7 @@ When you adapt it: keep `headRefOid` so pushes register even in a repo with no C
 Under polling the loop is **re-entered across wakes**, not run as one process. Make each wake idempotent:
 
 1. Re-pull (`git fetch && git pull --ff-only`).
-2. Re-derive where you are from the PR (SKILL.md step 1 gathering): unresolved threads, review states + timestamps, bot issue comments, latest push timestamp, tracked-bots set — **read all three surfaces against current HEAD** (SKILL.md "Reading reviewer state") before concluding any bot is still pending.
+2. Re-derive where you are from the PR (SKILL.md step 1 gathering): unresolved threads, review states with their `commit_id`s, bot issue comments, skeptic's coverage record, the current HEAD sha (and the latest push timestamp, for the sha-less fallback), tracked-bots set — **read all three surfaces against current HEAD** (SKILL.md "Reading reviewer state") before concluding any bot is still pending. The HEAD sha is the one that matters: staleness is "did this reviewer see this code", which a sha answers and a clock only approximates.
 3. Act (evaluate / request / wait).
 4. Re-schedule the poll, then yield.
 
@@ -62,7 +62,7 @@ Most state re-derives from the PR. Five pieces don't, and must be carried in the
 
 An **external push** (below) empties the dropped-happy set — every tracked bot re-reviews — so both carry forms reset on one.
 
-**Skeptic state, by contrast, is fully PR-derivable**, which is what makes a context-less wake cheap now that it posts. Its review at/after the latest push carries the `<!-- pr-review-skeptic -->` marker; its findings are threads with the same marker; your dispositions are replies on those threads and the resolution state of each. A wake reads all of it back and knows exactly where the round stands, with nothing carried. Two things follow: the step-2 skip check ("a marker-carrying review submitted at/after the push") is what stops a re-entered wake dispatching a second eight-reviewer pass over a commit already reviewed, and where no such review exists, re-running it is correct rather than wasteful.
+**Skeptic state, by contrast, is fully PR-derivable**, which is what makes a context-less wake cheap now that it posts. Its review carries the `<!-- pr-review-skeptic -->` marker **and a coverage record naming the sha its reviewers read**; its findings are threads with the same marker; your dispositions are replies on those threads and the resolution state of each. A wake reads all of it back and knows exactly where the round stands, with nothing carried — and the coverage record means it knows that without needing a push event or a clock. Two things follow: the step-2 skip check ("a marker-carrying review whose record names the current HEAD sha") is what stops a re-entered wake dispatching a second eight-reviewer pass over a commit already reviewed, and where no such review exists, re-running it is correct rather than wasteful.
 
 ## Lockstep across the round's engaged bots
 
