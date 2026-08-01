@@ -31,6 +31,8 @@ Correct and real are different, and treating them as one predicate is the single
 
 Not "did the diff touch this line" — is it part of the job this change came to do. A defect this change is responsible for is related even where the line predates it (a change that makes a broken path newly reachable owns that path). Work the change merely happens to sit near is not.
 
+**First ask whether HEAD still has it.** A reviewer re-raising a finding against stale code is `Already-fixed` — reply naming the commit, stamp `disposition=fixed`, resolve. The table below has no row for it, and both routes through it record something false: `acknowledged` says the defect is there and being lived with, `rejected` says the code was kept as-is on the merits. Either one lies to the next round's cross-check and inflates a count a reader is told to audit your judgement by.
+
 | Correct? | Real problem? | Related? | Course |
 |---|---|---|---|
 | Yes | Yes | Yes | **Fix it** — cost shapes *how*, never *whether* |
