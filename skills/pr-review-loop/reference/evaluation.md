@@ -31,9 +31,19 @@ Correct and real are different, and treating them as one predicate is the single
 
 Real is not the same as worth another round, and collapsing the two is what turns a converging loop into a grinding one. Every fix costs a round, and that round owes a review, and that review finds things — so a fix has to buy more than it costs.
 
-**What makes it worth acting on: someone reaches a wrong outcome.** Data goes wrong, behaviour goes wrong, a verdict or a report says something false, a boundary lets through what it exists to stop, a reader is led into reintroducing a defect. Size does not matter here and neither does effort — a one-word fix to a security boundary is worth it, and so is a large fix to a wrong result.
+**Ask reach, not correctness — and say the answer out loud: _who hits this, how often, and what happens to them?_** Correctness is settled by question 1; this question is about how far the problem travels. A test phrased as "does someone reach a wrong outcome" filters nothing, because the reviewer's own reporting bar already requires every finding to name one — the same bar twice, and a gate that passes everything.
 
-**What usually is not: a cost that lands only on the next reader, in a place that is already correct enough to act on.** A report that omits one of four numbers. A precondition you discover a round later than you could have. An ambiguity in a corner that needs two unusual settings at once to reach. Documentation, comments, PR descriptions and test names belong here more often than anywhere else — **they need to be correct, not perfect**, and this is the second gate that says so. A comment that asserts something *false* fails question 1 and gets fixed. A comment that is true, and could be clearer, or is missing a caveat that changes nobody's decision, is real and is **not worth the round**.
+- **Who** — a user on a normal path, the next person to read this file, or nobody without an unusual combination of settings.
+- **How often** — every run, or only when two independent conditions line up.
+- **What happens** — data or behaviour goes wrong, or a report misleads, or someone is mildly worse off.
+
+**Likely × harmful is worth acting on**, whatever its size: a wrong result on a path people take, a boundary that lets through what it exists to stop, a confidently false claim that tells a reader to stop looking. A one-word fix to one of those is worth the round; a large fix to one of them is too.
+
+**The organizing question is "would I hold the merge for this?"** If the honest answer is no, and the fix is not free, it is not worth acting on — however true the finding is.
+
+**What usually is not: a cost that lands only on the next reader, in a place that is already correct enough to act on** — or anything reachable only by ANDing two unusual conditions. A report that omits one of four numbers. A precondition you discover a round later than you could have. An ambiguity in a corner that needs two unusual settings at once to reach.
+
+**The bar rises as a run goes on, and that is deliberate.** After several rounds with nothing blocking, the marginal defect you would fix is smaller than the marginal defect a fix introduces — this loop's own history has a round where three of six findings were regressions from the previous round's fixes, one of which made an environment strictly worse than before it was touched. So late in a run, "worth acting on" means *clearly* worth it. Chasing the last correct-but-cornered finding is how a converging loop becomes a grinding one. Documentation, comments, PR descriptions and test names belong here more often than anywhere else — **they need to be correct, not perfect**, and this is the second gate that says so. A comment that asserts something *false* fails question 1 and gets fixed. A comment that is true, and could be clearer, or is missing a caveat that changes nobody's decision, is real and is **not worth the round**.
 
 The honest test is a trade, so make it out loud: *what does this cost if left, against what the round to fix it costs?* Where the answer is "a later reader is mildly worse off, and the round costs a full review of everything the fix touches", leave it.
 
