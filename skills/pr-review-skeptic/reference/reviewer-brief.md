@@ -105,6 +105,30 @@ Read, and only read. Other reviewers are working in this same checkout at the sa
 
 **Being right is not enough. There has to be a problem.** You can always say something true about a piece of code or a sentence, and a review made of true remarks is worse than a short one: everything in it reads as work to do, so the things that actually matter get the same weight as the things that do not. The test is whether something is **materially wrong** — the code does the wrong thing, or a claim about it is false, or a real cost lands on someone — rather than merely **not quite right**: imprecise, incomplete, could be phrased better, could assert more. Report the first. Leave the second.
 
+**And a problem is not enough either. `FINDING` means: someone should change this.** That is the bar, and it is a judgement about *reach*, not about correctness. Ask three things and answer them in the finding itself:
+
+- **Who hits this?** A user on a normal path, or the next person to read the file, or nobody without an unusual combination of settings.
+- **How often?** Every run, or only when two independent conditions happen to line up.
+- **What happens to them?** Data or behaviour goes wrong, or a report is misleading, or someone is mildly worse off.
+
+**Likely × harmful is a `FINDING`.** A wrong result on a path people take, a boundary that lets through what it exists to stop, a claim so confidently wrong that a reader stops looking — those are worth changing whatever their size, and a one-line fix to one of them is still a `FINDING`.
+
+**Severity says how bad a finding is. It never says whether something is a finding.** Only the top of the ladder makes a verdict no-go; everything below it is still a finding, still gets its own thread, and still gets an answer. So the question is never "is this bad enough to block the merge" — plenty of real defects are not, and they are exactly what the lower rungs are for. The question is whether someone should change it.
+
+**Real but cornered is not.** Something reachable only by ANDing two unusual conditions, or whose worst outcome is a later reader mildly worse off, is correct and is not worth anyone's round. **Do not turn it into a `FINDING` in order to be thorough** — that is the single biggest way an honest review becomes a treadmill, because every one of them costs the author a round, and that round owes another review, which finds more of them.
+
+Put those in a `NOTED` block instead. They reach the reader without asking anyone to do anything:
+
+```
+NOTED
+path: data/sync/Merge.kt
+note: The retry ceiling is only reachable with both `aggressiveSync` and an offline device; the bound is correct but undocumented.
+```
+
+`NOTED` items get no thread, no severity and no disposition. They are for the record and for whoever touches this next, and the honest test for one is: *if this were the only thing I found, would I be asking anyone to do anything about it?* If no, it is `NOTED`. Note the test is about whether it is worth acting on, not about whether it would block — "the change is still good to go" is true of most `MEDIUM`s and every `LOW`, and reading it as the test would empty the two lower rungs into this block.
+
+If that leaves you with nothing at all, say so. **A short review is the good outcome**, and a reviewer whose whole slice is `SOUND` plus two `NOTED` lines has done the job exactly right.
+
 **This matters most for comments, documentation, and tests, and that is where it is easiest to get wrong.** They need to be correct, not perfect. A comment that asserts something false is a real finding, and often a serious one — a confident claim beside subtly wrong code tells every later reader to stop looking, so report it and say what a reader relying on it would get wrong. A comment that is true but could be sharper, a docstring that could say more, a test name that could be clearer: not findings. Prose has no failing test to pin it, so you are the only check on it, and an adversarial reader of prose can generate objections indefinitely. Apply the bar hardest exactly where it is easiest to clear.
 
 The same holds for a test: "this test cannot fail for the bug it names" is a real finding, because the test is claiming coverage it does not provide. "This test could also assert X" is not, unless the absence of X lets a specific defect through — in which case name that defect.
@@ -144,7 +168,7 @@ verified: Cancellation propagates on every branch; backoff is bounded; the WorkM
 
 A slice with nothing wrong in it is a real and useful result. Report it as one. Inventing a finding to look diligent costs the reader the trust that makes the genuine findings land.
 
-Return only `FINDING` and `SOUND` blocks.
+Return only `FINDING`, `NOTED` and `SOUND` blocks.
 
 ---
 
