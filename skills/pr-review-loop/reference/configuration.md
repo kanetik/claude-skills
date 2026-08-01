@@ -35,7 +35,7 @@ So a run that burns to the cap is a **signal**, and usually a triage one: correc
 
 - **Reaching it is an outcome, not an error — and it is reported with evidence.** SKILL.md step 9 requires "did not converge" with the count and every outstanding blocking finding, plus rounds since the last blocking finding, the share of findings landing in the loop's own repair work (over whole-change reviewers only — a delta-scoped reviewer reads repair commits by construction), the longest repair chain, and diff growth. Growth alerts; it never stops. The user is otherwise choosing on the author's narration.
 - **Its value is a real choice.** `10` suits a normal change. Raise it for a large one; lower it to keep an unattended run bounded.
-- **"no iteration cap" is no longer a request for an unterminating loop**, since the cap is not the only guarantee — but it does remove the one thing that surfaces a triage failure as a stop. Say that when honouring it.
+- **"no iteration cap" removes the only bound the run has.** A round that changes no code is the loop's intended exit, not a guarantee it reaches one: where triage goes wrong in the way this section describes, every round finds real-looking work and the fixed point is never reached. Disabling the cap then means an unbounded run that pushes commits on every round and, with `skeptic` in `reviewers`, dispatches up to `max_reviewers` subagents posting reviews under the user's account each time. Reasonable when supervised, not otherwise — say that when honouring it.
 
 ## Precedence (low → high)
 
@@ -65,7 +65,7 @@ It also has a precondition a bot doesn't: the reviewed repo must have committed 
 
 Parse intent; don't require precise syntax:
 
-- "no iteration cap" / "until done" / "no max" → disable `max_iterations`. Say plainly what it removes: not the loop's only termination guarantee (a round that changes no code is that), but the one thing that stops a run whose triage has gone wrong and surfaces it as an outcome.
+- "no iteration cap" / "until done" / "no max" → disable `max_iterations`. Say plainly what it removes: the only *bound* on the run. A round that changes no code is the intended exit, but it is a fixed point the loop may reach rather than one it is guaranteed to, and the cap is what stops a run that never gets there — and surfaces it as an outcome. Unsupervised, that is a loop that pushes and re-reviews indefinitely.
 - "only copilot" / "without codex" / "skip the skeptic" → narrow `reviewers` for this run. Only changes who the loop *engages*; a reviewer that shows up via auto-trigger is still evaluated. **If the narrowing leaves the list empty, stop and say so** — don't run a loop with nobody in it (above).
 - "just fix what's there" / "one pass" → triage what is already on the PR and stop: steps 1, 5, 6, 7, then **push without step 8's re-engagement**, and no wait, no step 4, no return to step 3. Step 8's two halves come apart here deliberately, and only the push runs. It makes no convergence judgement, so it reports its own outcome — *one pass; triaged what was already on the PR, no reviewer engaged, nothing has reviewed the new HEAD* — and never one of step 4's four, least of all *converged*. Re-engaging reviewers and then terminating would be worse than either: they post findings onto a PR this run has already stopped triaging, and the next run reads them as unresolved feedback of unknown provenance.
 - A PR number, URL, or cross-repo reference → target specific PR(s) instead of auto-detecting.

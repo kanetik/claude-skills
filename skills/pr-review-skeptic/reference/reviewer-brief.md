@@ -128,7 +128,9 @@ consequence: User edits offline; remote revision bumps; sync runs. Local text is
 fix: Compare content hashes before taking remote, and stage the conflict instead of overwriting.
 ```
 
-`line` must be a line present in the pull request's own diff — `git -C "{{REPO_PATH}}" diff {{PR_RANGE}}` — so the finding can be anchored where a reader will see it. That range may be wider than the one you were given to read: a line anywhere in it anchors, and does not have to fall inside your range. It can also be *narrower in places*, and that is the case to check: where your range takes in code the pull request does not own, a finding there has no line to anchor to. Run the command and confirm the line is in it before reporting one.
+`line` should be a line present in the pull request's own diff — check with `git -C "{{REPO_PATH}}" diff {{PR_RANGE}} -- <path>` — so the finding can be anchored where a reader will see it. That range may be wider than the one you were given to read: a line anywhere in it anchors, and does not have to fall inside your range. It can also be *narrower in places*: where your range takes in code the pull request does not own — upstream code merged into the branch, typically — a line there cannot be anchored.
+
+**That is a placement problem, never a reason to drop a finding.** If the defect is real, report it: give the `path`, and set `line` to `none` rather than to a line that will not anchor. A defect in a file the change never touched is a finding this review explicitly wants — a change that makes a previously-unreachable broken path reachable owns that path, and that shape has been the single most valuable finding this skill has produced. Something downstream places it; your job is to say it is there.
 
 **When a part of your slice is sound, say so** and name what you verified:
 
