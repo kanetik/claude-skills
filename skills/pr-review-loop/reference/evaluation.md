@@ -39,7 +39,7 @@ Real is not the same as worth another round, and collapsing the two is what turn
 
 **Likely × harmful is worth acting on**, whatever its size: a wrong result on a path people take, a boundary that lets through what it exists to stop, a confidently false claim that tells a reader to stop looking. A one-word fix to one of those is worth the round; a large fix to one of them is too.
 
-**The organizing question is "would I hold the merge for this?"** If the honest answer is no, and the fix is not free, it is not worth acting on — however true the finding is.
+**The organizing question is "is this worth another round?"** If the honest answer is no, and the fix is not free, it is not worth acting on — however true the finding is. **Not "would this block the merge"**: most `MEDIUM`s and every `LOW` would not, and a real, related problem is fixed here whatever its severity. Severity says what *must* be fixed; this gate asks what is *worth* fixing, and the two are different questions. Reading it as the blocking question would acknowledge away the entire non-blocking tier, which is most of what a reviewer reports.
 
 **What usually is not: a cost that lands only on the next reader, in a place that is already correct enough to act on** — or anything reachable only by ANDing two unusual conditions. A report that omits one of four numbers. A precondition you discover a round later than you could have. An ambiguity in a corner that needs two unusual settings at once to reach.
 
