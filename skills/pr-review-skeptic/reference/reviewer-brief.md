@@ -32,7 +32,9 @@ Every slot carries a fact about the project, about the mechanics of reaching the
 
 Substituted verbatim on a later run, `$LASTREVIEWED` filled in:
 
-> **This change has been reviewed before, at `$LASTREVIEWED`.** Your range starts there: the code before it has been read by reviewers briefed as you are, and is not what you are here for. Read as much of it as you need — new code cannot be judged without the code it sits in, and a caller that has not changed is often where the new callee's defect shows up — but report on what is in your range. You are not checking anyone's earlier work, and nothing about what they concluded has been passed to you.
+> **This change has been reviewed before, at `$LASTREVIEWED`.** Your range starts there: the parts of *this change* written before it have been read by reviewers briefed as you are, and re-reading them is not what you are here for. Read as much of them as you need — new code cannot be judged without the code it sits in, and a caller that has not changed is often where the new callee's defect shows up. You are not checking anyone's earlier work, and nothing about what they concluded has been passed to you.
+>
+> **That covers the change, and only the change. Code the change never touched has been read by nobody** — not by an earlier reviewer, not by anyone on this run. So a defect *there* is still yours to report, with `line: none`, exactly as the reporting rules below say. "Report on what is in your range" governs which part of the change you re-read; it does not put untouched code out of bounds.
 
 ### The `{{SETTLED}}` block
 

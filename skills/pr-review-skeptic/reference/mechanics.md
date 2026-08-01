@@ -207,7 +207,16 @@ The most recent review whose body carries the `<!-- pr-review-skeptic -->` marke
 # gh's --jq takes exactly ONE argument, the filter -- it has no --arg passthrough, so
 # interpolate the login into the filter string (double quotes) as the $LASTID block does.
 # `--jq --arg me "$ME" '…'` fails with "accepts 1 arg(s), received 4".
+#
+# GUARD THE LOGIN. `GET /user` returns 403 for a GitHub App installation token --
+# including the GITHUB_TOKEN `gh` uses by default in Actions, which is exactly the
+# automated run this skill's Preconditions contemplate. An empty $ME degrades the filter
+# to `select(.user.login == "")`, which matches nothing, so $LASTREVIEWED comes back empty
+# and step 2 reads that as "first run, full stop": the run re-reviews the whole change
+# every round, sized against the full change, and says nothing about why. An empty login
+# must never masquerade as "no prior review".
 ME=$(gh api user --jq .login)
+[ -n "$ME" ] || { echo "cannot determine the authenticated account"; exit 1; }
 LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
   --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-skeptic\")) | .body" \
   | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
