@@ -25,7 +25,7 @@ On a PR that is **not `OPEN`**, read it from `$BASE` instead. The base tip of a 
 | `architecture` | *(empty)* | The shape of the system, in two sentences. Enough to navigate, not a tour. |
 | `priorities` | seven-rung ladder | Blast-radius order, highest first. Override in your domain's own words. |
 | `files_per_unit` | `12` | Soft target when partitioning across reviewers. Module and subsystem boundaries decide the cut; this decides roughly how fine. |
-| `max_reviewers` | `8` | Cap on total reviewers for one PR, the composition reviewer included. Reached, units grow — coverage stays complete. |
+| `max_reviewers` | `8` | Cap on total reviewers for one PR, the composition reviewer included. Reached, units grow rather than files being dropped — coverage stays complete **down to one content reviewer**. At `1` on a *later* run the composition reviewer takes the whole budget, the displaced content units are recorded in `unreviewed-units`, and the next run is forced back to first-run scope; that is the one setting where lowering this costs per-unit coverage rather than just widening units (SKILL.md stage 3). |
 | `blocking_severities` | `[CRITICAL, HIGH]` | Which severities hold the verdict. **Not** which ones post: every finding posts as its own thread (`SKILL.md` stage 7). |
 | `confirm_before_posting` | `false` | `true` shows findings and waits before posting. `SKILL.md` stage 7 decides whether a run posts at all — a question or a "don't post" never does, whatever this is set to. |
 | `allow_agent_posting` | `false` | `true` lets a run invoked by another skill or agent post its review. Project layer only — see below. |
@@ -63,4 +63,4 @@ Parse from the invocation, overriding config for that run:
 | "show me first" | `confirm_before_posting: true`. |
 | "include medium" / "everything blocks" | Extends `blocking_severities`. |
 | "one reviewer" / "single pass" | `max_reviewers: 1`, no partition. Reasonable on a small PR; on a large one it trades coverage for speed, so say so in the report. |
-| "ignore the review history" | Skip the cross-check's bucketing; every finding reports as `new`. Its marker/`databaseId` pass still runs — without it a second run posts a duplicate thread beside each of its own from the first, and notifies everyone twice for one defect. |
+| "ignore the review history" | A cold full-change read: stage 3 takes **first-run scope** and builds **no settled list**, and stage 6 skips its bucketing so every finding reports as `new`. All three, because the history now reaches the run by two routes and suppressing only the later one would leave the reviewers scoped and steered by the record while removing the stage that reports what was suppressed. Its marker/`databaseId` pass still runs — without it a second run posts a duplicate thread beside each of its own from the first, and notifies everyone twice for one defect. |

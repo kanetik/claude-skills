@@ -144,6 +144,24 @@ git -C "<tmp>/pr-<num>" -c core.quotePath=false \
     diff --name-status --no-renames "$BASE...$REVIEWED"      # the file list
 ```
 
+**Two file lists on a later run, and they feed different reviewers** ([`SKILL.md`](../SKILL.md) stage 3). The command above is the **composition** reviewer's list, on every run. The **content** reviewers' list is the delta since the last review, intersected with it:
+
+```bash
+git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+    diff --name-status --no-renames "$LASTREVIEWED..$REVIEWED" > "<tmp>/delta.txt"
+git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+    diff --name-only --no-renames "$BASE...$REVIEWED" | sort > "<tmp>/prfiles.txt"
+awk -F'\t' 'NR==FNR{p[$0];next} ($2 in p)' "<tmp>/prfiles.txt" "<tmp>/delta.txt"   # content units
+```
+
+**`-F'\t'` is load-bearing.** `--name-status` separates the status from the path with a tab, and `core.quotePath=false` does not quote a path containing a space, so awk's default whitespace splitting turns `M<TAB>docs/release notes.md` into `$2 = docs/release`, which matches no key. The file drops out of the content units silently, no content reviewer reads it, and stage 7 still reports the delta as reviewed — the same class of hole `core.quotePath=false` and `--no-renames` are already here to prevent, on a path shape far commoner than a non-ASCII byte.
+
+Partitioning the raw delta instead breaks in two ways, and the second is silent. `$LASTREVIEWED..$REVIEWED` is a plain two-endpoint diff, so **after the base branch is merged into the PR branch** — one click of "Update branch" between rounds — it contains all the upstream code, while `$BASE` has moved forward so the PR's own diff does not. Reviewers are then dispatched over files the pull request does not modify, and any finding they return cannot anchor: the anchor check tests new-side hunks of `$BASE...$REVIEWED`, where those lines do not appear. Every such finding falls to tier 3, in the body with no thread, which is the tier that comes back `new` every round forever.
+
+**What the intersection buys, and what it leaves.** It keeps the reviewed **file set** inside the pull request's own, which is what stops whole upstream files being handed out as units and keeps `max_reviewers` sized against work the PR owns. It does **not** narrow the range within a file: a content reviewer's `{{DIFF_RANGE}}` is still `$LASTREVIEWED..$REVIEWED`, so for a file both the PR and the merge touched — a build file, a lockfile, a version catalog — the reviewer still reads upstream hunks, and where the PR's own edit predates `$LASTREVIEWED`, everything it reads there is upstream. That residue is why the brief gives every reviewer a `{{PR_RANGE}}` slot holding `{{BASE}}...{{HEAD}}`: without it a delta-scoped content reviewer is told to test its anchors against a range it has no way to compute and is barred from discovering. What the slot buys is a reviewer that reports such a finding with `line: none` instead of a line that cannot anchor — **not** a reviewer that suppresses it. A finding on a path outside the PR's diff is still a finding, and tier 3 is where it lands. (`$LASTREVIEWED...$REVIEWED` is not a fix — `$LASTREVIEWED` is an ancestor, so the two forms name the same range.)
+
+And skipping the delta form entirely — building units from the whole-change list while filling `{{DIFF_RANGE}}` with `$LASTREVIEWED..{{HEAD}}` — hands a reviewer a large unit of which a few files have any content in its range, leaves `max_reviewers` sized against the full change so the cap keeps forcing oversized units, and delivers none of the attention saving the delta scope exists for while looking like it worked.
+
 Not `gh pr view --json files`: it returns at most 100 files and gives no signal when it truncates, so a 300-file PR partitions the first hundred and reports full coverage over all of them. `$BASE` and `$REVIEWED` fill the `{{BASE}}` and `{{HEAD}}` slots. Downstream of the staging block, `$REVIEWED` is the name for the reviewed head — `<headRefOid>` appears only above, where it is the value being read for the first time.
 
 `--name-status` rather than `--name-only` because the status matters downstream: a `D` path is in the change but not in the worktree, and a reviewer sent to open it finds nothing and — following the brief's report-what's-missing rule — turns a deletion into a finding about an absent file. Mark deleted paths as deleted when they reach `{{FILES}}`; they are reviewed through the diff.
@@ -163,7 +181,80 @@ Fills `{{CI}}`: the failing check names and what they report, or that everything
 
 ## Prior review history
 
-For the cross-check stage only.
+Read by two stages now, for different things: **stage 3** takes the last-reviewed commit and the settled decisions from it, and **stage 6** takes the whole payload for bucketing.
+
+### `$LASTREVIEWED` — the commit this skill last reviewed (stage 3)
+
+The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and the commit its reviewers actually read. **Take it from the coverage record, then guard that value** — the record's sha is what gets tested, never the review's `commit_id`, which on the force-push route is the current head and would pass a guard the reviewed sha fails.
+
+```bash
+# 1. Read the coverage record this skill writes into its own review body (stage 7).
+#    That sha is what the reviewers read; `commit_id` is not, on the force-push route,
+#    which posts body-only against the CURRENT head so GitHub stamps the review with a
+#    commit nobody reviewed.
+#
+#    RESTRICT TO THE AUTHENTICATED ACCOUNT'S OWN REVIEWS. The reviews endpoint returns
+#    reviews by anyone who can see the PR -- on a public repo, any GitHub user -- and the
+#    record is the one input that decides this run's scope. Unfiltered, a reviewer who
+#    writes `<!-- pr-review-skeptic: reviewed=<any ancestor of head> unreviewed-units=0 -->`
+#    into a review body picks the scope: the sha passes the ancestry guard by construction,
+#    stage 3 declares a later run, the content reviewers get an empty or near-empty delta,
+#    and the run posts "no blocking findings in the changes since <sha>" over code no
+#    reviewer read -- then records unreviewed-units=0 so the next run scopes past it too.
+#    This is the same trust boundary the project keys and `allow_agent_posting` are read at
+#    the base ref for: PR-side content must not steer the review of itself. The marker
+#    identifies this skill's work only WITHIN that account's reviews.
+# gh's --jq takes exactly ONE argument, the filter -- it has no --arg passthrough, so
+# interpolate the login into the filter string (double quotes) as the $LASTID block does.
+# `--jq --arg me "$ME" '…'` fails with "accepts 1 arg(s), received 4".
+#
+# GUARD THE LOGIN. `GET /user` returns 403 for a GitHub App installation token --
+# including the GITHUB_TOKEN `gh` uses by default in Actions, which is exactly the
+# automated run this skill's Preconditions contemplate. An empty $ME degrades the filter
+# to `select(.user.login == "")`, which matches nothing, so $LASTREVIEWED comes back empty
+# and step 2 reads that as "first run, full stop": the run re-reviews the whole change
+# every round, sized against the full change, and says nothing about why. An empty login
+# must never masquerade as "no prior review".
+#
+# An unreadable login DEGRADES TO FIRST-RUN SCOPE -- it does not end the run. Reviewing
+# everything is the safe direction to be wrong in, and it is what this environment got
+# before the filter existed; aborting would leave a staged worktree, no reviewers
+# dispatched, no review produced, and an outcome the loop's "what comes back" table has
+# no row for. Say it in the terminal and in the coverage line so the full re-review is
+# explained rather than silent -- the silence was the defect, not the full scope.
+ME=$(gh api user --jq .login)
+[ -n "$ME" ] || { echo "login unreadable -- first-run scope, say so in coverage"; LASTREVIEWED=""; }
+LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
+  --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-skeptic\")) | .body" \
+  | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
+
+# There is deliberately NO fallback to the review's commit_id. It is wrong on the
+#    force-push route, and a review with no coverage record cannot tell you whether that
+#    run left units unreviewed -- which sends the run to first-run scope anyway
+#    ([`SKILL.md`](../SKILL.md) stage 3), so any value derived from commit_id would be
+#    discarded. Empty here means first run, full stop.
+#
+# The read emits one line per matching review and reduces in the shell. NOT `| last |`
+# inside the --jq: --jq runs PER PAGE (see "Any other failure" below, which solves the
+# identical problem for $LASTID), so on a PR with more than 30 reviews -- the loop-driven
+# PR this scope exists for, and the only case where --paginate does anything -- that form
+# emits one value per page and $LASTREVIEWED comes back multi-line.
+
+# 2. Empty -> no prior run carrying a record -> first run.
+# 3. Otherwise test that it is still on the branch, on THIS value:
+git -C "$REPO" merge-base --is-ancestor "$LASTREVIEWED" "$REVIEWED"
+# 0 = still on the branch      -> later run
+# 1 = force-pushed off it      -> first-run scope
+# anything else = unanswered   -> first-run scope
+```
+
+`cat-file -e` is the wrong test and fails open. Teardown removes `refs/prskeptic/<num>` but not the objects behind it, so on a same-repo PR — the `pr-review-loop`-driven case — an orphaned commit stays in the object database until it is pruned, weeks later, and resolves fine. The guard would never fire: the run would diff `$LASTREVIEWED..$REVIEWED` across a rewrite, which after a rebase is upstream churn that the PR-file intersection then reduces to nearly nothing. The content reviewers would then read almost none of the rewritten change while the review claims delta coverage **since a commit no longer on the branch** — a posted verdict whose coverage line names a sha that is not in the PR's history, on the PR that most needs a real read. Only the cross-repo path escapes it, and only because its clone is rebuilt each run.
+
+Testing the record's sha rather than `commit_id` is what makes the guard meaningful on the force-push route: `commit_id` there is the current head, an ancestor of any later `$REVIEWED`, so a guard run against it would answer "later run" while the orphaned sha the reviewers actually read — the one that fails — went untested.
+
+**Match on the marker *within the authenticated account's own reviews*.** These reviews post under the user's account and are otherwise indistinguishable from a hand-written one, so a filter looking for a *bot* author finds nothing and silently makes every run a first run — but the account itself is a usable filter and a necessary one, for the reason in the block above: the coverage record decides this run's scope, and any reviewer on the PR can write one into a review body. And take the *last* such review, not the first: taking the first re-reviews every round's work on every round, which is the behaviour the delta scope exists to end.
+
+### The full payload (stage 6)
 
 ```bash
 gh pr view <num> --json body,reviews,comments,commits

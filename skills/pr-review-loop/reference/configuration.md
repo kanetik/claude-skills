@@ -11,7 +11,7 @@ One value the loop depends on is **not** its own: the severity floor that decide
 | `reviewers` | `[copilot]` | The reviewers the loop drives: engaged on PR open, re-engaged after every fix push (SKILL.md step 8), and the set convergence is gauged on (step 4). Each entry is a review **bot** or **`skeptic`** (the sibling `pr-review-skeptic` skill, invoked locally, posting its findings to the PR itself). Must be non-empty — see below. |
 | `auto_review_grace_seconds` | `0` | After a push, wait this long for an auto-trigger to land before manually requesting. `0` = no wait. Bump to ~60 where a Ruleset auto-requests Copilot, or to give a bot's auto-review time to start. Doesn't apply to `skeptic`, which nothing auto-triggers. |
 | `wait_check_cadence_seconds` | `180` | Polling cadence while waiting on a **bot** (SKILL.md step 3, `reference/waiting.md`). Stay in 120-240s (every 2-4 min): frequent enough to react promptly, and ≤270s keeps each wake inside the 5-minute prompt-cache window; >300s incurs a full context replay per wake. A `reviewers` list with no bot in it never waits. |
-| `max_iterations` | `10` | Iteration cap. **Not a backstop** — see below. Waiting does NOT count toward it. |
+| `max_iterations` | `10` | Iteration cap. **A backstop** — reaching it means something went wrong; see below. Waiting does NOT count toward it. |
 
 ### An empty `reviewers` is a configuration error, not a mode
 
@@ -25,12 +25,17 @@ Any of the four routes landing on empty stops the run: say which set is empty an
 
 The thing it was reaching for is legitimate and already works — a repo whose bots auto-review on push, needing no manual request. Put those bots in `reviewers` anyway: step 2's per-reviewer skip check sees each has already covered the current commit and requests nothing, so the loop waits for and converges on them without ever pinging one.
 
-### `max_iterations` is load-bearing
+### `max_iterations` is a backstop, and hitting it is a diagnosis
 
-Under the old shape the loop converged on a bot going quiet, and the cap existed for the case where something had gone wrong. That is no longer true. Convergence is now a round that **changes no code** — nothing at or above the blocking severities outstanding, *and* nothing fixed that a reviewer has not since seen (SKILL.md step 4; both conditions, not just the first). An adversarial reviewer with no severity floor will always have *something*, and every round that acts on it moves HEAD and so owes another review — so the loop is not guaranteed to terminate on its own merits, and the cap is what guarantees it terminates at all. Two consequences:
+Convergence is a round that **changes no code** — nothing at or above the blocking severities outstanding, *and* nothing fixed that a reviewer has not since seen (SKILL.md step 4; both conditions, not just the first).
 
-- **Reaching it is an outcome, not an error.** SKILL.md step 9 requires it be reported as "did not converge", with the count and every outstanding blocking finding, and distinguished in the summary from a clean finish.
-- **Its value is a real choice.** `10` suits a normal change. Raise it for a large one; lower it to keep an unattended run bounded. "no iteration cap" in the invocation disables it, which means asking for a loop with no termination guarantee — reasonable when supervised, not otherwise.
+An adversarial reviewer with no severity floor will always have *something*, and for a while this skill concluded from that the loop could not terminate on its own merits. That was wrong, and it was wrong in a way that made things worse: told the cap was the only thing that ends the run, the author role treated every round of correct observations as work to be done. **"Found something" is not "found a problem."** Most of what a late round surfaces is correct and names no problem anyone reaches, and step 5 acknowledges those on the record and closes them without moving HEAD (`Acknowledge-no-change`, `reference/evaluation.md`). A round that changes no code is reachable by following the skill.
+
+So a run that burns to the cap is a **signal**, and usually a triage one: correct observations read as real problems, each fix owing another review, the loop reviewing its own repairs. Three consequences:
+
+- **Reaching it is an outcome, not an error — and it is reported with evidence.** SKILL.md step 9 requires "did not converge" with the count and every outstanding blocking finding, plus rounds since the last blocking finding, the share of findings landing in the loop's own repair work (over whole-change reviewers only — a delta-scoped reviewer reads repair commits by construction), the longest repair chain, and diff growth. Growth alerts; it never stops. The user is otherwise choosing on the author's narration.
+- **Its value is a real choice.** `10` suits a normal change. Raise it for a large one; lower it to keep an unattended run bounded.
+- **"no iteration cap" removes the only bound the run has.** A round that changes no code is the loop's intended exit, not a guarantee it reaches one: where triage goes wrong in the way this section describes, every round finds real-looking work and the fixed point is never reached. Disabling the cap then means an unbounded run that pushes commits on every round and, with `skeptic` in `reviewers`, dispatches up to `max_reviewers` subagents posting reviews under the user's account each time. Reasonable when supervised, not otherwise — say that when honouring it.
 
 ## Precedence (low → high)
 
@@ -60,7 +65,7 @@ It also has a precondition a bot doesn't: the reviewed repo must have committed 
 
 Parse intent; don't require precise syntax:
 
-- "no iteration cap" / "until done" / "no max" → disable `max_iterations`. Say plainly that this removes the loop's only termination guarantee.
+- "no iteration cap" / "until done" / "no max" → disable `max_iterations`. Say plainly what it removes: the only *bound* on the run. A round that changes no code is the intended exit, but it is a fixed point the loop may reach rather than one it is guaranteed to, and the cap is what stops a run that never gets there — and surfaces it as an outcome. Unsupervised, that is a loop that pushes and re-reviews indefinitely.
 - "only copilot" / "without codex" / "skip the skeptic" → narrow `reviewers` for this run. Only changes who the loop *engages*; a reviewer that shows up via auto-trigger is still evaluated. **If the narrowing leaves the list empty, stop and say so** — don't run a loop with nobody in it (above).
 - "just fix what's there" / "one pass" → triage what is already on the PR and stop: steps 1, 5, 6, 7, then **push without step 8's re-engagement**, and no wait, no step 4, no return to step 3. Step 8's two halves come apart here deliberately, and only the push runs. It makes no convergence judgement, so it reports its own outcome — *one pass; triaged what was already on the PR, no reviewer engaged, nothing has reviewed the new HEAD* — and never one of step 4's four, least of all *converged*. Re-engaging reviewers and then terminating would be worse than either: they post findings onto a PR this run has already stopped triaging, and the next run reads them as unresolved feedback of unknown provenance.
 - A PR number, URL, or cross-repo reference → target specific PR(s) instead of auto-detecting.

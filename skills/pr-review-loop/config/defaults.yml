@@ -22,7 +22,7 @@ reviewers: [copilot]
 
 auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a Ruleset auto-requests Copilot or similar
 wait_check_cadence_seconds: 180 # how often the loop polls while waiting on a BOT (3 min; stay in 120-240 = every 2-4 min; <=270 keeps each check inside the 5-min prompt cache -- faster AND cheaper than longer cadences). Skeptic is never waited on.
-max_iterations: 10              # NOT a backstop -- see below
+max_iterations: 10              # backstop -- reaching it means something went wrong; see below
 
 # Why the shipped default is [copilot]: it needs no setup. Copilot is requested with one
 # gh call and reviews whatever it is pointed at, so a first run works in any repo with no
@@ -50,13 +50,21 @@ max_iterations: 10              # NOT a backstop -- see below
 # subagents (8 by default, in that skill's config). Ten rounds is up to eighty reviews.
 # Where that is too much, lower max_reviewers there or max_iterations here.
 #
-# max_iterations is LOAD-BEARING. An adversarial reviewer with no severity floor always
-# finds something, so the loop terminates on a round that CHANGES NO CODE rather than on
-# silence -- nothing blocking outstanding, and nothing fixed that a reviewer has not since
-# seen. Severity decides what must be fixed; it never decides what must be reviewed. If the
-# fix rounds keep producing findings, each one owes another review and the cap is the only
-# thing that ends it. Reaching it is a reported outcome ("did not
-# converge"), not a silent stop. Raise it for a large change; lower it to keep a run short.
+# max_iterations is a BACKSTOP, and reaching it means something went wrong. The loop
+# terminates on a round that CHANGES NO CODE rather than on silence -- nothing blocking
+# outstanding, and nothing fixed that a reviewer has not since seen. Severity decides what
+# must be fixed; it never decides what must be reviewed.
+#
+# An adversarial reviewer with no severity floor always finds something, but "found
+# something" is not "found a problem": most of what a late round surfaces is correct and
+# names no problem anyone reaches, and the author role acknowledges those and closes them
+# without moving HEAD (Acknowledge-no-change, reference/evaluation.md). So a round that
+# changes no code is reachable by following the skill. A run that burns to the cap is
+# usually a triage failure -- observations read as real problems, each fix owing another
+# review -- and the cap report says so, with the evidence (rounds since the last blocking
+# finding, share of findings landing in the loop's own repair work, longest repair chain,
+# diff growth). Reaching it is a reported outcome ("did not converge"), not a silent stop.
+# Raise it for a large change; lower it to keep a run short.
 #
 # RETIRED KEYS. Earlier versions had four reviewer lists -- upfront_gate_reviewers,
 # request_on_pr_open, loop_reviewers, final_gate_reviewers -- with the two gates running
