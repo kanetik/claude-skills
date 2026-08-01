@@ -37,9 +37,11 @@ Not "did the diff touch this line" — is it part of the job this change came to
 |---|---|---|---|
 | Yes | Yes | Yes | **Fix it** — cost shapes *how*, never *whether* |
 | Yes | Yes | No | `Create-issue-and-close` |
-| Yes | No — correct, not a problem | — | `Acknowledge-no-change` |
+| Yes | No — correct, not a problem | — | `Acknowledge-no-change` — **but not at a blocking severity**; there, `Reject-with-explanation` on the merits or `Ask-user` |
 | No | — | — | `Reject-with-explanation` |
 | — | Uncertain, security/auth, architectural | — | `Ask-user` |
+
+**Severity is not one of the two questions, and it still closes one course.** It does not decide whether a problem is real — that is the first question, and a `HIGH` you judge immaterial is still answered by the first question. What it decides is which courses remain: at a blocking severity `Acknowledge-no-change` is unavailable, because a run that converges by agreeing with a `HIGH` is the outcome the course's bar exists to forbid. Stamping `rejected` on a finding you agree with is not the way out either — that puts a false statement in the record. Where you genuinely think a blocking finding is immaterial, that is an `Ask-user`.
 
 **A real, related problem gets fixed in this PR.** Deferring it is not on the table. What merges should work, and an issue filed against a defect this change is responsible for is that defect shipping with a note attached. `Create-issue-and-close` means one thing — work that is genuinely not what this PR is about — and every use outside that meaning trades a bounded round now for an unbounded backlog later. If issues are opening faster than they close, this is the leak.
 

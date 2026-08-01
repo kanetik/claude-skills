@@ -215,8 +215,15 @@ The most recent review whose body carries the `<!-- pr-review-skeptic -->` marke
 # and step 2 reads that as "first run, full stop": the run re-reviews the whole change
 # every round, sized against the full change, and says nothing about why. An empty login
 # must never masquerade as "no prior review".
+#
+# An unreadable login DEGRADES TO FIRST-RUN SCOPE -- it does not end the run. Reviewing
+# everything is the safe direction to be wrong in, and it is what this environment got
+# before the filter existed; aborting would leave a staged worktree, no reviewers
+# dispatched, no review produced, and an outcome the loop's "what comes back" table has
+# no row for. Say it in the terminal and in the coverage line so the full re-review is
+# explained rather than silent -- the silence was the defect, not the full scope.
 ME=$(gh api user --jq .login)
-[ -n "$ME" ] || { echo "cannot determine the authenticated account"; exit 1; }
+[ -n "$ME" ] || { echo "login unreadable -- first-run scope, say so in coverage"; LASTREVIEWED=""; }
 LASTREVIEWED=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
   --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-skeptic\")) | .body" \
   | sed -n 's/.*<!-- pr-review-skeptic: reviewed=\([0-9a-f]*\) .*/\1/p' | tail -1)
