@@ -45,18 +45,30 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 #
 # The window only works if the lock keeps moving, so `: > "<tmp>/run.lock"` again at every
 # stage boundary -- after staging, after the stage-2 interview (which waits on a human and can
-# outlast 30 minutes by itself), and once per reviewer dispatch. A lock that ages out under a
-# live run is worse than none: the second run stops asking and clears the worktree the first
-# run's reviewers are mid-read of.
+# outlast 30 minutes by itself), and before dispatching each set of subagents. A lock that ages
+# out under a live run is worse than none: the second run stops asking and clears the worktree
+# the first run's reviewers are mid-read of.
 #
 # Stage boundaries are NOT enough on their own, because the two longest waits in the run sit
 # BETWEEN them: the concurrent blind pass (stage 4) and the cross-check (stage 6, the largest
-# prompt the skill builds). Either can outlast 30 minutes on a large PR. So also re-touch the
-# lock on a timer -- every ~10 minutes -- for as long as any subagent is outstanding. A second
-# run on the same PR is not hypothetical: the key is (owner, repo, num), pr-review-loop
-# re-invokes this skill on every fix push, and the user can run /pr-review-skeptic on the same
-# PR at the same time.
-if [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
+# prompt the skill builds). Either can outlast 30 minutes on a large PR. And NEITHER can be
+# heartbeaten: SKILL.md stage 4 requires a dispatch whose output returns to the caller, which
+# blocks the caller for the whole pass -- there is no turn in which to re-touch anything until
+# the last subagent returns. A rule saying "re-touch every ten minutes while subagents are
+# outstanding" cannot be followed by the run it is meant to protect.
+#
+# So the lock carries a DEADLINE rather than relying on its mtime, and the run writes one
+# before it blocks. A second run on the same PR is not hypothetical: the key is (owner, repo,
+# num), pr-review-loop re-invokes this skill on every fix push, and the user can run
+# /pr-review-skeptic on the same PR at the same time.
+#
+#   date -d "+90 minutes" +%s > "<tmp>/run.lock"   # before dispatching a blind pass
+#
+# Generous on purpose. Being wrong late costs one question to a user whose run has finished;
+# being wrong early deletes a live worktree.
+NOW=$(date +%s); DEADLINE=$(cat "<tmp>/run.lock" 2>/dev/null)
+case "$DEADLINE" in ''|*[!0-9]*) DEADLINE=0 ;; esac    # empty, absent, or an older run's touch-file
+if [ "$DEADLINE" -gt "$NOW" ] || [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
   echo "LIVE-RUN-SUSPECTED"; exit 1     # stop here and ask; do NOT clear
 fi
 rm -rf "<tmp>"                               # the whole staging dir: a crashed run's payload files
