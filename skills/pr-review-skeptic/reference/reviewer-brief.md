@@ -168,7 +168,7 @@ verified: Cancellation propagates on every branch; backoff is bounded; the WorkM
 
 A slice with nothing wrong in it is a real and useful result. Report it as one. Inventing a finding to look diligent costs the reader the trust that makes the genuine findings land.
 
-Return only `FINDING`, `NOTED` and `SOUND` blocks.
+Your whole result is `FINDING`, `NOTED` and `SOUND` blocks — nothing else, and no prose around them. Deliver them to whoever dispatched you, by whatever means that dispatch provides; blocks written as a closing statement that nobody receives are the same as no review at all.
 
 ---
 
