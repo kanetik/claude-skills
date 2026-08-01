@@ -150,6 +150,8 @@ Phrase the no-op test as "did HEAD move", never as "was it a `Fix-*`": already-f
 
 ## Recording the decision — disposition replies
 
+**`NOTED` items are not findings and get nothing.** A skeptic review body lists them under their own heading, marked as not holding the merge: correct observations that are cornered or cost only a later reader. They have no thread, no severity and no bucket, and they must not be dispositioned, replied to, or counted as work — treating them as findings re-creates by the back door exactly the churn the reviewer's bar removed. Read them, act on one if you happen to be in that code anyway, and otherwise leave them for whoever touches it next.
+
 **Every finding gets one, whatever its severity and whatever you decided.** A finding whose disposition isn't recorded on the PR is a finding the next round has no way to know was handled: its blind reviewers cannot see your fix commit's reasoning, and its cross-check settles a finding only against a thread that says what was decided. This is the mechanism that makes rounds cumulative. Skip it and the loop is a treadmill.
 
 On the finding's own thread: reply with what you decided and why, then resolve the thread. End the reply with the marker line for the course you took:
