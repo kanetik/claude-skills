@@ -135,6 +135,30 @@ This is not a rule about diff size or round count, and it must not be read as on
 
 **Say what the fix might have broken.** In the round's report, name any rule you changed that is stated elsewhere, and whether you checked those places. That line is what lets the next round's reviewer look where you were least certain, and it costs a sentence.
 
+## The blind pre-push check
+
+Every check above is run by the context that just decided the fix was right, at the moment it is most sure of that — which is why a round can satisfy all of them and still ship the defect the next round reports. The reviewer catches it, one round later, and that round is the cost this whole section exists to avoid. So before the push, one **independent** read of the round's own diff. It is named for what it guards — nothing reaches a reviewer until the push — but it runs earlier than that, before the commit, so that what it finds can be folded into the fix instead of arriving as a second commit correcting the first.
+
+**Run it once per round**, after the fixes are written and before the commit (SKILL.md step 6) — not once per finding. Its job is the round as a whole, including the way this round's fixes interact with each other, which is a defect class no per-fix check can see and no reviewer sees until the next round.
+
+**Give the checker the diff and the invariants. Nothing else.** The round's uncommitted changes — plain `git diff`, the working tree against `HEAD`, which at this point in the round is still the last pushed commit — plus the one-line invariant you named for each fix. **Not** the finding text, not the reviewer's rationale, not the PR description, not which round this is, not why you chose this fix over the one that was suggested. Withholding those is the entire mechanism: a checker told what the diff was *meant* to do reads the diff for confirmation, and confirms. This is the same discipline `pr-review-skeptic` applies to its own reviewers, applied here to a diff that skill will not see until after it ships.
+
+Three questions, and the second and third are the ones a self-check cannot answer honestly:
+
+1. **Read it as an executor, not an author.** Follow the changed code or prose literally, from the top. What breaks?
+2. **Was the problem removed, or relocated?** Squeezing the balloon has a signature: the reported symptom is gone, and the property it was a symptom of is still violable by another route. Name the route if there is one.
+3. **Where else is each invariant stated, and does the diff leave those places agreeing with it?** Grep the invariant's terms across the repo. This is the check that verifies the grep bullet above actually happened — the author's belief that they checked is not evidence that they did, and a stale restatement is the single most common thing a fix round leaves behind.
+
+**What comes back is yours to triage, in-round.** Real problem in your own fix → fix it now, before the commit, so nothing ships that you already know is wrong. Not real → drop it. **Nothing from this check is posted, gets a thread, or gets a disposition marker.** It is not a reviewer and it produces no findings in the sense the rest of this skill uses the word — it is one more thing you did before committing, and the record of it is the fix itself.
+
+**One pass.** Do not iterate with it, and do not re-run it over the fixes it prompted. An inner review loop inside a review loop is the failure this skill is built to bound, and the second pass buys much less than the first: what survives an independent read of the diff is what the reviewer's round is for.
+
+**It does not count as a review, and a round that passes it is not converged.** Step 4 is untouched — the code still moved, so an accountable reviewer still has to see it. This check makes the reviewer's round more likely to be the last one; it never substitutes for it. Treating a clean pre-push read as a reviewer's clean verdict is the one way this check makes things worse than not having it.
+
+The trade is one subagent per fix round against a full review round — a wait, a reviewer dispatch, and a triage pass — every time it catches something.
+
+**Where no subagent is available**, run the three questions yourself as a separate deliberate pass over the diff, and say in the round's report that the check was self-run. It is a weaker check and should be described as one: the thing that makes the dispatched version work is that the reader does not know what the diff was for, and you cannot unknow it.
+
 ## Triaging a skeptic verdict
 
 Same surfaces, same lenses, same courses. Four things about its shape change how you read it:
