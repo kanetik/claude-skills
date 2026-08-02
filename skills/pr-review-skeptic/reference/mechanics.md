@@ -51,11 +51,18 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # AND DO NOT TEAR DOWN, on either the agent or the human path. This is the one exit that stops
 # INSIDE stage 1, before anything of this run's was staged, while <tmp> belongs to another run --
 # so SKILL.md stage 9's "every exit after stage 1 comes through here" does not reach it, and it
-# says so. Not clearing the lock is not enough on its own: teardown's `worktree remove` fails
-# harmlessly here ($REPO is assigned below this guard), but `rm -rf "<tmp>"` needs no variables
-# and succeeds, which deletes the other run's staged worktree, its payload files and its lock in
-# one go -- its reviewers then read a deleted tree and its posting step fails on missing files
-# after every one of them has run. Nothing here is ours to remove, because nothing here is ours.
+# says so. THE WHOLE TEARDOWN BLOCK IS DESTRUCTIVE HERE, not merely the `rm -rf`, and it is worth
+# being exact about why -- the tempting reading is that an unset $REPO makes the git calls fail
+# safe, and it does not. `git -C ""` LEAVES THE WORKING DIRECTORY UNCHANGED (git documents the
+# empty argument that way), so `worktree remove --force "<tmp>/pr-<num>"` runs against whatever
+# repository the shell is standing in -- which on a same-repo PR is the very one that registered
+# the other run's worktree, so it succeeds and deletes a live checkout. Substituting a literal
+# for $REPO by this file's carry-the-literals convention lands in the same place, since the only
+# path an agent has on a same-repo PR is the user's own checkout. And `rm -rf "<tmp>"` needs no
+# variables at all: it takes the other run's staged worktree, its payload files and its lock in
+# one go, after which its reviewers read a deleted tree and its posting step fails on missing
+# files with every one of them already run. Nothing here is ours to remove, because nothing here
+# is ours -- and that is the rule, not "avoid the rm".
 #
 # WHAT THE CALLER IS HANDED. pr-review-loop reads a stopped run as a round with no verdict
 # at HEAD, which is the truth here; what it must not be handed is a clean verdict or a silent
