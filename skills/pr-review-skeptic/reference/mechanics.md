@@ -43,11 +43,26 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # files. On LIVE-RUN-SUSPECTED, ask the user whether the other run is still going rather than
 # continuing through this block. Older than that, the lock is a crashed run's leaving: sweep it.
 #
-# The window only works if the lock keeps moving, so `: > "<tmp>/run.lock"` again at every
-# stage boundary -- after staging, after the stage-2 interview (which waits on a human and can
-# outlast 30 minutes by itself), and before dispatching each set of subagents. A lock that ages
-# out under a live run is worse than none: the second run stops asking and clears the worktree
-# the first run's reviewers are mid-read of.
+# An AGENT-INVOKED run has nobody to ask, so it does not ask: report the lock path and the wait
+# the block prints, return that the PR could not be staged, and stop. Do not clear the lock to
+# get past it -- that is the one thing the check exists to prevent -- and do not treat the run
+# as a review that found nothing. pr-review-loop reads a stopped run as a round with no verdict
+# at HEAD, which is the truth here; what it must not be handed is a clean verdict or a silent
+# skip. The wait is bounded and the loop's next round is a fresh invocation.
+#
+# The window only works if the lock keeps moving, so write it again at every stage boundary --
+# after staging, and after the stage-2 interview (which waits on a human and can outlast 30
+# minutes by itself). A lock that ages out under a live run is worse than none: the second run
+# stops asking and clears the worktree the first run's reviewers are mid-read of.
+#
+# TWO WRITE FORMS, AND ONE PLACE EACH -- they are not interchangeable, and `: >` TRUNCATES.
+#
+#   : > "<tmp>/run.lock"                              # a stage boundary: nothing follows that blocks
+#   echo $(( $(date +%s) + 5400 )) > "<tmp>/run.lock" # immediately before a blocking dispatch
+#
+# The deadline write updates mtime too, so it satisfies both tests and there is never a reason to
+# do both at one point. Doing them both truncates the deadline you just wrote and silently returns
+# the run to 30 minutes of cover -- the pre-deadline behaviour, reached by following this comment.
 #
 # Stage boundaries are NOT enough on their own, because the two longest waits in the run sit
 # BETWEEN them: the concurrent blind pass (stage 4) and the cross-check (stage 6, the largest
@@ -55,21 +70,32 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # heartbeaten: SKILL.md stage 4 requires a dispatch whose output returns to the caller, which
 # blocks the caller for the whole pass -- there is no turn in which to re-touch anything until
 # the last subagent returns. A rule saying "re-touch every ten minutes while subagents are
-# outstanding" cannot be followed by the run it is meant to protect.
+# outstanding" cannot be followed by the run it is meant to protect. So the lock carries a
+# DEADLINE rather than relying on its mtime, and the run writes one before it blocks.
 #
-# So the lock carries a DEADLINE rather than relying on its mtime, and the run writes one
-# before it blocks. A second run on the same PR is not hypothetical: the key is (owner, repo,
-# num), pr-review-loop re-invokes this skill on every fix push, and the user can run
-# /pr-review-skeptic on the same PR at the same time.
+# Shell arithmetic, NOT `date -d "+90 minutes"`, which is a GNU extension: on BSD date (macOS)
+# it errors while the `>` still truncates the file, so the deadline is never written and the
+# guard falls open to the 30-minute window on the platform much of the installed base is on,
+# with nothing reporting that the mechanism did not run. `date +%s` alone is portable.
 #
-#   date -d "+90 minutes" +%s > "<tmp>/run.lock"   # before dispatching a blind pass
-#
-# Generous on purpose. Being wrong late costs one question to a user whose run has finished;
-# being wrong early deletes a live worktree.
+# 90 minutes is generous on purpose: being wrong late costs one blocked invocation, being wrong
+# early deletes a live worktree. A second run on the same PR is not hypothetical -- the key is
+# (owner, repo, num), pr-review-loop re-invokes this skill on every fix push, and the user can
+# run /pr-review-skeptic on the same PR at the same time.
 NOW=$(date +%s); DEADLINE=$(cat "<tmp>/run.lock" 2>/dev/null)
 case "$DEADLINE" in ''|*[!0-9]*) DEADLINE=0 ;; esac    # empty, absent, or an older run's touch-file
-if [ "$DEADLINE" -gt "$NOW" ] || [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
-  echo "LIVE-RUN-SUSPECTED"; exit 1     # stop here and ask; do NOT clear
+# Say what is held and for how long. Teardown is the only thing that clears the lock, and it
+# does NOT run after a hard cancel, a session close, or a context blowout mid-pass -- so this
+# fires on a dead run's leavings as readily as on a live one, and neither case is actionable
+# unless the message names the file and the wait.
+if [ "$DEADLINE" -gt "$NOW" ]; then
+  echo "LIVE-RUN-SUSPECTED: <tmp>/run.lock holds a deadline $(( DEADLINE - NOW ))s from now"
+  echo "  Another run may be reading <tmp>/pr-<num>. Delete that file to override."
+  exit 1                                # do NOT clear
+elif [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
+  echo "LIVE-RUN-SUSPECTED: <tmp>/run.lock was touched within the last 30 minutes"
+  echo "  Another run may be reading <tmp>/pr-<num>. Delete that file to override."
+  exit 1                                # do NOT clear
 fi
 rm -rf "<tmp>"                               # the whole staging dir: a crashed run's payload files
 mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # sit here too, and hold review text quoting user code
