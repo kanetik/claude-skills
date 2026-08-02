@@ -36,12 +36,19 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # cannot start on that PR again until someone finds a temp directory they were never told
 # about. The `rm -rf` plus the `worktree prune` below are what actually clear it; keep both.
 #
-# But STOP if <tmp>/run.lock was touched in the last 30 minutes: the key is (owner, repo,
-# num), so a second run on the SAME PR shares this directory with a first one that may still
-# be live -- eight subagents make a run look stalled for minutes. Clearing it deletes the
-# worktree those reviewers are reading, and their teardown later deletes this run's payload
-# files. On LIVE-RUN-SUSPECTED, ask the user whether the other run is still going rather than
-# continuing through this block. Older than that, the lock is a crashed run's leaving: sweep it.
+# But STOP while <tmp>/run.lock is HELD, which is either of two things: it carries a deadline
+# that has not passed (up to 90 minutes -- see the two write forms below), or it was touched in
+# the last 30 minutes. Sweep only when NEITHER holds. Age alone is not the rule and has not been
+# since the deadline was introduced: a lock forty minutes old with fifty minutes left on its
+# deadline is held, and reading "older than thirty minutes, therefore a crashed run's leaving"
+# off this paragraph sweeps it -- which is the live-worktree deletion the guard exists to stop,
+# in exactly the case the deadline was added for.
+#
+# Why any of it: the key is (owner, repo, num), so a second run on the SAME PR shares this
+# directory with a first one that may still be live -- eight subagents make a run look stalled
+# for minutes. Clearing it deletes the worktree those reviewers are reading, and their teardown
+# later deletes this run's payload files. On LIVE-RUN-SUSPECTED, ask the user whether the other
+# run is still going rather than continuing through this block.
 #
 # An AGENT-INVOKED run has nobody to ask, so it does not ask: report the lock path and the wait
 # the block prints, return that the PR could not be staged, and stop. Do not clear the lock to
@@ -158,6 +165,16 @@ rm -rf "<tmp>"                               # the whole staging dir: a crashed 
 mkdir -p "<tmp>"                             # sits here too, and holds review text quoting user code
 echo $(( $(date +%s) + 5400 )) > "<tmp>/run.lock"   # deadline: the stage-2 interview may follow
 
+# FROM HERE THE LOCK IS HELD, and five things that can fail come next -- the clone, two fetches,
+# the two sha checks -- before `worktree add` makes teardown's scope ("once `worktree add` has
+# run") apply. An exit in that gap leaves a 90-minute deadline over a directory holding nothing
+# but the lock, and the next run on this PR then refuses to stage for up to an hour and a half:
+# under pr-review-loop that pauses the whole loop and asks a human to wait out or delete a lock
+# belonging to a run that is not running. So `rm -f "<tmp>/run.lock"` on ANY exit below this
+# line that has not yet reached `worktree add` -- a failed clone, a fetch that cannot
+# authenticate, a sha that will not resolve. Releasing a lock this run is definitely not using
+# costs nothing; holding it costs the next run ninety minutes.
+
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
 
@@ -218,6 +235,8 @@ The same directory needs **two path forms**, and they are not interchangeable.
 The leading `+` on the refspec earns its place on the second run: a force-push — routine on a PR that has just been handed findings — makes an unforced fetch fail non-fast-forward and leaves the local ref on the superseded head.
 
 Teardown — `SKILL.md` stage 9, and **every other exit after staging**: a cancelled run, a failed subagent, an error at the posting step, and the deliberate stops at stages 2 and 3 alike. Once `worktree add` has run, the only orderly ways out are through here.
+
+**Between the lock write and `worktree add` the full teardown does not apply, but releasing the lock does.** There is no worktree to remove and no ref to delete yet, so the block below would only error — but the lock is already held, and an exit there (a clone that fails, a fetch that cannot authenticate, a sha that will not resolve) leaves a 90-minute deadline over a directory containing nothing else. `rm -f "<tmp>/run.lock"` is the whole obligation on that path. The **`LIVE-RUN-SUSPECTED` stop is the one exception, and it is the opposite case**: that lock is another run's, and releasing it is the thing the guard exists to prevent.
 
 ```bash
 git -C "$REPO" worktree remove --force "<tmp>/pr-<num>"
