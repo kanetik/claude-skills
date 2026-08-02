@@ -86,7 +86,7 @@ Not "did the diff touch this line" — is it part of the job this change came to
 
 By round six a reviewer reading HEAD is mostly reading **your repair work**, not the change the PR came to make. It cannot know that — its blindness is the point — and nothing tells you either unless you look. So look: it is one cheap lookup and it changes the triage.
 
-Blame the line the finding names, find the commit that introduced it, and read whether that commit carries a `PR-Review-Loop: <N>` trailer (SKILL.md step 6 stamps every loop commit with one). Three answers:
+Blame the line the finding names, find the commit that introduced it, and read whether that commit carries a `PR-Review-Loop: <N>` trailer (SKILL.md step 6 stamps every commit *it* makes, which is why the same step says not to make one earlier — a commit that slipped in before it carries no trailer and reads here as though the loop never wrote it). Three answers:
 
 - **original** — the change under review. Normal triage.
 - **repair** — code this loop wrote in an earlier round. The finding is a defect in a fix, so re-open the question that fix was answering rather than patching the new instance. See the revert lever below.
