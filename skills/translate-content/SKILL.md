@@ -34,8 +34,8 @@ For Android XML string resources (key-by-key UI labels), use
 - Translates the whole text into each target locale
 - Writes per-locale output files at the configured path/pattern
 - Preserves bullet markers, paragraph breaks, line breaks, emoji
-- Honors a configurable char limit when one applies (e.g., 500 for Play
-  Store release notes — other Play fields have their own limits)
+- Honors the char limit the content type carries, whether configured or not
+  (500 for Play Store release notes — other Play fields have their own)
 - Applies locale-specific translation guidance (Hindi case, Chinese
   idiomatic forms, German capitalization, RTL handling)
 - Handles cross-sentence consistency (pronoun/gender agreement, case,
@@ -81,7 +81,7 @@ writes to the matching path.
 | `source_path` | Path to the default-locale source file or pattern (e.g., `playstore/whatsnew/whatsnew-en-US`, `app/src/main/play/release-notes/en-US/default.txt`) |
 | `output_pattern` | Template for each locale's output, with `{locale}` substituted |
 | `locales` | List of target locale codes (one marked `(default)` matching the source) |
-| `char_limit` | Optional per-locale char limit. Depends on the content type, not the store — Play Store release notes are 500, but a full description is 4000, a short description 80, an app title 30, and most other prose has no limit at all. Omit for unlimited. |
+| `char_limit` | Per-locale char limit, when the content type's own limit needs overriding or the type is not obvious. Limits belong to the content type, not the store — Play Store release notes are 500, a full description 4000, a short description 80, an app title 30, most other prose none. Omitting it means "not configured", not "unlimited": see Char limit handling. |
 | `skip_locales_with_content` | Optional: if `true`, skip locales whose output file already exists with content (default: true — conservative) |
 
 If no config exists, ask the user for these values; offer to write the
@@ -107,13 +107,19 @@ in config.
 ## Char limit handling
 
 A char limit belongs to the specific field being translated, not to a store
-as a whole. Take it from config or from the caller — never assume 500
-because the content is Play Store copy. That figure is the release-notes
-limit only; app descriptions, titles, and FAQ text have different limits or
-none. If the content type is ambiguous and no limit is configured, ask
-rather than guess.
+as a whole. 500 is Play's *release-notes* limit; a full description allows
+4000, a short one 80, an app title 30, and ordinary prose has none. So the
+limit follows from what the content is, never from the fact that it is Play
+Store copy.
 
-When `char_limit` is configured:
+Take it from config or the caller where either supplies one. **Where neither
+does, apply the limit the content type carries** — an absent `char_limit`
+means "not configured", not "unlimited". Release notes are the common case:
+`whats-new.config.md` has no `char_limit` key at all, so a release-notes
+translation arriving by that documented handoff has nothing configured and
+must still be held to 500. Ask only when the content type itself is unclear.
+
+When a limit applies, from whatever source:
 
 - Count Unicode codepoints, not UTF-8 bytes. CJK = 1 codepoint each.
   Emoji can be 1-7 codepoints; keep emoji rare to be safe.

@@ -153,7 +153,7 @@ Add a `.claude/translate-content.config.md` at your repo root. Note the keys dif
 | `source_path` | yes | Path to the default-locale source file (e.g. `app/src/main/play/release-notes/en-US/default.txt`, `playstore/whatsnew/whatsnew-en-US`, `docs/faq-en.md`) |
 | `output_pattern` | yes | Template for each locale's output, with `{locale}` substituted |
 | `locales` | yes | Target locale codes; one marked `(default)`, matching the source |
-| `char_limit` | no | Per-locale codepoint limit for the content type being translated — 500 for Play Store release notes, 4000 for a full description, 80 for a short one, 30 for an app title; omit for unlimited prose |
+| `char_limit` | no | Per-locale codepoint limit, for overriding the content type's own or where the type isn't obvious — 500 for Play Store release notes, 4000 for a full description, 80 for a short one, 30 for an app title. Omitting it means "not configured", not "unlimited": `/translate-content` still applies the limit the content type carries |
 | `skip_locales_with_content` | no | If `true` (the default), skip locales whose output file already exists with content; set `false` to always overwrite |
 
 ```yaml
