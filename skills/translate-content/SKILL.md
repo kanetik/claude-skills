@@ -5,7 +5,8 @@ description: |
   source file (Play Store release notes, app description, FAQ entries,
   marketing copy, etc.) and a target locale set, produces translated locale
   files. Preserves bullet markers, tone, register, brand-name handling.
-  Honors char limits when configured. Encodes locale-specific translation
+  Honors the char limit the content type carries (Play release notes 500),
+  plus any limit config or the caller supplies. Encodes locale-specific translation
   guidance. Pure transform: does not figure out what changed in git, does
   not commit, does not push.
 allowed-tools:
