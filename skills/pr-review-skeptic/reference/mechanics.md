@@ -53,12 +53,18 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # with nothing independently reviewing it. Say "could not stage: another run holds the lock,
 # N seconds left", which is the row pr-review-loop has for exactly this.
 #
-# DO NOT tell the caller the wait resolves itself. It does not: the lock outlives the run that
-# wrote it precisely in the cases teardown misses, so a dead holder's deadline does not shorten
-# as the loop's rounds go by, and the loop has no wait on the skeptic path to spend it in --
-# each round re-invokes, gets this stop, changes nothing, and increments. Ten rounds burn in
-# seconds against a lock with an hour left. Surfacing the path and the remaining wait is what
-# makes it recoverable; a reassurance that it is bounded is what makes it silent.
+# BE EXACT ABOUT THE WAIT, in both directions. It DOES end on its own -- the deadline is an
+# absolute epoch, so the first branch stops firing at expiry and the second cannot fire once the
+# file is 30 minutes old, which means a dead holder's lock is swept automatically and a live
+# holder's goes sooner still, at teardown. What it does not do is end on the CALLER's timescale:
+# the loop has no wait on the skeptic path, so each round re-invokes, gets this stop, changes
+# nothing, and increments -- ten rounds burn in seconds against a window measured in minutes.
+#
+# Both halves have to be said, because each false version costs something different. Claiming
+# the wait resolves itself is what makes a burned-out run look like a converging one. Claiming
+# only a person can end it is worse: it tells someone to delete the lock of a run that is
+# mid-pass, and the next invocation then sweeps the worktree that run's reviewers are reading --
+# the one outcome this whole guard exists to prevent, reached by following the instruction.
 #
 # The window only works if the lock keeps moving, so write it again at every stage boundary. A
 # lock that ages out under a live run is worse than none: the second run stops asking and clears
