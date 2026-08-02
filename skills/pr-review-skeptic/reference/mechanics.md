@@ -36,144 +36,83 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # cannot start on that PR again until someone finds a temp directory they were never told
 # about. The `rm -rf` plus the `worktree prune` below are what actually clear it; keep both.
 #
-# But STOP while <tmp>/run.lock is HELD, which is either of two things: it carries a deadline
-# that has not passed (up to 90 minutes -- see the two write forms below), or it was touched in
-# the last 30 minutes. Sweep only when NEITHER holds. Age alone is not the rule and has not been
-# since the deadline was introduced: a lock forty minutes old with fifty minutes left on its
-# deadline is held, and reading "older than thirty minutes, therefore a crashed run's leaving"
-# off this paragraph sweeps it -- which is the live-worktree deletion the guard exists to stop,
-# in exactly the case the deadline was added for.
+# But STOP if <tmp>/run.lock was touched in the last 90 minutes: the key is (owner, repo, num),
+# so a second run on the SAME PR shares this directory with a first one that may still be live --
+# eight subagents make a run look stalled for a long time. Clearing it deletes the worktree those
+# reviewers are reading, and their teardown later deletes this run's payload files. Older than
+# that, the lock is a crashed run's leaving: sweep it.
 #
-# Why any of it: the key is (owner, repo, num), so a second run on the SAME PR shares this
-# directory with a first one that may still be live -- eight subagents make a run look stalled
-# for minutes. Clearing it deletes the worktree those reviewers are reading, and their teardown
-# later deletes this run's payload files. On LIVE-RUN-SUSPECTED, ask the user whether the other
-# run is still going rather than continuing through this block.
+# ONE WRITE FORM, and the rule for where is short: `: > "<tmp>/run.lock"` at every stage boundary
+# AND immediately before every blocking wait. Three waits block -- the stage-2 config interview,
+# the blind pass (stage 4) and the cross-check (stage 6) -- and NONE of them can be heartbeaten:
+# SKILL.md stage 4 wants a dispatch whose output returns to the caller, which blocks the caller
+# until the last subagent is back, and a turn ends just as completely when it asks a human. There
+# is no turn in which to re-touch. That is why the window is 90 minutes rather than 30: the touch
+# immediately BEFORE a blocking wait has to cover the whole of it, since nothing can touch during.
 #
-# An AGENT-INVOKED run has nobody to ask, so it does not ask: report the lock path and the wait
-# the block prints, return that the PR could not be staged, and stop. Do not clear the lock to
-# get past it -- that is the one thing the check exists to prevent -- and do not treat the run
-# as a review that found nothing.
-#
-# AND DO NOT TEAR DOWN, on either the agent or the human path. This is the one exit that stops
-# INSIDE stage 1, before anything of this run's was staged, while <tmp> belongs to another run --
-# so SKILL.md stage 9's "every exit after stage 1 comes through here" does not reach it, and it
-# says so. THE WHOLE TEARDOWN BLOCK IS DESTRUCTIVE HERE, not merely the `rm -rf`, and it is worth
-# being exact about why -- the tempting reading is that an unset $REPO makes the git calls fail
-# safe, and it does not. `git -C ""` LEAVES THE WORKING DIRECTORY UNCHANGED (git documents the
-# empty argument that way), so `worktree remove --force "<tmp>/pr-<num>"` runs against whatever
-# repository the shell is standing in -- which on a same-repo PR is the very one that registered
-# the other run's worktree, so it succeeds and deletes a live checkout. Substituting a literal
-# for $REPO by this file's carry-the-literals convention lands in the same place, since the only
-# path an agent has on a same-repo PR is the user's own checkout. And `rm -rf "<tmp>"` needs no
-# variables at all: it takes the other run's staged worktree, its payload files and its lock in
-# one go, after which its reviewers read a deleted tree and its posting step fails on missing
-# files with every one of them already run. Nothing here is ours to remove, because nothing here
-# is ours -- and that is the rule, not "avoid the rm".
-#
-# WHAT THE CALLER IS HANDED. pr-review-loop reads a stopped run as a round with no verdict
-# at HEAD, which is the truth here; what it must not be handed is a clean verdict or a silent
-# skip, and it must not be handed the "no unit reviewed" shape either -- that row's remedies
-# include excusing the reviewer, which would trade a lock measured in minutes for a whole run
-# with nothing independently reviewing it. Say "could not stage: another run holds the lock,
-# N seconds left" -- exactly or as the <=1800s bound the second branch prints -- which is the
-# row pr-review-loop has for exactly this.
-#
-# BE EXACT ABOUT THE WAIT, in both directions. It DOES end on its own -- the deadline is an
-# absolute epoch, so the first branch stops firing at expiry and the second cannot fire once the
-# file is 30 minutes old, which means a dead holder's lock is swept automatically and a live
-# holder's goes sooner still, at teardown. What it does not do is end on the CALLER's timescale:
-# the loop has no wait on the skeptic path, so each round re-invokes, gets this stop and changes
-# nothing, so rounds burn in seconds against a window measured in minutes -- and since a round
-# that solicited no review is not counted, they do not even run out. Nothing stops the spin.
-#
-# Both halves have to be said, because each false version costs something different. Claiming
-# the wait resolves itself is what makes a burned-out run look like a converging one. Claiming
-# only a person can end it is worse: it tells someone to delete the lock of a run that is
-# mid-pass, and the next invocation then sweeps the worktree that run's reviewers are reading --
-# the one outcome this whole guard exists to prevent, reached by following the instruction.
-#
-# The window only works if the lock keeps moving, so write it again at every stage boundary. A
-# lock that ages out under a live run is worse than none: the second run stops asking and clears
-# the worktree the first run's reviewers are mid-read of.
-#
-# TWO WRITE FORMS, AND ONE PLACE EACH -- they are not interchangeable, and `: >` TRUNCATES.
-#
-#   : > "<tmp>/run.lock"                              # a boundary with no blocking wait after it
-#   echo $(( $(date +%s) + 5400 )) > "<tmp>/run.lock" # immediately before ANY blocking wait
-#
-# The test is what FOLLOWS the write, not which stage it sits in. Three waits block: the stage-2
-# config interview, the blind pass (stage 4), and the cross-check (stage 6). All three get the
-# deadline form. The interview is the one easiest to miss and it is not the rarest -- it fires
-# wherever the repo has not committed the five project keys, which is every first run -- and the
-# turn ENDS when it asks, so there is no more a turn to re-touch in there than inside a blocking
-# dispatch. So the staging write above is a deadline write when the interview is still to come.
-#
-# The deadline write updates mtime too, so it satisfies both tests and there is never a reason to
-# do both at one point. Doing them both truncates the deadline you just wrote and silently returns
-# the run to 30 minutes of cover -- the pre-deadline behaviour, reached by following this comment.
-#
-# Touching at boundaries is NOT enough on its own, because the longest waits sit BETWEEN them:
-# the interview, the blind pass, and the cross-check (stage 6, the largest prompt the skill
-# builds). Any of them can outlast 30 minutes on a large PR, and NONE can be heartbeaten:
-# SKILL.md stage 4 requires a dispatch whose output returns to the caller, which blocks the
-# caller for the whole pass -- there is no turn in which to re-touch anything until the last
-# subagent returns, and none in which to re-touch while a question sits with a human either.
-# A rule saying "re-touch every ten minutes while subagents are outstanding" cannot be followed
-# by the run it is meant to protect. So the lock carries a DEADLINE rather than relying on its
-# mtime, and the run writes one before it blocks.
-#
-# Shell arithmetic, NOT `date -d "+90 minutes"`, which is a GNU extension: on BSD date (macOS)
-# it errors while the `>` still truncates the file, so the deadline is never written and the
-# guard falls open to the 30-minute window on the platform much of the installed base is on,
-# with nothing reporting that the mechanism did not run. `date +%s` alone is portable.
+# The interview is the one easiest to forget and it is not the rarest -- it fires wherever the
+# repo has not committed the five project keys, which is every first run.
 #
 # 90 minutes is generous on purpose: being wrong late costs one blocked invocation, being wrong
-# early deletes a live worktree. A second run on the same PR is not hypothetical -- the key is
-# (owner, repo, num), pr-review-loop re-invokes this skill on every fix push, and the user can
-# run /pr-review-skeptic on the same PR at the same time.
-NOW=$(date +%s); DEADLINE=$(cat "<tmp>/run.lock" 2>/dev/null)
-case "$DEADLINE" in ''|*[!0-9]*) DEADLINE=0 ;; esac    # empty, absent, or an older run's touch-file
-# Say what is held and for how long. Teardown is the only thing that clears the lock, and it
-# does NOT run after a hard cancel, a session close, or a context blowout mid-pass -- so this
-# fires on a dead run's leavings as readily as on a live one, and neither case is actionable
-# unless the message names the file and the wait.
-# The override names <tmp>/run.lock and nothing else -- never "that file", whose nearest
-# antecedent is the worktree on the same line. Deleting THAT destroys what the other run's
-# reviewers are mid-read of and overrides nothing, since the lock is still there and the next
-# invocation exits the same way. And the override is a PERSON's to take: an agent-invoked run
-# clearing the lock to get past this is the one thing the check exists to prevent, so the line
-# says whose it is rather than leaving an unqualified invitation in the caller's output.
-if [ "$DEADLINE" -gt "$NOW" ]; then
-  echo "LIVE-RUN-SUSPECTED: <tmp>/run.lock holds a deadline $(( DEADLINE - NOW ))s from now"
-  echo "  Another run may be reading <tmp>/pr-<num>."
-  echo "  A person can delete <tmp>/run.lock to override; an agent-invoked run must not."
-  exit 1                                # do NOT clear
-elif [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
-  # A number on this branch too, not just an age: both consumers -- the agent-path report above
-  # and pr-review-loop's row -- promise the caller one, and this is the branch a live holder sits
-  # on between blocking waits, where `: >` has truncated the deadline. It is an upper BOUND
-  # rather than a remaining wait, because the exact age is not portably readable: `stat` spells
-  # it differently on GNU and BSD and `find -printf` is GNU-only, which is the same trap `date -d`
-  # was. `-mmin -30` already establishes the bound, so state that and say it is a bound.
-  echo "LIVE-RUN-SUSPECTED: <tmp>/run.lock touched within the last 30 minutes, so <=1800s left"
+# early deletes a live worktree. A second run on the same PR is not hypothetical -- pr-review-loop
+# re-invokes this skill on every fix push, and the user can run /pr-review-skeptic at the same time.
+#
+# On LIVE-RUN-SUSPECTED, ask the user whether the other run is still going rather than continuing
+# through this block.
+#
+# An AGENT-INVOKED run has nobody to ask, so it does not ask: report the lock path, return that
+# the PR could not be staged, and stop. Do not clear the lock to get past it -- that is the one
+# thing the check exists to prevent -- and do not treat the run as a review that found nothing.
+#
+# AND DO NOT TEAR DOWN, on either path. This is the one exit that stops INSIDE stage 1, before
+# anything of this run's was staged, while <tmp> belongs to another run -- so SKILL.md stage 9's
+# "every exit after stage 1 comes through here" does not reach it, and it says so. THE WHOLE
+# TEARDOWN BLOCK IS DESTRUCTIVE HERE, not merely the `rm -rf`, and the tempting reading -- that an
+# unset $REPO makes the git calls fail safe -- is wrong. `git -C ""` LEAVES THE WORKING DIRECTORY
+# UNCHANGED (git documents the empty argument that way), so `worktree remove --force` runs against
+# whatever repository the shell is standing in, which on a same-repo PR is the very one that
+# registered the other run's worktree. Substituting a literal for $REPO lands in the same place.
+# And `rm -rf "<tmp>"` needs no variables at all. Nothing here is ours to remove, because nothing
+# here is ours -- that is the rule, not "avoid the rm".
+#
+# WHAT THE CALLER IS HANDED. pr-review-loop reads a stopped run as a round with no verdict at
+# HEAD, which is the truth here; what it must not be handed is a clean verdict or a silent skip,
+# and it must not be handed the "no unit reviewed" shape either -- that row's remedies include
+# excusing the reviewer, which would trade a lock measured in minutes for a whole run with
+# nothing independently reviewing it. Say "could not stage: another run holds the lock", and name
+# the path. pr-review-loop has a row for exactly this.
+#
+# DO NOT PROMISE A REMAINING WAIT. The lock is re-touched at every boundary while the other run
+# works, so its age says how long since that run last moved, never how long until it is done --
+# an "N seconds left" figure computed from it would be wrong in the direction that matters, and
+# pr-review-loop would relay it to a user as a promise. What is true: a DEAD holder's lock ages
+# out and is swept within 90 minutes of its last touch, with no human action; a LIVE holder's
+# goes at its own teardown, sooner. Neither is a deadline anyone can quote.
+if [ -n "$(find "<tmp>/run.lock" -mmin -90 2>/dev/null)" ]; then
+  # The override names <tmp>/run.lock and nothing else -- never "that file", whose nearest
+  # antecedent is the worktree on the line below. Deleting THAT destroys what the other run's
+  # reviewers are mid-read of and overrides nothing, since the lock is still there and the next
+  # invocation exits the same way. And the override is a PERSON's to take: an agent-invoked run
+  # clearing the lock to get past this is the one thing the check exists to prevent.
+  echo "LIVE-RUN-SUSPECTED: <tmp>/run.lock was touched in the last 90 minutes"
   echo "  Another run may be reading <tmp>/pr-<num>."
   echo "  A person can delete <tmp>/run.lock to override; an agent-invoked run must not."
   exit 1                                # do NOT clear
 fi
 rm -rf "<tmp>"                               # the whole staging dir: a crashed run's payload files
-mkdir -p "<tmp>"                             # sits here too, and holds review text quoting user code
-echo $(( $(date +%s) + 5400 )) > "<tmp>/run.lock"   # deadline: the stage-2 interview may follow
-
+mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # sits here too, and holds review text quoting user code
+                                             # re-touch at every boundary and before every blocking wait
+#
 # FROM HERE THE LOCK IS HELD, and five things that can fail come next -- the clone, two fetches,
-# the two sha checks -- before `worktree add` makes teardown's scope ("once `worktree add` has
-# run") apply. An exit in that gap leaves a 90-minute deadline over a directory holding nothing
-# but the lock, and the next run on this PR then refuses to stage for up to an hour and a half:
-# under pr-review-loop that pauses the whole loop and asks a human to wait out or delete a lock
-# belonging to a run that is not running. So `rm -f "<tmp>/run.lock"` on ANY exit below this
-# line that has not yet reached `worktree add` -- a failed clone, a fetch that cannot
-# authenticate, a sha that will not resolve. Releasing a lock this run is definitely not using
-# costs nothing; holding it costs the next run ninety minutes.
+# the two sha checks -- before `worktree add` brings teardown's scope ("once `worktree add` has
+# run") into force. An exit in that gap holds the PR for up to 90 minutes, which under
+# pr-review-loop pauses the loop and asks a human to wait out a run that is not running. So on
+# ANY exit below this line that has not reached `worktree add`, clean up what this run actually
+# made: `rm -rf "<tmp>"` -- which takes the lock and any partial clone together -- and
+# `git -C "$REPO" update-ref -d "refs/prskeptic/<num>"` where the head fetch already ran. THE REF
+# IS CREATED BY THE FIRST FETCH, not by `worktree add`, so "there is nothing to delete yet" is
+# false from that point on: left behind on a same-repo PR it pins the PR's objects alive in the
+# user's own checkout, in a namespace nothing surfaces.
 
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
@@ -236,7 +175,7 @@ The leading `+` on the refspec earns its place on the second run: a force-push �
 
 Teardown — `SKILL.md` stage 9, and **every other exit after staging**: a cancelled run, a failed subagent, an error at the posting step, and the deliberate stops at stages 2 and 3 alike. Once `worktree add` has run, the only orderly ways out are through here.
 
-**Between the lock write and `worktree add` the full teardown does not apply, but releasing the lock does.** There is no worktree to remove and no ref to delete yet, so the block below would only error — but the lock is already held, and an exit there (a clone that fails, a fetch that cannot authenticate, a sha that will not resolve) leaves a 90-minute deadline over a directory containing nothing else. `rm -f "<tmp>/run.lock"` is the whole obligation on that path. The **`LIVE-RUN-SUSPECTED` stop is the one exception, and it is the opposite case**: that lock is another run's, and releasing it is the thing the guard exists to prevent.
+**Between the lock write and `worktree add`, clean up what this run actually made — which is less than the full teardown and more than the lock.** There is no worktree yet, so `worktree remove` would only error. But the lock is held from the moment it is written, and **`refs/prskeptic/<num>` exists from the first fetch onward, not from `worktree add`** — so an exit there (a clone that fails, a fetch that cannot authenticate, a sha that will not resolve) can leave both. `rm -rf "<tmp>"` takes the lock and any partial clone together; add `update-ref -d` where the head fetch already ran. Left behind, the lock holds the PR for up to 90 minutes and the ref pins its objects alive in the user's own checkout. The **`LIVE-RUN-SUSPECTED` stop is the one exception, and it is the opposite case**: nothing there is this run's, and clearing any of it is the thing the guard exists to prevent.
 
 ```bash
 git -C "$REPO" worktree remove --force "<tmp>/pr-<num>"
