@@ -26,7 +26,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 
 Every slot carries a fact about the project, about the mechanics of reaching the code, or about what this review process has already covered and decided. **None carries what the change is for, why it was built this way, or what anyone argued about it** — that includes `{{SETTLED}}`, whose entries state a consequence the project accepted and stop there.
 
-`{{DIFF_RANGE}}` is the only slot that differs between the content reviewers and the composition reviewer on the same run, and it must: a later run narrows its content reviewers to new code and keeps the composition reviewer on the whole change, because cross-round interaction defects are visible from nowhere else (SKILL.md stage 3).
+`{{DIFF_RANGE}}` differs by reviewer kind, but **never within one run**: a later run gets either content reviewers on the delta or a composition reviewer on the whole change, never both (SKILL.md stage 3), and on a first run everyone has the whole change. So every reviewer dispatched together shares a range. The composition reviewer is never narrowed to the delta whichever run it lands on, because cross-round interaction defects are visible from nowhere else.
 
 ### The `{{PRIOR_REVIEW}}` block
 
@@ -182,11 +182,9 @@ The two blocks below are **not** interchangeable and are filled on different con
 
 ### The composition `{{PRIOR_REVIEW}}` block — later runs only, empty on a first run
 
-> **This change has been reviewed before, at `$LASTREVIEWED`.** That is context, not a boundary: **your range is deliberately the whole change**, and a finding anywhere in it is yours to report, however long ago that code was written. Other reviewers on this run are reading only what changed since `$LASTREVIEWED`, so the earlier code has no one else looking at it this time. What you are not doing is checking anyone's conclusions — nothing about what earlier reviewers decided has been passed to you, and the parts that interact here were often written rounds apart.
+> **This change has been reviewed before, at `$LASTREVIEWED`.** That is context, not a boundary: **your range is deliberately the whole change**, and a finding anywhere in it is yours to report, however long ago that code was written. **You are the only reviewer on this run** — no one else is holding any part of this change — so every part of it is yours, including the code written since `$LASTREVIEWED`. What you are not doing is checking anyone's conclusions: nothing about what earlier reviewers decided has been passed to you, and the parts that interact here were often written rounds apart.
 
-**Where the run dispatched no content reviewers at all** — `max_reviewers` left no budget for them, or the delta was empty, or any other reason (SKILL.md stage 3) — the middle sentence is false and has to go, because the conditional deferral in the slice replacement turns on it. **The test is the count actually dispatched, not why it is zero.** Use this instead:
-
-> **This change has been reviewed before, at `$LASTREVIEWED`.** That is context, not a boundary: **your range is deliberately the whole change**, and a finding anywhere in it is yours to report, however long ago that code was written. **You are the only reviewer on this run** — no one else is holding any part of this change — so every part of it is yours, including the code written since `$LASTREVIEWED`. What you are not doing is checking anyone's conclusions: nothing about what earlier reviewers decided has been passed to you.
+**There is only one variant, and there used to be two.** The other one told this reviewer that other reviewers were reading only what changed since `$LASTREVIEWED` — true when a later run dispatched both kinds, and unreachable now: a later run gets a composition reviewer **only** where the delta is empty, which is the same thing as dispatching no content reviewers (SKILL.md stage 3). So the "you are the only reviewer" sentence is unconditional here, and the conditional deferral in the slice replacement resolves the same way every time. Do not re-add the other variant to cover a run with both; there is no such run.
 
 ### The slice replacement — every run, first and tenth alike
 
