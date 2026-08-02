@@ -46,19 +46,32 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # An AGENT-INVOKED run has nobody to ask, so it does not ask: report the lock path and the wait
 # the block prints, return that the PR could not be staged, and stop. Do not clear the lock to
 # get past it -- that is the one thing the check exists to prevent -- and do not treat the run
-# as a review that found nothing. pr-review-loop reads a stopped run as a round with no verdict
+# as a review that found nothing.
+#
+# AND DO NOT TEAR DOWN, on either the agent or the human path. This is the one exit that stops
+# INSIDE stage 1, before anything of this run's was staged, while <tmp> belongs to another run --
+# so SKILL.md stage 9's "every exit after stage 1 comes through here" does not reach it, and it
+# says so. Not clearing the lock is not enough on its own: teardown's `worktree remove` fails
+# harmlessly here ($REPO is assigned below this guard), but `rm -rf "<tmp>"` needs no variables
+# and succeeds, which deletes the other run's staged worktree, its payload files and its lock in
+# one go -- its reviewers then read a deleted tree and its posting step fails on missing files
+# after every one of them has run. Nothing here is ours to remove, because nothing here is ours.
+#
+# WHAT THE CALLER IS HANDED. pr-review-loop reads a stopped run as a round with no verdict
 # at HEAD, which is the truth here; what it must not be handed is a clean verdict or a silent
 # skip, and it must not be handed the "no unit reviewed" shape either -- that row's remedies
 # include excusing the reviewer, which would trade a lock measured in minutes for a whole run
 # with nothing independently reviewing it. Say "could not stage: another run holds the lock,
-# N seconds left", which is the row pr-review-loop has for exactly this.
+# N seconds left" -- exactly or as the <=1800s bound the second branch prints -- which is the
+# row pr-review-loop has for exactly this.
 #
 # BE EXACT ABOUT THE WAIT, in both directions. It DOES end on its own -- the deadline is an
 # absolute epoch, so the first branch stops firing at expiry and the second cannot fire once the
 # file is 30 minutes old, which means a dead holder's lock is swept automatically and a live
 # holder's goes sooner still, at teardown. What it does not do is end on the CALLER's timescale:
-# the loop has no wait on the skeptic path, so each round re-invokes, gets this stop, changes
-# nothing, and increments -- ten rounds burn in seconds against a window measured in minutes.
+# the loop has no wait on the skeptic path, so each round re-invokes, gets this stop and changes
+# nothing, so rounds burn in seconds against a window measured in minutes -- and since a round
+# that solicited no review is not counted, they do not even run out. Nothing stops the spin.
 #
 # Both halves have to be said, because each false version costs something different. Claiming
 # the wait resolves itself is what makes a burned-out run look like a converging one. Claiming
@@ -123,7 +136,13 @@ if [ "$DEADLINE" -gt "$NOW" ]; then
   echo "  A person can delete <tmp>/run.lock to override; an agent-invoked run must not."
   exit 1                                # do NOT clear
 elif [ -n "$(find "<tmp>/run.lock" -mmin -30 2>/dev/null)" ]; then
-  echo "LIVE-RUN-SUSPECTED: <tmp>/run.lock was touched within the last 30 minutes"
+  # A number on this branch too, not just an age: both consumers -- the agent-path report above
+  # and pr-review-loop's row -- promise the caller one, and this is the branch a live holder sits
+  # on between blocking waits, where `: >` has truncated the deadline. It is an upper BOUND
+  # rather than a remaining wait, because the exact age is not portably readable: `stat` spells
+  # it differently on GNU and BSD and `find -printf` is GNU-only, which is the same trap `date -d`
+  # was. `-mmin -30` already establishes the bound, so state that and say it is a bound.
+  echo "LIVE-RUN-SUSPECTED: <tmp>/run.lock touched within the last 30 minutes, so <=1800s left"
   echo "  Another run may be reading <tmp>/pr-<num>."
   echo "  A person can delete <tmp>/run.lock to override; an agent-invoked run must not."
   exit 1                                # do NOT clear
