@@ -294,7 +294,7 @@ LASTREVIEWED=$(printf '%s' "$RECORD"     | sed -n 's/.*reviewed=\([0-9a-f]*\).*/
 # Not "a composition reviewer ran", and not "the reviewers between them covered every file".
 # Three outcomes, and they are three different things:
 #   <sha> -> the whole change was read at that commit
-#   none  -> no run on this PR has ever read it -- stage 3 sends the run to first-run scope
+#   none  -> no whole-change read is established for this PR -- stage 3 sends the run to first-run scope
 #   ""    -> the field is absent: an older record, from before it existed. UNKNOWN, not
 #            `none`, but the same first-run scope. Stage 7 then writes a sha if that run
 #            reads the whole change, and `none` if it does not -- never absent again.
