@@ -134,9 +134,10 @@ Next: run `/translate-content` to propagate to the other locales.
 These are release notes: 500 characters per locale.
 ```
 
-The limit goes in the handoff because nothing else carries it across:
-`whats-new.config.md` has no `char_limit` key, so a `/translate-content`
-run that reads that config finds none.
+The limit goes in the handoff because `whats-new.config.md` has no
+`char_limit` key, so a `/translate-content` run reading that config finds
+none. This states it for the user and for any ad-hoc invocation;
+`/translate-content` holds release notes to 500 on its own regardless.
 
 The user invokes `/translate-content` directly when ready — typically after any
 review iteration on the English source settles, so locale translations
