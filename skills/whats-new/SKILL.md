@@ -49,7 +49,10 @@ offer to create the config file before proceeding.
 
 These apply to every project — config doesn't override them:
 
-- **500 Unicode characters max per locale.** Hard limit.
+- **500 Unicode characters max per locale.** Hard limit, and it is the
+  limit on *release notes* specifically — other Play Store fields (title,
+  short description, full description) have their own, larger or smaller.
+  This skill only writes release notes, so 500 always applies here.
 - **Customer-benefit framing.** "Works better" beats "improved memory handling."
   Speak to outcomes, not internals.
 - **Tone:** light, easy, non-technical. Avoid jargon. A touch of personality
@@ -128,7 +131,13 @@ Print:
 ✓ Wrote {source path} ({char count} chars)
 
 Next: run `/translate-content` to propagate to the other locales.
+These are release notes: 500 characters per locale.
 ```
+
+The limit goes in the handoff because `whats-new.config.md` has no
+`char_limit` key, so a `/translate-content` run reading that config finds
+none. This states it for the user and for any ad-hoc invocation;
+`/translate-content` holds release notes to 500 on its own regardless.
 
 The user invokes `/translate-content` directly when ready — typically after any
 review iteration on the English source settles, so locale translations
