@@ -34,7 +34,8 @@ For Android XML string resources (key-by-key UI labels), use
 - Translates the whole text into each target locale
 - Writes per-locale output files at the configured path/pattern
 - Preserves bullet markers, paragraph breaks, line breaks, emoji
-- Honors a configurable char limit when one applies (e.g., Play Store's 500)
+- Honors a configurable char limit when one applies (e.g., 500 for Play
+  Store release notes — other Play fields have their own limits)
 - Applies locale-specific translation guidance (Hindi case, Chinese
   idiomatic forms, German capitalization, RTL handling)
 - Handles cross-sentence consistency (pronoun/gender agreement, case,
@@ -80,7 +81,7 @@ writes to the matching path.
 | `source_path` | Path to the default-locale source file or pattern (e.g., `playstore/whatsnew/whatsnew-en-US`, `app/src/main/play/release-notes/en-US/default.txt`) |
 | `output_pattern` | Template for each locale's output, with `{locale}` substituted |
 | `locales` | List of target locale codes (one marked `(default)` matching the source) |
-| `char_limit` | Optional per-locale char limit (Play Store release notes: 500) |
+| `char_limit` | Optional per-locale char limit. Depends on the content type, not the store — Play Store release notes are 500, but a full description is 4000, a short description 80, an app title 30, and most other prose has no limit at all. Omit for unlimited. |
 | `skip_locales_with_content` | Optional: if `true`, skip locales whose output file already exists with content (default: true — conservative) |
 
 If no config exists, ask the user for these values; offer to write the
@@ -105,7 +106,14 @@ in config.
 
 ## Char limit handling
 
-When `char_limit` is configured (e.g., 500 for Play Store):
+A char limit belongs to the specific field being translated, not to a store
+as a whole. Take it from config or from the caller — never assume 500
+because the content is Play Store copy. That figure is the release-notes
+limit only; app descriptions, titles, and FAQ text have different limits or
+none. If the content type is ambiguous and no limit is configured, ask
+rather than guess.
+
+When `char_limit` is configured:
 
 - Count Unicode codepoints, not UTF-8 bytes. CJK = 1 codepoint each.
   Emoji can be 1-7 codepoints; keep emoji rare to be safe.
