@@ -238,7 +238,7 @@ Read by two stages now, for different things: **stage 3** takes the last-reviewe
 
 ### `$LASTREVIEWED` and `$LASTWHOLE` — reading the coverage record (stage 3)
 
-The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and two commits its record names: the one its reviewers actually read, and the one at which the *whole change* was last read — by any reviewer whose range was the whole change, which is not the same question as whether a composition reviewer ran ([`SKILL.md`](../SKILL.md) stage 7). **Take it from the coverage record, then guard that value** — the record's sha is what gets tested, never the review's `commit_id`, which on the force-push route is the current head and would pass a guard the reviewed sha fails.
+The most recent review whose body carries the `<!-- pr-review-skeptic -->` marker, and two commits its record names: the one its reviewers actually read, and the one at which the *whole change* was last read as one thing — by the reviewer holding the whole file list, on a whole-change-scoped run. [`SKILL.md`](../SKILL.md) stage 7 is the authority on both conjuncts. **Take it from the coverage record, then guard that value** — the record's sha is what gets tested, never the review's `commit_id`, which on the force-push route is the current head and would pass a guard the reviewed sha fails.
 
 ```bash
 # 1. Read the coverage record this skill writes into its own review body (stage 7).
@@ -289,8 +289,9 @@ RECORD=$(gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
   | sed -n 's/.*\(<!-- pr-review-skeptic: reviewed=[0-9a-f]*[^>]*-->\).*/\1/p' | tail -1)
 
 LASTREVIEWED=$(printf '%s' "$RECORD"     | sed -n 's/.*reviewed=\([0-9a-f]*\).*/\1/p')
-# `whole-change` is the sha at which the WHOLE change was last read -- by any reviewer whose
-# range was the whole change, not only by a composition reviewer (SKILL.md stage 7).
+# `whole-change` is the sha at which the WHOLE change was last read AS ONE THING -- written
+# only by a whole-change-scoped run whose whole-file-list reviewer returned (SKILL.md stage 7).
+# Not "a composition reviewer ran", and not "the reviewers between them covered every file".
 # Three outcomes, and they are three different things:
 #   <sha> -> the whole change was read at that commit
 #   none  -> no run on this PR has ever read it
