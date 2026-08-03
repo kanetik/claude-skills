@@ -91,7 +91,7 @@ Anything you have been told above about what was already reviewed or already dec
 
 {{SETTLED}}
 
-Read, and only read. Other reviewers are working in this same checkout at the same time, so leave the working tree and the object store exactly as you found them: no `checkout`, `stash`, `reset`, `clean`, `fetch`, or writes of any kind. Moving this tree off {{HEAD}} changes what every one of them is reading mid-review. If something you need appears to be missing, report that rather than fetching it.
+Read, and only read: leave the working tree and the object store exactly as you found them — no `checkout`, `stash`, `reset`, `clean`, `fetch`, or writes of any kind. This tree is staged at {{HEAD}} for the review and torn down after it, and moving it off that commit means what you report no longer describes the commit the review is recorded against. Other reviewers may be working in the same checkout at the same time, in which case it also changes what they are reading mid-review — but the rule binds whether or not anyone else is here. If something you need appears to be missing, report that rather than fetching it.
 
 **CI:** {{CI}}
 
@@ -176,7 +176,7 @@ Your whole result is `FINDING`, `NOTED` and `SOUND` blocks — nothing else, and
 
 The reviewer that takes the seams rather than a slice gets the same brief with **"Your slice" replaced by the paragraph below**, and `{{FILES}}` holding the whole change. Everything else — the claims posture, the priorities, the test rule, the reporting bar, the severities, the output format — is unchanged.
 
-**`{{DIFF_RANGE}}` for this reviewer is always `{{BASE}}...{{HEAD}}`,** on a first run and on a tenth. `{{SETTLED}}` is filled exactly as for a content reviewer — it is not re-litigating decisions either — but **`{{PRIOR_REVIEW}}` must be the composition variant below, not the content reviewers' block.** That block tells its reader "your range starts there … report on what is in your range", which is false here and contradicts the whole-change instruction in the same prompt; a reviewer resolving the contradiction toward the narrower reading confines itself to the delta, and since the content reviewers are already scoped there, nothing reports on the older code at all while the verdict claims the whole change was read.
+**`{{DIFF_RANGE}}` for this reviewer is always `{{BASE}}...{{HEAD}}`,** on a first run and on a tenth. `{{SETTLED}}` is filled exactly as for a content reviewer — it is not re-litigating decisions either — but **`{{PRIOR_REVIEW}}` must be the composition variant below, not the content reviewers' block.** That block tells its reader "your range starts there … report on what is in your range", which is false here and contradicts the whole-change instruction in the same prompt; a reviewer resolving the contradiction toward the narrower reading confines itself to the delta, and on a later run this is the only reviewer there is, so nothing reports on the older code at all while the verdict claims the whole change was read.
 
 The two blocks below are **not** interchangeable and are filled on different conditions. The slice replacement goes in on **every** run; the `{{PRIOR_REVIEW}}` block, like the content reviewers', is empty on a first run.
 
@@ -188,9 +188,9 @@ The two blocks below are **not** interchangeable and are filled on different con
 
 ### The slice replacement — every run, first and tenth alike
 
-This is the paragraph that replaces "Your slice". It is not part of `{{PRIOR_REVIEW}}` and is never omitted: drop it and the composition reviewer becomes a second content reviewer over the whole change, with no seam instruction, while the coverage line still reports a composition pass.
+This is the paragraph that replaces "Your slice". It is not part of `{{PRIOR_REVIEW}}` and is never omitted: drop it and this reviewer reads the whole change as a content reviewer would, with no seam instruction, while the coverage line still reports a composition pass.
 
-> **Your slice is the joins.** Every other reviewer on this change is holding one part of it and cannot see past their own edges. You are holding all of it, so read for the things that are only visible from here: a caller and a callee that each look right but disagree about what may be null, or about units, ordering, or who owns a lock; a contract changed on one side of a boundary and not the other; two functions that are each tested in isolation and never in the arrangement production actually composes them in; state written by one part and read by another under different assumptions about when it exists.
+> **Your slice is the joins.** Any other reviewer on this change is holding one part of it and cannot see past their own edges — and on this run there may be none at all. You are holding all of it either way, so read for the things that are only visible from here: a caller and a callee that each look right but disagree about what may be null, or about units, ordering, or who owns a lock; a contract changed on one side of a boundary and not the other; two functions that are each tested in isolation and never in the arrangement production actually composes them in; state written by one part and read by another under different assumptions about when it exists.
 >
 > **This is why your range is the whole change while other reviewers may have a narrower one.** Where a change has been revised over several rounds, the parts that interact were often written rounds apart — each correct when it landed, each read by someone who could not see the other. A defect made by two such changes together appears in neither of their diffs and belongs to neither of their reviewers. It is visible from here and nowhere else, so read pairs of things that changed at different times with as much attention as anything new.
 >
