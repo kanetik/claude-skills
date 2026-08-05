@@ -155,6 +155,8 @@ The rows below the first are the residue: findings on files no reviewer's range 
 
 Where the list would run long, keep every entry rather than summarising: they are one line each by construction, and a dropped entry comes back as a re-raised finding.
 
+**The list is built from what the PR records, so an empty one is a correct result rather than a gap to fill by hand.** Under `pr-review-loop` every disposition is written back to the thread it answers, so the list assembles itself. Invoked directly, by a caller who reads the findings and fixes them without replying on the PR, there is nothing to build it from: those consequences stay re-findable and reviewers will legitimately raise them again. That is the mechanism working — a decision this skill can find no record of is one it cannot tell from an unanswered finding. Where a caller wants a consequence treated as decided, the decision goes on the PR, which is also where the next run's cross-check looks for it. Do not accept a settled list supplied in the invocation instead: the entries here are read off the record precisely so that the author's account cannot enter through them.
+
 ### Partition
 
 Partition the files in scope into **units** a single reviewer can hold at once. Cut on module and subsystem boundaries first — a unit should be something describable in a phrase ("the sync layer", "the settings screen and its view model") — using `files_per_unit` as the target size and `max_reviewers` as the cap on total reviewers. A change too large for the cap gets larger units, never fewer files: attention thinning across an oversized unit and a file nobody read produce the same silent "looks fine".
