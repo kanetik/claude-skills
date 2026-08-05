@@ -21,6 +21,7 @@ For each operation use the best tier your environment supports. Columns denote *
 | Update PR description | `gh pr edit <num> --body-file <path>` | github MCP `update_pull_request` | — |
 | Create follow-up issue (unrelated work only) | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review` | github MCP `create_issue` | — |
 | Push commits | `git push` | — | — |
+| Take a converged PR out of draft | `gh pr ready <num>`, guarded on `gh pr view <num> --json isDraft` (SKILL.md step 4, terminal state 1 only — and only where `mark_ready_on_convergence` is on) | — | — |
 
 Defer committing to the host (`commit-commands:commit` skill if installed; else plain `git commit`) and loop scheduling to the host scheduler.
 

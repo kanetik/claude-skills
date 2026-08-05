@@ -24,6 +24,14 @@ auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigge
 wait_check_cadence_seconds: 180 # how often the loop polls while waiting on a BOT (3 min; stay in 120-240 = every 2-4 min; <=270 keeps each check inside the 5-min prompt cache -- faster AND cheaper than longer cadences). Skeptic is never waited on.
 max_iterations: 10              # backstop -- reaching it means something went wrong; see below
 
+# On a CONVERGED run only, take the PR out of draft (`gh pr ready`). Off by default because
+# changing a PR's draft state is outward-facing -- it notifies reviewers, and where the repo
+# requires reviews it changes what can merge -- so it is opted into rather than assumed, the
+# same shape as `allow_agent_posting` in the skeptic config. No other terminal state touches
+# the draft state: a paused run has a question outstanding, a capped one is the opposite of
+# ready, and an unreviewed one is exactly what the convergence invariant exists to catch.
+mark_ready_on_convergence: false
+
 # Why the shipped default is [copilot]: it needs no setup. Copilot is requested with one
 # gh call and reviews whatever it is pointed at, so a first run works in any repo with no
 # config at all.

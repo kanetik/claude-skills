@@ -1,6 +1,6 @@
 # Configuration & override model
 
-The loop is governed by four config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
+The loop is governed by five config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
 
 One value the loop depends on is **not** its own: the severity floor that decides when a reviewer is happy (SKILL.md step 4). For `skeptic` that is `blocking_severities` in the *skeptic* skill's config — `[CRITICAL, HIGH]` by default, set in the reviewed repo's `.github/pr-review-skeptic.config.yml` and nowhere in this skill's config. For a bot, which tags no severities, there is no key at all: step 4's equivalent judgement is whether the verdict raises anything that would change code on a path users reach. So a user wanting `MEDIUM` findings to block the loop changes the skeptic config, not this one — and on a `reviewers: [copilot]` setup there is no floor to configure.
 
@@ -12,6 +12,7 @@ One value the loop depends on is **not** its own: the severity floor that decide
 | `auto_review_grace_seconds` | `0` | After a push, wait this long for an auto-trigger to land before manually requesting. `0` = no wait. Bump to ~60 where a Ruleset auto-requests Copilot, or to give a bot's auto-review time to start. Doesn't apply to `skeptic`, which nothing auto-triggers. |
 | `wait_check_cadence_seconds` | `180` | Polling cadence while waiting on a **bot** (SKILL.md step 3, `reference/waiting.md`). Stay in 120-240s (every 2-4 min): frequent enough to react promptly, and ≤270s keeps each wake inside the 5-minute prompt-cache window; >300s incurs a full context replay per wake. A `reviewers` list with no bot in it never waits. |
 | `max_iterations` | `10` | Iteration cap. **A backstop** — reaching it means something went wrong; see below. Waiting does NOT count toward it. |
+| `mark_ready_on_convergence` | `false` | On terminal state 1 (*converged*) only, take the PR out of draft with `gh pr ready` (SKILL.md step 4). Off by default; see below. No other terminal state touches the draft state. |
 
 ### An empty `reviewers` is a configuration error, not a mode
 
@@ -36,6 +37,14 @@ So a run that burns to the cap is a **signal**, and usually a triage one: correc
 - **Reaching it is an outcome, not an error — and it is reported with evidence.** SKILL.md step 9 requires "did not converge" with the count and every outstanding blocking finding, plus rounds since the last blocking finding, the share of findings landing in the loop's own repair work (over whole-change reviewers only — a delta-scoped reviewer reads repair commits by construction), the longest repair chain, and diff growth. Growth alerts; it never stops. The user is otherwise choosing on the author's narration.
 - **Its value is a real choice.** `10` suits a normal change. Raise it for a large one; lower it to keep an unattended run bounded.
 - **"no iteration cap" removes the only bound the run has.** A round that changes no code is the loop's intended exit, not a guarantee it reaches one: where triage goes wrong in the way this section describes, every round finds real-looking work and the fixed point is never reached. Disabling the cap then means an unbounded run that pushes commits on every round and, with `skeptic` in `reviewers`, dispatches up to `max_reviewers` subagents posting reviews under the user's account each time. Reasonable when supervised, not otherwise — say that when honouring it.
+
+### `mark_ready_on_convergence` is off by default, and that is a distribution decision
+
+A converged run has driven the PR to the state a human is meant to read it in, so taking it out of draft at that point is the same job the loop is already doing — requesting reviews, replying, resolving, pushing (this repo's rule 1: a PR operation belongs to the caller *unless it is the skill's domain*). For a single user who runs the loop on every PR, `true` is what they want.
+
+It ships `false` anyway, for the same reason `allow_agent_posting` does in the skeptic config: this is a published skill, and changing a PR's draft state is **outward-facing**. It notifies reviewers, and in a repo with required reviews it changes what can merge. A repo that adopts this skill did not necessarily agree to have an agent move its PRs into the queue for human sign-off. So the affordance exists and is one line to switch on — `mark_ready_on_convergence: true` in the user-level or project file — and nobody gets it by installing.
+
+The guard matters more than the default. Only terminal state 1 marks ready; *paused*, *cap reached*, *nobody reviewed this HEAD* and *the whole change could not be read at HEAD* leave the draft alone. Getting that mapping wrong on the last two would turn an internal mis-report into a request for human review of code no reviewer has read — SKILL.md step 4 states it, and that is where it is enforced.
 
 ## Precedence (low → high)
 
