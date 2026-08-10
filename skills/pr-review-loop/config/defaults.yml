@@ -24,6 +24,24 @@ auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigge
 wait_check_cadence_seconds: 180 # how often the loop polls while waiting on a BOT (3 min; stay in 120-240 = every 2-4 min; <=270 keeps each check inside the 5-min prompt cache -- faster AND cheaper than longer cadences). Skeptic is never waited on.
 max_iterations: 10              # backstop -- reaching it means something went wrong; see below
 
+# How many CONSECUTIVE whole-change reads with no blocking finding satisfy step 4's third
+# convergence condition, when the last one sits behind HEAD. Counts READS, not rounds; a
+# blocking finding in a whole-change read resets it to zero.
+#
+# Why it exists: that condition otherwise demands the whole change be read at the CURRENT head,
+# and every fix moves the head -- so on a large change each fix owes another whole-change read,
+# and a blind adversarial reader of several thousand lines finds something real on every pass.
+# That is a steady finding RATE, not a queue draining, and waiting for it to hit zero waits
+# forever. Observed: four consecutive whole-change reads, one MEDIUM and two LOW each, none
+# wrong, with no blocking finding in fifteen rounds.
+#
+# It is STRICTER than the equality about what the condition guards -- two cold reads of the
+# whole change rather than one -- and looser only about WHEN: the last may sit a few fix-rounds
+# behind head, those fixes reviewed as deltas, and the converged summary names the sha so the
+# gap is visible. Raise it to buy more cold reads. There is no value that switches the
+# requirement off, and a small PR reaches the equality on its own long before this applies.
+whole_change_taper: 2
+
 # On a CONVERGED run only, and on a PR in the ORCHESTRATOR repo only, take the PR out of
 # draft (`gh pr ready`). Off by default because changing a PR's draft state is outward-facing
 # -- it notifies reviewers, and where the repo requires reviews it changes what can merge --
