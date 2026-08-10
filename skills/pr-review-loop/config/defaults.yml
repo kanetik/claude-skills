@@ -49,10 +49,11 @@ mark_ready_on_convergence: false
 # why this PR exists.
 #
 # Where the five come from, when they are present, and which layer's answer may be calibrated on
-# is stated ONCE, in reference/evaluation.md, and is deliberately not restated here -- three
-# rounds of patching five copies of it is what bought that decision. The short of it: the merge
-# runs on any reviewer list, only the reviewed repo's own file may be calibrated on, and on no
-# list does step 5 answer those five itself.
+# is settled in reference/evaluation.md -- that file is the AUTHORITY, and what follows is a
+# summary of it. Change it there and let this follow; three rounds of patching five equal copies
+# is what bought that arrangement. The summary: the merge runs on any reviewer list, only the
+# reviewed repo's own file may be calibrated on, and on no list does step 5 answer those five
+# itself.
 #
 # This key differs from them in one way worth knowing here: it merges from YOUR layers, the
 # orchestrator repo's file winning, so on a cross-repo PR the bar is the caller's. That is right
