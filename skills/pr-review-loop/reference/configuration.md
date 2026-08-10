@@ -1,6 +1,6 @@
 # Configuration & override model
 
-The loop is governed by five config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
+The loop is governed by the config keys below, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
 
 One value the loop depends on is **not** its own: the severity floor that decides when a reviewer is happy (SKILL.md step 4). For `skeptic` that is `blocking_severities` in the *skeptic* skill's config — `[CRITICAL, HIGH]` by default, set in the reviewed repo's `.github/pr-review-skeptic.config.yml` and nowhere in this skill's config. For a bot, which tags no severities, there is no key at all: step 4's equivalent judgement is whether the verdict raises anything that would change code on a path users reach. So a user wanting `MEDIUM` findings to block the loop changes the skeptic config, not this one — and on a `reviewers: [copilot]` setup there is no floor to configure.
 
@@ -13,6 +13,7 @@ One value the loop depends on is **not** its own: the severity floor that decide
 | `wait_check_cadence_seconds` | `180` | Polling cadence while waiting on a **bot** (SKILL.md step 3, `reference/waiting.md`). Stay in 120-240s (every 2-4 min): frequent enough to react promptly, and ≤270s keeps each wake inside the 5-minute prompt-cache window; >300s incurs a full context replay per wake. A `reviewers` list with no bot in it never waits. |
 | `max_iterations` | `10` | Iteration cap. **A backstop** — reaching it means something went wrong; see below. Waiting does NOT count toward it. |
 | `mark_ready_on_convergence` | `false` | On terminal state 1 (*converged*) only, and on a PR in the **orchestrator repo** only, take the PR out of draft with `gh pr ready` (SKILL.md step 4). Off by default; see below. No other terminal state, and no cross-repo PR, has its draft state touched. |
+| `fix_bar` | a general sentence, below | What a fix has to buy to be worth a round, in the project's own words. An input to step 5's question 2 only (`reference/evaluation.md`); it never decides whether a finding is *correct*, and it can never license leaving a blocking severity. |
 
 ### An empty `reviewers` is a configuration error, not a mode
 
@@ -48,6 +49,22 @@ It ships `false` anyway, because this is a published skill and changing a PR's d
 
 The two guards matter more than the default, and both have to hold. The repo one is the paragraph above. The other is the terminal state: only state 1 marks ready; *paused*, *cap reached*, *nobody reviewed this HEAD* and *the whole change could not be read at HEAD* leave the draft alone. Getting that mapping wrong on the last two would turn an internal mis-report into a request for human review of code no reviewer has read — SKILL.md step 4 states it, and that is where it is enforced.
 
+### `fix_bar`, and the project description it sits beside
+
+Step 5's second question is whether a finding is *worth acting on*, and it is asked against something. Without a statement of what this project is and what it counts as worth it, that question is asked in the abstract by a reader whose default disposition is to fix — which is how a run acknowledges 8% of what it is handed and reads every remaining round as obviously necessary.
+
+Part of what is needed is **already published by the reviewed repo, on the runs where it published it**, so this key does not ask for it again. Skeptic's config carries five project keys — `project`, `users`, `irreplaceable_data`, `production_status`, `architecture` — answering *who hits this and what it costs them*, the half of question 2 a finding's own text cannot supply. **Where they come from, when they are there, and which layer's answer may be calibrated on is settled in `reference/evaluation.md`, which is the authority; what follows is a summary of it.** The clause worth repeating here: on no reviewer list does step 5 answer those five itself.
+
+`fix_bar` is the part the five don't carry: the sentence about what a fix has to *buy*. The shipped default states the general rule this skill already follows —
+
+> A fix is worth a round when leaving it costs more than the round costs: a wrong result on a path people reach, a boundary that lets through what it exists to stop, or a claim that tells a reader to stop looking. Correct-but-cornered is not, and neither is prose that is true and could be sharper.
+
+— and a project overrides it with its own, in its own terms. The wording that motivated the key: *"find any code quality and code-breaking issues, incorrect documentation or comments, and otherwise fixable issues as long as that fix provides real value. Continuing to hunt down and kill every crazy edge-case — especially ones that can't actually even be reproduced with a shipping iPhone — chasing down perfection CANNOT be the goal."*
+
+**It does not merge the way the five keys do, and the difference is narrower than it first looks.** The two stacks are analogous rather than shared — each has its own bundled defaults and its own optional `~/.claude/` file, in that skill's own name — and what differs is which *project* file wins — the **orchestrator** repo's for this key, the **reviewed** repo's for the five. On a cross-repo PR that means the bar is the caller's, which is the right way round for a key governing the author's own fix decision, and it is the opposite shape to `mark_ready_on_convergence` above, scoped *out* of cross-repo PRs precisely because it merges from the same place. The difference between them is that undrafting acts on the other repo's PR, while this only decides what you do with a finding.
+
+**Three things it is not.** It is not a severity floor: `blocking_severities` still decides what must be fixed, it lives in the skeptic config, and no wording here can license leaving a `CRITICAL` or `HIGH` (`reference/evaluation.md` — `Acknowledge-no-change` is unavailable there, and that guard is upstream of this key). It is not an instruction to the reviewer, which reports everything real it finds regardless — this key governs what the *author* does with a finding, and the split is the point. And it is not context about the change: like the five keys beside it, it describes the project rather than the PR, and using it as a route to explain the change to a reviewer defeats what their blindness is for.
+
 ## Precedence (low → high)
 
 ```
@@ -70,7 +87,7 @@ The one thing that genuinely disappears is the *first-pass-only* role: a bot lis
 
 `skeptic` works in `reviewers` alongside bots, and the loop treats its findings identically. Three things about it are not like a bot, and all three are handled in SKILL.md rather than here: it is invoked rather than requested (so never waited on), it is recognised by the `<!-- pr-review-skeptic -->` marker rather than by author type (its reviews post under the user's account), and it never goes sticky-happy (it is re-invoked on every fix push, which is where most of its value is).
 
-It also has a precondition a bot doesn't: the reviewed repo must have committed `allow_agent_posting: true` to its `.github/pr-review-skeptic.config.yml`, alongside the five project keys. Without it an agent-invoked run posts nothing, and a loop whose reviewer leaves no trace on the PR cannot record decisions, cannot settle anything, and will run to the cap re-finding what it already answered. SKILL.md checks all of this at kickoff.
+It also has a precondition a bot doesn't: the reviewed repo must have committed `allow_agent_posting: true` to its `.github/pr-review-skeptic.config.yml` — the five project keys have to be filled too, but those merge across that skill's layers and need not all come from the repo's own file. Without it an agent-invoked run posts nothing, and a loop whose reviewer leaves no trace on the PR cannot record decisions, cannot settle anything, and will run to the cap re-finding what it already answered. SKILL.md checks all of this at kickoff.
 
 ## Invocation modifiers — natural language, not flags
 
