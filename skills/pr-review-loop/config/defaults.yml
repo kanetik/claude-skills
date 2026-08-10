@@ -42,12 +42,26 @@ mark_ready_on_convergence: false
 # project's own terms; the shipped default states the general rule the skill already follows,
 # so a repo that sets nothing behaves as before.
 #
-# It sits beside a description of the project the loop does NOT ask for again: the five project
-# keys (project, users, irreplaceable_data, production_status, architecture) the reviewed repo
-# has already committed to its .github/pr-review-skeptic.config.yml, which Preconditions already
-# require to be filled. Those answer "who hits this, and what does it cost them"; this key
-# answers "what does a fix have to be worth". Both describe the PROJECT and never the change --
-# they are not a route to context about why this PR exists.
+# It sits beside a description of the project the loop does NOT ask for again: skeptic's five
+# project keys (project, users, irreplaceable_data, production_status, architecture), taken from
+# the values the kickoff precondition already merged. Those answer "who hits this, and what does
+# it cost them"; this key answers "what does a fix have to be worth". Both describe the PROJECT
+# and never the change -- they are not a route to context about why this PR exists.
+#
+# BUT THE FIVE ARE NOT ALWAYS THERE, and this key is. Preconditions requires them only where
+# `skeptic` is in `reviewers`, and the default above is [copilot] -- a bots-only run may sit in
+# a repo with no such file, so there is no kickoff merge and nothing to carry. Step 5 then asks
+# question 2 on fix_bar and the finding's own reach, without going to look and WITHOUT INVENTING
+# THE FIVE.
+#
+# They also merge differently, though less differently than it looks: the two stacks are
+# analogous rather than shared -- each skill has its own bundled defaults and its own optional
+# ~/.claude/ file, under its own name -- and what differs is which PROJECT file wins: the orchestrator
+# repo's for this key, the reviewed repo's for the five. So on a cross-repo PR the bar is the
+# caller's (right for a key governing the author's own decision, and the opposite scoping to
+# mark_ready_on_convergence above, which is excluded from cross-repo PRs because it acts on the
+# other repo) -- while the five are the reviewed repo's only where that repo filled them, with a
+# user-level layer supplying whatever it left empty. See reference/configuration.md.
 #
 # What it is NOT: a severity floor (blocking_severities, in the skeptic config, still decides
 # what MUST be fixed, and no wording here can license leaving a CRITICAL or HIGH), and not an
