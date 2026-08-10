@@ -37,6 +37,28 @@ max_iterations: 10              # backstop -- reaching it means something went w
 # NOT the same shape as `allow_agent_posting`, which the reviewed repo commits for itself.
 mark_ready_on_convergence: false
 
+# What a fix has to BUY to be worth a round -- an input to step 5's question 2 ("is it worth
+# acting on?"), and to nothing else. Override it with the project's own sentence, in the
+# project's own terms; the shipped default states the general rule the skill already follows,
+# so a repo that sets nothing behaves as before.
+#
+# It sits beside a description of the project the loop does NOT ask for again: the five project
+# keys (project, users, irreplaceable_data, production_status, architecture) the reviewed repo
+# has already committed to its .github/pr-review-skeptic.config.yml, which Preconditions already
+# require to be filled. Those answer "who hits this, and what does it cost them"; this key
+# answers "what does a fix have to be worth". Both describe the PROJECT and never the change --
+# they are not a route to context about why this PR exists.
+#
+# What it is NOT: a severity floor (blocking_severities, in the skeptic config, still decides
+# what MUST be fixed, and no wording here can license leaving a CRITICAL or HIGH), and not an
+# instruction to the reviewer -- which goes on reporting everything real it finds. This governs
+# what the AUTHOR does with a finding. See reference/configuration.md.
+fix_bar: >-
+  A fix is worth a round when leaving it costs more than the round costs: a wrong result on a
+  path people reach, a boundary that lets through what it exists to stop, or a claim that tells
+  a reader to stop looking. Correct-but-cornered is not, and neither is prose that is true and
+  could be sharper.
+
 # Why the shipped default is [copilot]: it needs no setup. Copilot is requested with one
 # gh call and reviews whatever it is pointed at, so a first run works in any repo with no
 # config at all.

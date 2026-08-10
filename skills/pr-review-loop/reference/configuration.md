@@ -1,6 +1,6 @@
 # Configuration & override model
 
-The loop is governed by five config keys, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
+The loop is governed by the config keys below, plus natural-language invocation modifiers and project-level *procedural* overrides. `config/defaults.yml` holds the shipped values; this file is the full model.
 
 One value the loop depends on is **not** its own: the severity floor that decides when a reviewer is happy (SKILL.md step 4). For `skeptic` that is `blocking_severities` in the *skeptic* skill's config — `[CRITICAL, HIGH]` by default, set in the reviewed repo's `.github/pr-review-skeptic.config.yml` and nowhere in this skill's config. For a bot, which tags no severities, there is no key at all: step 4's equivalent judgement is whether the verdict raises anything that would change code on a path users reach. So a user wanting `MEDIUM` findings to block the loop changes the skeptic config, not this one — and on a `reviewers: [copilot]` setup there is no floor to configure.
 
@@ -13,6 +13,7 @@ One value the loop depends on is **not** its own: the severity floor that decide
 | `wait_check_cadence_seconds` | `180` | Polling cadence while waiting on a **bot** (SKILL.md step 3, `reference/waiting.md`). Stay in 120-240s (every 2-4 min): frequent enough to react promptly, and ≤270s keeps each wake inside the 5-minute prompt-cache window; >300s incurs a full context replay per wake. A `reviewers` list with no bot in it never waits. |
 | `max_iterations` | `10` | Iteration cap. **A backstop** — reaching it means something went wrong; see below. Waiting does NOT count toward it. |
 | `mark_ready_on_convergence` | `false` | On terminal state 1 (*converged*) only, and on a PR in the **orchestrator repo** only, take the PR out of draft with `gh pr ready` (SKILL.md step 4). Off by default; see below. No other terminal state, and no cross-repo PR, has its draft state touched. |
+| `fix_bar` | a general sentence, below | What a fix has to buy to be worth a round, in the project's own words. An input to step 5's question 2 only (`reference/evaluation.md`); it never decides whether a finding is *correct*, and it can never license leaving a blocking severity. |
 
 ### An empty `reviewers` is a configuration error, not a mode
 
@@ -47,6 +48,20 @@ It ships `false` anyway, because this is a published skill and changing a PR's d
 **And it applies only to PRs in the orchestrator repo.** A cross-repo PR is never taken out of draft, whatever the key says. This key merges from the user-level file and the *orchestrator* repo's project file, and that merged config governs every PR in the run including cross-repo ones (Precedence, below) — so without this scoping a `true` in one machine's user-level file would undraft PRs in repos that never opted in and have no file the loop consults to opt out. That is why the default being `false` is not on its own the safeguard, and why this is **not** the same shape as `allow_agent_posting` in the skeptic config: that key is a grant the *reviewed* repo commits, so it answers for the repo being acted on. Nothing in this key's merge does, and the scoping is what stands in for it.
 
 The two guards matter more than the default, and both have to hold. The repo one is the paragraph above. The other is the terminal state: only state 1 marks ready; *paused*, *cap reached*, *nobody reviewed this HEAD* and *the whole change could not be read at HEAD* leave the draft alone. Getting that mapping wrong on the last two would turn an internal mis-report into a request for human review of code no reviewer has read — SKILL.md step 4 states it, and that is where it is enforced.
+
+### `fix_bar`, and the project description it sits beside
+
+Step 5's second question is whether a finding is *worth acting on*, and it is asked against something. Without a statement of what this project is and what it counts as worth it, that question is asked in the abstract by a reader whose default disposition is to fix — which is how a run acknowledges 8% of what it is handed and reads every remaining round as obviously necessary.
+
+Most of what is needed is **already committed and already required**, so this key does not ask for it again. The reviewed repo's `.github/pr-review-skeptic.config.yml` carries five project keys — `project`, `users`, `irreplaceable_data`, `production_status`, `architecture` — and SKILL.md's Preconditions already refuse to start a `skeptic` run until all five hold a value. Step 5 reads them from there. They answer *who hits this and what it costs them*, which is the half of question 2 that a finding's own text cannot supply.
+
+`fix_bar` is the part they don't carry: the project's own sentence about what a fix has to *buy*. The shipped default states the general rule this skill already follows —
+
+> A fix is worth a round when leaving it costs more than the round costs: a wrong result on a path people reach, a boundary that lets through what it exists to stop, or a claim that tells a reader to stop looking. Correct-but-cornered is not, and neither is prose that is true and could be sharper.
+
+— and a project overrides it with its own, in its own terms. The wording that motivated the key: *"find any code quality and code-breaking issues, incorrect documentation or comments, and otherwise fixable issues as long as that fix provides real value. Continuing to hunt down and kill every crazy edge-case — especially ones that can't actually even be reproduced with a shipping iPhone — chasing down perfection CANNOT be the goal."*
+
+**Three things it is not.** It is not a severity floor: `blocking_severities` still decides what must be fixed, it lives in the skeptic config, and no wording here can license leaving a `CRITICAL` or `HIGH` (`reference/evaluation.md` — `Acknowledge-no-change` is unavailable there, and that guard is upstream of this key). It is not an instruction to the reviewer, which reports everything real it finds regardless — this key governs what the *author* does with a finding, and the split is the point. And it is not context about the change: like the five keys beside it, it describes the project, and using it as a route to explain the PR to a reviewer defeats what their blindness is for.
 
 ## Precedence (low → high)
 
