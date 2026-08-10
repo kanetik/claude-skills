@@ -161,6 +161,8 @@ gh api graphql -f id="<node_id>" -f query='mutation($id:ID!){ deleteIssueComment
 
 Run once at kickoff whenever `skeptic` is in `reviewers`. Three checks, all cheap, all needed before the first round.
 
+**Check 2's merge has a second caller, and that one runs on every reviewer list.** Step 5 performs the same merge for question 2's *who hits this* (`reference/evaluation.md`), and it is not gated on `skeptic`: a value being unguaranteed is a reason not to *require* it, never a reason not to read one a repo has published. What differs is what each caller does with a partial answer — this pre-flight refuses to start a `skeptic` run unless all five are filled, while step 5 uses whichever came back and asks question 2 without the rest. Neither ever supplies a value itself.
+
 1. **Is the skill installed?** A `pr-review-skeptic` entry in the skills available to you is the answer — that listing covers every install layout (user-level, project-level, plugin bundle) without your having to know which one this environment uses. Don't go looking for it at a fixed path. Absent from the listing → pause.
 2. **Are its five project keys filled?** They come from that skill's own config, merged low → high: its bundled `config/defaults.yml` (all five empty by design) < `~/.claude/pr-review-skeptic.config.yml` < the **PR repo's** `.github/pr-review-skeptic.config.yml`, read from the PR's **base** ref:
 

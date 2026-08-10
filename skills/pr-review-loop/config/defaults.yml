@@ -50,11 +50,12 @@ mark_ready_on_convergence: false
 # a fix have to be worth". Both describe the PROJECT and never the change -- they are not a route
 # to context about why this PR exists.
 #
-# BUT THE FIVE ARE NOT ALWAYS THERE, and this key is. Preconditions requires them only where
-# `skeptic` is in `reviewers`, and the default above is [copilot] -- a bots-only run may sit in
-# a repo with no such file, so there is no such merge to take values from. Step 5 then asks
-# question 2 on fix_bar and the finding's own reach, without going to look and WITHOUT INVENTING
-# THE FIVE.
+# BUT THE FIVE ARE NOT GUARANTEED, and this key is. Preconditions requires them only where
+# `skeptic` is in `reviewers`, and the default above is [copilot]. That is a reason not to
+# REQUIRE them, never a reason not to READ them: a repo may have committed the file anyway, so
+# step 5 runs the merge on any reviewer list and uses whichever keys come back filled. Empty
+# after the merge, it asks question 2 on fix_bar and the finding's own reach -- and WITHOUT
+# INVENTING THE FIVE, on any list.
 #
 # They also merge differently, though less differently than it looks: the two stacks are
 # analogous rather than shared -- each skill has its own bundled defaults and its own optional
