@@ -25,8 +25,14 @@ wait_check_cadence_seconds: 180 # how often the loop polls while waiting on a BO
 max_iterations: 10              # backstop -- reaching it means something went wrong; see below
 
 # How many CONSECUTIVE whole-change reads with no blocking finding satisfy step 4's third
-# convergence condition, when the last one sits behind HEAD. Counts READS, not rounds; a
-# blocking finding in a whole-change read resets it to zero.
+# convergence condition, when the last one sits behind HEAD. Counts READS, not rounds.
+#
+# A read counts only while it is STILL ON THE BRANCH and everything after it is the loop's own --
+# so a blocking read, an external push and a history rewrite all re-arm it. Stated as conditions
+# rather than a list of events on purpose: a rebase keeps the loop's own trailers, so an
+# event-list that says "external push" misses it. The gap the taper allows is bounded only
+# because everything in it is the loop's repair work, each piece of which got its own delta
+# review. reference/waiting.md gives the test.
 #
 # Why it exists: that condition otherwise demands the whole change be read at the CURRENT head,
 # and every fix moves the head -- so on a large change each fix owes another whole-change read,
