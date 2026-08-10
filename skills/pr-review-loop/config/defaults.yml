@@ -43,33 +43,22 @@ mark_ready_on_convergence: false
 # so a repo that sets nothing behaves as before.
 #
 # It sits beside a description of the project the loop does NOT ask for again: skeptic's five
-# project keys (project, users, irreplaceable_data, production_status, architecture), merged as
-# reference/mechanics.md describes. That is the same merge the kickoff precondition performs, and
-# step 5 re-does it rather than carrying the result, since nothing about it rides in the wake
-# payload. Those answer "who hits this, and what does it cost them"; this key answers "what does
-# a fix have to be worth". Both describe the PROJECT and never the change -- they are not a route
-# to context about why this PR exists.
+# project keys (project, users, irreplaceable_data, production_status, architecture). Those answer
+# "who hits this, and what does it cost them"; this key answers "what does a fix have to be
+# worth". Both describe the PROJECT and never the change -- they are not a route to context about
+# why this PR exists.
 #
-# BUT THE FIVE ARE NOT GUARANTEED, and this key is. Preconditions requires them only where
-# `skeptic` is in `reviewers`, and the default above is [copilot]. That is a reason not to
-# REQUIRE them, never a reason not to READ them: a repo may have committed the file anyway, so
-# step 5 runs the merge on any reviewer list and uses whichever keys come back filled. Empty
-# after the merge, it asks question 2 on fix_bar and the finding's own reach -- and WITHOUT
-# INVENTING THE FIVE, on any list.
+# Where the five come from, when they are present, and which layer's answer may be calibrated on
+# is stated ONCE, in reference/evaluation.md, and is deliberately not restated here -- three
+# rounds of patching five copies of it is what bought that decision. The short of it: the merge
+# runs on any reviewer list, only the reviewed repo's own file may be calibrated on, and on no
+# list does step 5 answer those five itself.
 #
-# They also merge differently, though less differently than it looks: the two stacks are
-# analogous rather than shared -- each skill has its own bundled defaults and its own optional
-# ~/.claude/ file, under its own name -- and what differs is which PROJECT file wins: the orchestrator
-# repo's for this key, the reviewed repo's for the five. So on a cross-repo PR the bar is the
-# caller's (right for a key governing the author's own decision, and the opposite scoping to
+# This key differs from them in one way worth knowing here: it merges from YOUR layers, the
+# orchestrator repo's file winning, so on a cross-repo PR the bar is the caller's. That is right
+# for a key governing the author's own decision, and it is the opposite scoping to
 # mark_ready_on_convergence above, which is excluded from cross-repo PRs because it acts on the
-# other repo) -- while the five are the reviewed repo's only where that repo filled them, with a
-# user-level layer supplying whatever it left empty. See reference/configuration.md.
-#
-# What it is NOT: a severity floor (blocking_severities, in the skeptic config, still decides
-# what MUST be fixed, and no wording here can license leaving a CRITICAL or HIGH), and not an
-# instruction to the reviewer -- which goes on reporting everything real it finds. This governs
-# what the AUTHOR does with a finding. See reference/configuration.md.
+# other repo. See reference/configuration.md.
 fix_bar: >-
   A fix is worth a round when leaving it costs more than the round costs: a wrong result on a
   path people reach, a boundary that lets through what it exists to stop, or a claim that tells
