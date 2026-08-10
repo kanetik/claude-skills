@@ -43,14 +43,16 @@ mark_ready_on_convergence: false
 # so a repo that sets nothing behaves as before.
 #
 # It sits beside a description of the project the loop does NOT ask for again: skeptic's five
-# project keys (project, users, irreplaceable_data, production_status, architecture), taken from
-# the values the kickoff precondition already merged. Those answer "who hits this, and what does
-# it cost them"; this key answers "what does a fix have to be worth". Both describe the PROJECT
-# and never the change -- they are not a route to context about why this PR exists.
+# project keys (project, users, irreplaceable_data, production_status, architecture), merged as
+# reference/mechanics.md describes. That is the same merge the kickoff precondition performs, and
+# step 5 re-does it rather than carrying the result, since nothing about it rides in the wake
+# payload. Those answer "who hits this, and what does it cost them"; this key answers "what does
+# a fix have to be worth". Both describe the PROJECT and never the change -- they are not a route
+# to context about why this PR exists.
 #
 # BUT THE FIVE ARE NOT ALWAYS THERE, and this key is. Preconditions requires them only where
 # `skeptic` is in `reviewers`, and the default above is [copilot] -- a bots-only run may sit in
-# a repo with no such file, so there is no kickoff merge and nothing to carry. Step 5 then asks
+# a repo with no such file, so there is no such merge to take values from. Step 5 then asks
 # question 2 on fix_bar and the finding's own reach, without going to look and WITHOUT INVENTING
 # THE FIVE.
 #
