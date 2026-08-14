@@ -283,11 +283,15 @@ since agent tooling locks the worktrees it creates (step 7), that is the common
 flavour here rather than an exotic one.
 
 So handle the missing directory explicitly, and keep it distinct from a failed
-check. **All of this is scoped to branches the sweep is proposing to delete** —
-the same set the status check below covers. A stale entry belonging to some
-other branch is not this run's business, and mutating administrative state for
-worktrees nobody asked about is exactly the overreach the rest of this skill
-avoids.
+check. **The unlocking below is scoped to branches the sweep is proposing to
+delete** — the same set the status check covers. Clearing a *lock* someone else
+set, on a branch nobody proposed to touch, is not this run's business.
+
+That scoping is about unlocking, not about the plain `git worktree prune` above,
+which is repo-wide by nature and stays that way. It only unregisters entries
+whose directory is already gone, it never touches a locked one, and a directory
+that is merely temporarily absent is recoverable with `git worktree repair`.
+There is nothing there to scope.
 
 For each such branch:
 
@@ -447,10 +451,15 @@ No `--force`. Three failures are expected here and only the last is a problem:
   its directory was already gone. Nothing to remove; carry straight on to
   deleting the branch. This is a success, not a failure, and skipping the branch
   over it would undo exactly what step 6 just unblocked.
-- **`fatal: cannot remove a locked working tree`** — the lock is still on,
-  because it was not attributable to this session and the user declined to
-  unlock it. Keep the branch and report it; a declined unlock is a decision, and
-  the branch is not deletable while its worktree stands.
+- **`fatal: cannot remove a locked working tree`** — the worktree is locked, and
+  **this is where you go and apply the lock rule below**, not where you conclude
+  anything. Locked is the *normal* state for the worktrees this skill deals with,
+  since agent tooling locks what it creates for the life of the session. So:
+  where the lock is this session's, unlock it and retry the removal; where it is
+  not, it went into pass 1's question, and the branch is kept only because the
+  user said so. Reading this error as a decline on its own reports a refusal
+  nobody was asked for, and leaves the worktree and branch the run exists to
+  remove both standing.
 - **Anything else** — something changed underneath you. Report it and skip that
   branch rather than forcing.
 
@@ -468,10 +477,19 @@ for.
 
 So split on whether the lock is demonstrably **yours**:
 
-- **Your harness told you it is.** If the worktree-exit tool in step 1 reported
-  that it left *this* worktree — which such tools only do for worktrees the
-  current session created — then the lock is this session's and you have already
-  left it. `git worktree unlock <path>`, then remove.
+- **This session created it, and the harness says so.** Where the worktree-exit
+  tool in step 1 reported leaving *this* worktree **and** this session is the one
+  that created it, the lock is yours and you have already left it. `git worktree
+  unlock <path>`, then remove.
+
+  Both halves are needed, and the second is the one that is easy to drop. A
+  session can *enter* a worktree it did not create — Claude Code's own
+  `EnterWorktree` takes an existing path — and the exit tool will happily report
+  leaving that one too. Treating the exit report alone as proof of ownership
+  therefore silently unlocks another, possibly still-running, session's worktree:
+  cornered, since it needs an enter-by-path and a live owner, but not impossible,
+  and worth not writing an impossibility claim about. Where you cannot tell
+  whether this session created it, you cannot tell — take the bullet below.
 - **Everything else**, including a reason naming some other session, and
   including a reason you cannot attribute at all. Show the user the path and the
   lock reason verbatim, and ask before unlocking. A lock someone else set is a
