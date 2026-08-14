@@ -313,7 +313,7 @@ comparison and do not delete on a hunch — report it and let the user decide.
 First, clear out worktree entries whose directory no longer exists:
 
 ```bash
-git worktree prune -v
+git worktree prune -v 2>&1
 ```
 
 This runs here, before anything reads a worktree, because the status check below
@@ -323,11 +323,16 @@ branch, leaving it alive on the strength of a worktree that is already gone.
 
 **`-v` is not optional**, because this prune is the one irreversible thing the
 skill does without asking (below). Plain `git worktree prune` is silent and exits
-`0` whether it removed nothing or removed six entries, and nothing else in the
-procedure retains a before-and-after list to compare — so without `-v` there is
-no way to tell the user what went. With it, each removal prints a line like
-`Removing worktrees/wt: gitdir file points to non-existent location`. **Keep
-those lines and put them in the step 8 report.**
+`0` whether it removed nothing or removed six entries, so without `-v` there is
+nothing to tell the user. With it, each removal prints a line like `Removing
+worktrees/wt: gitdir file points to non-existent location`. **Keep those lines
+and put them in the step 8 report.**
+
+**`2>&1` is not optional either**, and it is the half that looks like shell
+noise: `-v` writes those lines to **stderr**, not stdout. Capture the command's
+stdout alone and you get an empty string on every run — which step 8 reads as the
+"nothing was pruned" case, so the one irreversible unasked-for operation in the
+skill goes unreported precisely when it did something.
 
 **That prune does not finish the job.** Locking a worktree exists precisely to
 stop its administrative files being pruned, so a *locked* entry whose directory
@@ -339,8 +344,9 @@ worktree directory is still there, and keep that distinct from a check that
 failed:
 
 - **Path does not exist** → `git worktree unlock <worktree-path>`, then `git
-  worktree prune -v`. Skip the status check, and treat none of it as a failure.
-  `-v` for the same reason as above: its output is what the report is built from.
+  worktree prune -v 2>&1`. Skip the status check, and treat none of it as a
+  failure. Both flags for the same reasons as above: its stderr output is what
+  the report is built from.
 - **Path exists** → run the check below.
 
 Three things about that first bullet, each of which a plausible-looking
@@ -593,7 +599,7 @@ State plainly what happened:
   branch and being left where they started
 - Branches deleted, with the sha of each and which bucket it came from
 - Worktrees removed
-- **Worktree entries pruned**, from step 6's `git worktree prune -v` output —
+- **Worktree entries pruned**, from step 6's `git worktree prune -v 2>&1` output —
   separately from the line above, because these are entries whose directory was
   already gone rather than worktrees this run removed, the prune is repo-wide so
   some may belong to branches the sweep never considered, and it is irreversible.
