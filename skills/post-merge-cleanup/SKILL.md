@@ -79,9 +79,15 @@ rather than this one's. A no-op reports no error, so check where you landed:
 git rev-parse --path-format=absolute --git-dir --git-common-dir
 ```
 
-**The two must be equal, and the second must be the `.git` of the main checkout
-path you read above.** In the main checkout they are equal; in a linked worktree
-the first is under `.git/worktrees/` while the second is the shared `.git`.
+**The two must be equal, and the second must belong to the main checkout path
+you read above** — meaning either `<that path>/.git` in the ordinary layout, or
+`<that path>` itself where the first `worktree ` entry carried a `bare` line.
+Accept both. In a bare-repo-plus-worktrees layout — a standard pattern among
+exactly the worktree-heavy users this skill is for — `git worktree list
+--porcelain` reports the bare directory as the first entry and both rev-parse
+values *are* that directory, so a test demanding `/.git` rejects a perfectly good
+main checkout and the run stops at step 1 having done nothing. (Step 4's switch
+and pull will then fail there, which it already reports without stopping.)
 
 Two things that look optional here and are not. Compare against the main
 checkout path, not just the two values against each other — equality proves "not
@@ -347,10 +353,22 @@ alternative gets wrong:
   protects a working directory someone else may be using; here the directory is
   gone and the lock guards nothing, so the question would have one sensible
   answer. The exemption is this case only — step 7's unlocking stays scoped to
-  the branches in the candidate set. The plain prune above needs no scoping
-  either way: it touches nothing locked, and a directory that is merely
-  temporarily absent (an unmounted drive, say) is recoverable with `git worktree
-  repair`, so unregistering one repo-wide costs nothing that cannot be restored.
+  the branches in the candidate set.
+
+  **The plain prune above is repo-wide and cannot be scoped**, and that is worth
+  stating honestly rather than justifying away. `git worktree prune` takes no
+  path argument: it sweeps every unlocked entry whose directory is unreachable,
+  including worktrees with nothing to do with the merged PR. If a path is only
+  *temporarily* unreachable — an unmounted drive, a disconnected share, a
+  directory something else is mid-move on — that entry goes anyway, and the loss
+  is not recoverable: pruning deletes `.git/worktrees/<id>` outright, so `git
+  worktree repair` cannot restore it (`error: unable to locate repository`), and
+  `git worktree add` on the returned path refuses with `fatal: '<path>' already
+  exists`. The files in the directory survive; what is gone is its status as a
+  worktree, plus that worktree's own HEAD, index and reflog. Recovery is manual —
+  move the files aside, re-add the worktree, move them back. The sweep needs the
+  prune and git offers no scoped form, so this is a cost the skill accepts rather
+  than one it avoids. Say so in the report if a prune removed anything.
 
 Then, for every branch about to be deleted whose worktree directory is still
 there, check it before touching it:
@@ -439,8 +457,10 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   `--merged`.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
-branches, the bucket B branches, and any **locked worktree belonging to a branch
-in this candidate set** whose lock you cannot attribute to this session (below).
+branches, the bucket B branches *that reached the ask*, and any **locked worktree
+belonging to a branch in this candidate set** whose lock you cannot attribute to
+this session (below). Not the bucket B branches the bullet above already sorted
+to `keep` — those are decided, not open.
 Three of each costs one question, not nine. **Do not ask per branch** — that
 trains the user to say yes without reading, which costs exactly the case the
 asking exists for. **Ask about nothing outside that set**, and in particular not
