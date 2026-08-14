@@ -41,9 +41,10 @@ time.
 
 ## Requirements
 
-`git`, version 2.31 or newer — step 1 uses `git rev-parse --path-format`, added
-in 2.31. Nothing else: no `gh`, no `jq`, no network access beyond whatever `git
-fetch` needs.
+`git`, version 2.31 or newer. Two things need it, and 2.31 is where both landed:
+step 1's `git rev-parse --path-format`, and the `locked` and `prunable`
+annotations in `git worktree list --porcelain` that steps 6 and 7 read. Nothing
+else: no `gh`, no `jq`, no network access beyond whatever `git fetch` needs.
 
 ## Step 1: Find the main checkout and leave any worktree
 
@@ -77,9 +78,18 @@ error, so the only way to know is to check where you ended up:
 git rev-parse --path-format=absolute --git-dir --git-common-dir
 ```
 
-**The two must be equal.** In the main checkout they are; in a linked worktree
-the first is a path under `.git/worktrees/` while the second is the shared
-`.git`.
+**Both must be equal to each other, and the second must be the `.git` of the
+main checkout path you read above.** In the main checkout the two are equal; in
+a linked worktree the first is a path under `.git/worktrees/` while the second
+is the shared `.git`.
+
+Check it against that path rather than only against each other. Equality alone
+proves "not in a linked worktree" — it says nothing about *which repository* you
+are in, and a harness exit tool can land the session in a different repo's root
+(Claude Code's `EnterWorktree` documents entering a worktree of a repo nested
+inside the launch directory). That passes an equality-only test, and the sweep
+then runs against the wrong repository. The path is already in hand from the
+command above, so this costs nothing.
 
 `--path-format=absolute` is required, not decorative. Without it the two are
 printed in whatever form git finds shortest, and from a subdirectory of the main
@@ -123,6 +133,12 @@ That prints e.g. `<remote>/main`; the default branch is the part after the
 slash. If it prints nothing — the ref is commonly unset on clones — fall back in
 this order: `main` if `refs/remotes/<remote>/main` exists, else `master` if
 `refs/remotes/<remote>/master` exists, else ask the user.
+
+**With no remote there is no `<remote>` to substitute**, so that whole chain is
+skipped rather than attempted: look for a local `main`, else a local `master`,
+else ask. Falling through the remote-qualified commands would reach the same
+"ask the user" by accident, which is safe but tells the user nothing about why —
+and the surrounding prose would read as though a derivation had happened.
 
 Remember this name. **The default branch is never deleted**, whatever the later
 steps say about it.
@@ -523,12 +539,17 @@ No `--force`. Three failures are expected here and only the last is a problem:
 - **`fatal: cannot remove a locked working tree`** — the worktree is locked, and
   **this is where you go and apply the lock rule below**, not where you conclude
   anything. Locked is the *normal* state for the worktrees this skill deals with,
-  since agent tooling locks what it creates for the life of the session. So:
-  where the lock is this session's, unlock it and retry the removal; where it is
-  not, it went into pass 1's question, and the branch is kept only because the
-  user said so. Reading this error as a decline on its own reports a refusal
-  nobody was asked for, and leaves the worktree and branch the run exists to
-  remove both standing.
+  since agent tooling locks what it creates for the life of the session. Three
+  outcomes, and the answer from pass 1 picks between them:
+
+  - the lock is this session's → unlock and retry the removal;
+  - it is not, and pass 1's question came back **approved** → unlock and retry
+    the removal;
+  - it is not, and pass 1's question came back **declined** → keep the branch and
+    report it with the lock reason.
+
+  Reading this error as a decline on its own reports a refusal nobody was asked
+  for, and leaves the worktree and branch the run exists to remove both standing.
 - **Anything else** — something changed underneath you. Report it and skip that
   branch rather than forcing.
 
@@ -563,6 +584,19 @@ So split on whether the lock is demonstrably **yours**:
   including a reason you cannot attribute at all. Show the user the path and the
   lock reason verbatim, and ask before unlocking. A lock someone else set is a
   deliberate "not yet," and the reason text is what they left to explain it.
+  **Then act on the answer**: where the user approves, `git worktree unlock
+  <path>` and remove, exactly as in the first bullet; where they decline, keep
+  the branch and report it with the lock reason.
+
+That consequent is not a formality — **it is the ordinary path, not the
+exception.** This section says twice that the worktree being cleaned up was
+normally created by the session whose PR just merged rather than by this one, so
+its lock is precisely the "cannot attribute" case that routes here. Leave the
+bullet ending at "ask before unlocking" and the commonest run in this skill's
+whole remit asks the user, gets a yes, and then has no instruction covering the
+yes: the worktree stays locked, the branch stays undeleted, and both are
+reported as kept despite explicit consent. Re-running asks the same question and
+produces the same non-result.
 
 **Ask in the batch, not one at a time.** These go into the same pass-1 question
 as the ambiguous branches, so a run with three locked worktrees costs one
