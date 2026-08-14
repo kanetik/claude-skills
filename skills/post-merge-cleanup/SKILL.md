@@ -111,7 +111,10 @@ sweep's evidence sound on paths where the checkout is not.
 
 If the repo has no remote at all, skip step 3 and the pull in step 4 — there is
 nothing to prune against and nothing to pull. Everything else still runs, and
-`<default-ref>` being the local branch is what keeps those steps executable.
+`<default-ref>` being the local branch is what keeps those steps executable: an
+`origin/`-qualified ref would fail outright with a bad-revision error, not
+merely find nothing. Bucket A is empty on that path — with no remote there are
+no upstreams to have gone — so `--merged` is the only evidence there is.
 
 ## Step 3: Prune remote-tracking refs
 
@@ -231,8 +234,21 @@ comparison and do not delete on a hunch — report it and let the user decide.
 
 ## Step 6: Check for uncommitted work
 
-For every branch about to be deleted that has a worktree, check that worktree
-before touching it:
+First, clear out worktree entries whose directory no longer exists:
+
+```bash
+git worktree prune
+```
+
+This runs **here**, before anything reads a worktree, rather than at the end of
+the sweep. A worktree whose directory was deleted by hand is still listed until
+it is pruned, and the check below would then run `git -C` against a path that
+does not exist — which fails, and reads exactly like the "something changed
+underneath you" case that skips the branch. The branch would survive on the
+strength of a worktree that is already gone.
+
+Then, for every branch about to be deleted that still has a worktree, check that
+worktree before touching it:
 
 ```bash
 git -C <worktree-path> status --porcelain
@@ -364,12 +380,9 @@ skipping one.
 -D` prints it. It is the only thing standing between a wrong answer — the
 skill's or the user's — and reflog archaeology.
 
-Then clear out administrative entries for worktrees whose directory is already
-gone:
-
-```bash
-git worktree prune
-```
+No second `git worktree prune` is needed here: step 6 ran one before any
+worktree was read, and `git worktree remove` clears the entry for each worktree
+it removes.
 
 ## Step 8: Report
 
@@ -392,5 +405,6 @@ is a normal outcome, not a failure.
 ## Edge cases
 
 If a worktree's directory has been deleted by hand but its branch is still
-listed, `git worktree prune` in step 7 handles it. Anything else unexpected:
+listed, `git worktree prune` at the top of step 6 handles it — before anything
+tries to read that directory, which is why it runs there. Anything else unexpected:
 stop and ask the user rather than guessing.
