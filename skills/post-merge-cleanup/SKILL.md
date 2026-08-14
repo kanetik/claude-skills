@@ -42,9 +42,11 @@ time.
 ## Requirements
 
 `git`, version 2.31 or newer. Two things need it, and 2.31 is where both landed:
-step 1's `git rev-parse --path-format`, and the `locked` and `prunable`
-annotations in `git worktree list --porcelain` that steps 6 and 7 read. Nothing
-else: no `gh`, no `jq`, no network access beyond whatever `git fetch` needs.
+step 1's `git rev-parse --path-format`, and the `locked` annotation in `git
+worktree list --porcelain` that steps 6 and 7 read. (The same release added
+`prunable`, which this skill deliberately does not rely on — step 6 says why.)
+Nothing else: no `gh`, no `jq`, no network access beyond whatever `git fetch`
+needs.
 
 ## Step 1: Find the main checkout and leave any worktree
 
@@ -68,40 +70,32 @@ Move the session there:
 - Otherwise, or **if that tool did nothing**, `cd` to the main checkout path
   from the command above.
 
-That second clause is not a formality. Such a tool typically only knows about
-worktrees the *current session* created, and does nothing at all for one it did
-not — which is the ordinary case here, since the session that made the worktree
-is usually the session whose PR just merged, not this one. A no-op reports no
-error, so the only way to know is to check where you ended up:
+That second clause is not a formality: such a tool typically only knows about
+worktrees the *current session* created and does nothing for one it did not —
+the ordinary case here, since the worktree is usually the merged PR's session's
+rather than this one's. A no-op reports no error, so check where you landed:
 
 ```bash
 git rev-parse --path-format=absolute --git-dir --git-common-dir
 ```
 
-**Both must be equal to each other, and the second must be the `.git` of the
-main checkout path you read above.** In the main checkout the two are equal; in
-a linked worktree the first is a path under `.git/worktrees/` while the second
-is the shared `.git`.
+**The two must be equal, and the second must be the `.git` of the main checkout
+path you read above.** In the main checkout they are equal; in a linked worktree
+the first is under `.git/worktrees/` while the second is the shared `.git`.
 
-Check it against that path rather than only against each other. Equality alone
-proves "not in a linked worktree" — it says nothing about *which repository* you
-are in, and a harness exit tool can land the session in a different repo's root
-(Claude Code's `EnterWorktree` documents entering a worktree of a repo nested
-inside the launch directory). That passes an equality-only test, and the sweep
-then runs against the wrong repository. The path is already in hand from the
-command above, so this costs nothing.
+Two things that look optional here and are not. Compare against the main
+checkout path, not just the two values against each other — equality proves "not
+in a linked worktree" and nothing about *which* repository, and an exit tool can
+land the session in a nested repo's root, which passes an equality-only test and
+runs the sweep against the wrong repo. And `--path-format=absolute` is required,
+because without it git prints whichever form is shortest: from a subdirectory of
+the main checkout that is `<abs>/.git` and `../.git`, two spellings of one
+directory that compare unequal.
 
-`--path-format=absolute` is required, not decorative. Without it the two are
-printed in whatever form git finds shortest, and from a subdirectory of the main
-checkout that is `<abs>/.git` and `../.git` — two spellings of the same
-directory that compare unequal, so a plain string test reports a worktree that
-is not there. The flag makes both absolute and the comparison honest from any
-depth.
-
-They differ, and you are still inside the worktree whatever the tool returned:
-`cd` to the main checkout and check again. **Do not carry on from inside a
-worktree step 7 is going to try to remove** — that removal will fail, and the
-branch will be left behind with no explanation that fits.
+Failing either, you are not where you need to be: `cd` to the main checkout and
+check again. **Do not carry on from inside a worktree step 7 will try to
+remove** — that removal fails, and the branch is left behind with no explanation
+that fits.
 
 If the repo has no linked worktrees at all, this step is a no-op — carry on.
 
@@ -134,44 +128,35 @@ slash. If it prints nothing — the ref is commonly unset on clones — fall bac
 this order: `main` if `refs/remotes/<remote>/main` exists, else `master` if
 `refs/remotes/<remote>/master` exists, else ask the user.
 
-**With no remote there is no `<remote>` to substitute**, so that whole chain is
-skipped rather than attempted: look for a local `main`, else a local `master`,
-else ask. Falling through the remote-qualified commands would reach the same
-"ask the user" by accident, which is safe but tells the user nothing about why —
-and the surrounding prose would read as though a derivation had happened.
+**With no remote there is no `<remote>` to substitute**, so skip that chain
+rather than attempting it: look for a local `main`, else a local `master`, else
+ask. Falling through the remote-qualified commands reaches the same "ask the
+user" by accident, which is safe but tells the user nothing about why.
 
 Remember this name. **The default branch is never deleted**, whatever the later
 steps say about it.
 
 Remember one more thing: **`<default-ref>`**, the ref every later containment
-test is asked against. Where the repo has a remote, that is
-`<remote>/<default-branch>`; where it has none, the local `<default-branch>`.
+test is asked against — `<remote>/<default-branch>` where the repo has a remote,
+the local `<default-branch>` where it has none. Step 3 makes the remote-tracking
+form current without needing the working tree to cooperate, which is why
+classification and containment ask this ref rather than `HEAD`: they stay sound
+on the paths where step 4 cannot switch. On the no-remote path the local form is
+what keeps them executable at all, since a remote-qualified ref would be a
+bad-revision error rather than an empty result. Bucket A is empty there too —
+no remote means no upstreams to have gone — so `--merged` is the only evidence.
 
-The distinction matters because step 3 makes `<remote>/<default-branch>`
-current, and does so without needing the working tree to cooperate. Every
-question of the form "are this branch's commits already in the default branch?"
-is therefore answerable in full even when step 4 cannot switch — so classifying
-against `<default-ref>` rather than against whatever is checked out keeps the
-sweep's evidence sound on paths where the checkout is not.
-
-**Then confirm the ref you derived actually resolves:**
+**Then confirm the ref resolves:**
 
 ```bash
 git rev-parse --verify <default-ref>
 ```
 
-One line, and it catches the case resolving the remote does not: a stale
-`refs/remotes/<remote>/HEAD` still pointing at a default branch that has since
-been renamed away. `symbolic-ref` answers happily, so the fallback chain never
-fires, and without this the failure surfaces two steps later as a bad-revision
-error in the middle of classification. Fail here instead, naming the ref you
-tried.
-
-On the no-remote path, `<default-ref>` being the local branch is what keeps the
-later steps executable: a remote-qualified ref would fail outright with a
-bad-revision error, not merely find nothing. Bucket A is empty there too — with
-no remote there are no upstreams to have gone — so `--merged` is the only
-evidence there is.
+This catches what resolving the remote does not: a stale
+`refs/remotes/<remote>/HEAD` pointing at a default branch since renamed away.
+`symbolic-ref` answers happily there, so the fallback chain never fires and the
+failure would otherwise surface two steps later as a bad-revision error in the
+middle of classification. Fail here instead, naming the ref you tried.
 
 ## Step 3: Prune remote-tracking refs
 
@@ -197,25 +182,19 @@ branch made in the main checkout, PR merged, remote branch deleted — that is t
 *one* branch the sweep exists to remove. Switch first and the exclusion protects
 only the default branch, which is what it is for.
 
-**Are you already on the default branch?** That decides which half of this step
-runs, and it is worth asking first because the common worktree-based flow leaves
-the main checkout sitting on the default branch the whole time.
-
-**If you are**, there is no switch to make and no gate to apply. Go straight to
-the pull:
+**Already on the default branch?** Then there is no switch and no gate. Pull:
 
 ```bash
 git pull --ff-only
 ```
 
-Do not gate this on a clean tree. `git pull --ff-only` fast-forwards a dirty
-tree perfectly well when the incoming commits do not touch the modified files,
-and refuses on its own — `error: Your local changes to the following files would
-be overwritten by merge` — when they do. Gating it instead would cost the user
-the fast-forward over a stray modified file that had nothing to do with the
-incoming commits.
+Do not gate this on a clean tree. `git pull --ff-only` fast-forwards a dirty tree
+when the incoming commits do not touch the modified files, and refuses on its own
+— `error: Your local changes to the following files would be overwritten by
+merge` — when they do. Gating it costs the user the fast-forward over a stray
+modified file that had nothing to do with the incoming commits.
 
-**If you are not**, the switch needs a gate, so check the tree first:
+**Otherwise** the switch needs a gate, so check the tree first:
 
 ```bash
 git status --porcelain --untracked-files=no
@@ -226,13 +205,12 @@ the *current* branch, so pulling here would fast-forward the wrong one. Say so
 and skip to step 5, noting that step 5's exclusion is now protecting whatever
 branch is checked out rather than the default branch.
 
-`--untracked-files=no` is doing real work here and is not a tidiness flag.
-Untracked files do not follow a `git switch` anywhere — they simply stay where
-they are, and git refuses on its own in the one case where the switch would
-clobber one. Left in, the default `--porcelain` reports every `??` line, so a
-single scratch file in the main checkout stops the switch, which leaves step 5's
-exclusion protecting the very branch this skill exists to remove. That is an
-extremely ordinary tree state to be defeated by.
+`--untracked-files=no` is load-bearing, not a tidiness flag. Untracked files do
+not follow a `git switch` anywhere, and git refuses on its own in the one case
+where the switch would clobber one. Left in, plain `--porcelain` reports every
+`??` line, so a single scratch file stops the switch and leaves step 5's
+exclusion protecting the very branch this skill exists to remove — an extremely
+ordinary tree state to be defeated by.
 
 Clean, so:
 
@@ -242,33 +220,28 @@ git pull --ff-only
 ```
 
 **Neither command stops the run when it fails.** Report what happened, carry on
-from step 5, and put it in the final report:
+from step 5, and put it in the final report — and **report what git actually
+said** rather than naming a cause you have not confirmed, since each of these
+has more than one.
 
-- **`git switch` fails** — commonly because the default branch is already
-  checked out in a linked worktree, which git refuses to check out twice, and
-  also because an untracked file in the way would be overwritten (`The following
-  untracked working tree files would be overwritten by checkout`). That second
-  one is reachable *because* the gate above deliberately stops blocking on
-  untracked files, which is the intended trade: git's own refusal is more precise
-  than the gate's would have been. **Report what git actually said** rather than
-  naming a cause you have not confirmed. Skip the pull and continue. Never work
-  around it with `--force` or a detached checkout.
-- **`git pull --ff-only` fails** — most often because the local default branch
-  has commits the remote doesn't, though a network or authentication failure and
-  a branch with no configured upstream fail here too. **Report what git actually
-  said** rather than asserting a divergence you have not confirmed. Either way it
-  is not a reason to abandon the cleanup: `<default-ref>` is the remote-tracking
-  ref, which step 3 already made current, so the sweep's evidence does not depend
-  on the local branch having moved. Where it is a real divergence, never resolve
-  it with a merge, a rebase, or a reset — report it and leave it for the user.
+- **`git switch` fails** — commonly because the default branch is already checked
+  out in a linked worktree, which git refuses to check out twice; also because an
+  untracked file in the way would be overwritten. That second one is reachable
+  *because* the gate above stops blocking on untracked files, and that is the
+  intended trade: git's own refusal is more precise than the gate's would have
+  been, firing only when a file would actually be clobbered rather than whenever
+  one exists. Skip the pull and continue. Never work around it with `--force` or
+  a detached checkout.
+- **`git pull --ff-only` fails** — most often a local default branch holding
+  commits the remote doesn't, but network or authentication failure and a missing
+  upstream land here too. Where it is a real divergence, never resolve it with a
+  merge, a rebase, or a reset; report it and leave it for the user.
 
-**What the rest of the sweep does and does not depend on.** Classification and
-the containment check ask `<default-ref>`, which step 3 already made current, so
-they are equally sound whether or not this step succeeded — that is why they are
-written against that ref rather than against `HEAD`. What a failure here costs
-is exactly this much: the checked-out branch stays excluded from the sweep, and
-the user is left where they were rather than on an updated default branch. Both
-go in the report.
+Neither failure costs the sweep its evidence, because classification and
+containment ask `<default-ref>`, which step 3 made current without the working
+tree's help. What a failure here does cost is exactly this: the checked-out
+branch stays excluded, and the user is left where they were rather than on an
+updated default branch. Both go in the report.
 
 ## Step 5: Classify every local branch
 
@@ -299,13 +272,11 @@ survived is a separate question, decided by step 6's containment check against
 `<default-ref>` — and where that check cannot decide, by asking.
 
 **Bucket B — merged, remote still present.** The branch appears in `--merged`
-output but is not in bucket A. Its commits are already in the default branch,
-but its remote branch still exists — someone may still be using it, or the merge
-simply hasn't been followed by a branch delete. **These are asked about**, in
-step 7's single batched question. Note that `--merged` is an ancestry test, so a
-branch nobody has committed to yet is "merged" too — it will show up here, and
-it is work someone is about to start, not work that landed. That is most of why
-this bucket asks.
+output but is not in bucket A. Its commits are already in the default branch and
+its remote branch still exists, so someone may still be using it. **These are
+asked about**, in step 7's single batched question — mostly because `--merged` is
+an ancestry test, so a branch nobody has committed to yet is "merged" too, and
+that is work someone is about to start rather than work that landed.
 
 **Bucket C — everything else.** Leave alone, silently.
 
@@ -339,83 +310,47 @@ First, clear out worktree entries whose directory no longer exists:
 git worktree prune
 ```
 
-This runs **here**, before anything reads a worktree, rather than at the end of
-the sweep. A worktree whose directory was deleted by hand is still listed until
-it is pruned, and the check below would then run `git -C` against a path that
-does not exist — which fails, and reads exactly like the "something changed
-underneath you" case that skips the branch. The branch would survive on the
-strength of a worktree that is already gone.
+This runs here, before anything reads a worktree, because the status check below
+would otherwise run `git -C` against a path that does not exist — which fails,
+and looks exactly like the "something changed underneath you" case that skips the
+branch, leaving it alive on the strength of a worktree that is already gone.
 
-**`git worktree prune` does not finish that job, and must not be relied on to.**
-Locking a worktree exists precisely to stop its administrative files being
-pruned, so a *locked* entry whose directory is gone survives the prune — and
-since agent tooling locks the worktrees it creates (step 7), that is the common
-flavour here rather than an exotic one.
+**That prune does not finish the job.** Locking a worktree exists precisely to
+stop its administrative files being pruned, so a *locked* entry whose directory
+is gone survives it — and agent tooling locks the worktrees it creates (step 7),
+so that is the common flavour here rather than an exotic one.
 
-So handle the missing directory explicitly, and keep it distinct from a failed
-check. **The unlocking below is scoped to branches the sweep is proposing to
-delete** — the same set the status check covers. Clearing a *lock* someone else
-set, on a branch nobody proposed to touch, is not this run's business.
+So for each branch the sweep proposes to delete, decide first whether its
+worktree directory is still there, and keep that distinct from a check that
+failed:
 
-That scoping is about unlocking, not about the plain `git worktree prune` above,
-which is repo-wide by nature and stays that way. It only unregisters entries
-whose directory is already gone, it never touches a locked one, and a directory
-that is merely temporarily absent is recoverable with `git worktree repair`.
-There is nothing there to scope.
-
-For each such branch:
-
-- **Path does not exist** → unlock the entry and prune it:
-
-  ```bash
-  git worktree unlock <worktree-path>
-  git worktree prune
-  ```
-
-  Do not run the status check, and do not treat any of this as a failure.
+- **Path does not exist** → `git worktree unlock <worktree-path>`, then `git
+  worktree prune`. Skip the status check, and treat none of it as a failure.
 - **Path exists** → run the check below.
 
-**Test existence by looking at the path itself** — `test -d "<worktree-path>"`,
-or `Test-Path` where the shell is PowerShell. `git worktree list
---porcelain` gives you the paths to test and nothing more: it reports a
-`prunable` field for an *unlocked* stale entry, but a **locked** one whose
-directory is gone prints exactly what a live locked worktree prints —
+Three things about that first bullet, each of which a plausible-looking
+alternative gets wrong:
 
-```
-worktree C:/…/wt
-HEAD d68d5d0…
-branch refs/heads/feat
-locked claude session 123 pid 456
-```
-
-— with no marker distinguishing the two. Since the prune above has already
-cleared every unlocked stale entry, a locked one is the *only* kind that ever
-reaches this test, so a test reading git's own output can never fire here.
-Probing the path is the whole of what works.
-
-**Unlocking and pruning is the whole remedy — "just carry on as though the
-branch had no worktree" is not an alternative, and this is the one place a
-plausible-looking shortcut silently fails.** The entry stays registered, and
-`git branch -D` in step 7 then refuses outright:
-
-```
-error: cannot delete branch 'feat' used by worktree at '<path>'
-```
-
-so the branch survives — the exact outcome this case exists to prevent, merely
-reported under a different wrong reason. Note also that only *locked* entries
-ever reach this bullet, since the prune above already cleared the unlocked ones.
-There is no instance of this case where the shortcut works.
-
-**And unlocking here is deliberately exempt from step 7's ask-before-unlocking
-rule.** That rule protects a *working directory* someone else may still be
-using. Here there is no directory: it is gone, its contents are gone with it,
-and the lock now guards nothing. Nothing can be lost by clearing it, so asking
-would only be a question with one sensible answer.
-
-Collapsing this case into the status check is what puts a branch in the report
-as "skipped, something changed underneath" when the truth is that its worktree
-was deleted by hand weeks ago.
+- **Test existence by probing the path** — `test -d "<worktree-path>"`, or
+  `Test-Path` under PowerShell. `git worktree list --porcelain` supplies the
+  branch-to-path mapping every command in this step needs, and nothing more: it
+  marks an *unlocked* stale entry `prunable`, but prints a **locked** stale one
+  identically to a live locked one. The prune above already cleared every
+  unlocked stale entry, so a locked one is the only kind that reaches this test
+  and git's own output can never distinguish it.
+- **Unlock and prune is the whole remedy.** Carrying on as though the branch had
+  no worktree leaves the entry registered, and `git branch -D` in step 7 then
+  refuses with `error: cannot delete branch '<branch>' used by worktree at
+  '<path>'` — so the branch survives, which is the outcome this case exists to
+  prevent, reported under a different wrong reason.
+- **Unlocking here is exempt from step 7's ask-before-unlocking rule.** That rule
+  protects a working directory someone else may be using; here the directory is
+  gone and the lock guards nothing, so the question would have one sensible
+  answer. The exemption is this case only — step 7's unlocking stays scoped to
+  the branches in the candidate set. The plain prune above needs no scoping
+  either way: it touches nothing locked, and a directory that is merely
+  temporarily absent (an unmounted drive, say) is recoverable with `git worktree
+  repair`, so unregistering one repo-wide costs nothing that cannot be restored.
 
 Then, for every branch about to be deleted whose worktree directory is still
 there, check it before touching it:
@@ -469,13 +404,10 @@ in its place:
 
 ## Step 7: Decide everything, then act
 
-**Settle every question before removing anything.** Removing a worktree is
-irreversible from this skill's side, so it must not happen while an outcome is
-still open. The obvious order — remove the worktree, then find out the branch is
-ambiguous, then ask — deletes the working directory of a branch the user then
-tells you to keep.
-
-So this step runs in two passes.
+**Settle every question before removing anything**, in two passes. Removing a
+worktree is irreversible from this skill's side, and the obvious order — remove
+it, then discover the branch is ambiguous, then ask — deletes the working
+directory of a branch the user goes on to tell you to keep.
 
 ### Pass 1 — decide, touching nothing
 
@@ -483,43 +415,36 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
 
 - **Any branch step 6 skipped for uncommitted work** → `keep`, before any other
   bullet is considered. Report it with its worktree path so the user can go and
-  look. It is not a candidate, no question is asked about it, and nothing below
-  applies to it.
+  look. No question is asked about it and nothing below applies to it.
 
-  This bullet comes first because the ones below key only on bucket and
-  containment, and a dirty worktree is neither. Without it a bucket A branch
-  with an empty containment check sorts to `delete` — and then pass 2 does two
-  wrong things in order: it clears the worktree's lock (where the lock is this
-  session's) on a directory holding the user's only copy of that work, and then
-  fails the removal with `fatal: '<path>' contains modified or untracked files`,
-  which falls to pass 2's "something changed underneath you" bullet and reports
-  the user's own work as an unexplained anomaly. Git refuses the deletion either
-  way, so no commits are lost; what is lost is the lock and the explanation.
+  **It must stay first**, because the bullets below key only on bucket and
+  containment and a dirty worktree is neither. Demote it and such a branch sorts
+  to `delete`, after which pass 2 clears its lock and only then fails the
+  removal — so the protection is given up before the failure that would have
+  reported the problem, and the user's own work comes back as "something changed
+  underneath you". Git refuses the deletion either way; the lock and the
+  explanation are what get lost.
 
-- **Bucket A, containment check empty** → `delete`, no question. The remote
-  branch is gone and every commit is already in the default branch, so there is
-  nothing left to decide.
-- **Bucket A, containment check non-empty** → **ask, and do not guess.** Show
-  the branch, the commits step 6 listed, and say plainly that git cannot
+- **Bucket A, containment empty** → `delete`, no question. The remote branch is
+  gone and every commit is already in the default branch.
+- **Bucket A, containment non-empty** → **ask, and do not guess.** Show the
+  branch and the commits step 6 listed, and say plainly that git cannot
   distinguish a squash-merge from work that never landed. The user's answer sets
   `delete` or `keep`.
-- **Bucket B, containment check empty** → **ask.** This is step 5's rule and it
-  still holds: the remote branch is still there, so someone may still be working
-  on this, and a branch nobody has committed to yet is "merged" too. Nothing is
-  at risk — the work is contained and the remote copy remains — but it is not
-  this skill's call to make.
-- **Bucket B, containment check non-empty** → `keep`, and report the
-  contradiction with `--merged`.
+- **Bucket B, containment empty** → **ask.** The remote branch is still there, so
+  someone may still be working on this, and a branch nobody has committed to yet
+  is "merged" too. Nothing is at risk — the work is contained and the remote copy
+  remains — but it is not this skill's call.
+- **Bucket B, containment non-empty** → `keep`, and report the contradiction with
+  `--merged`.
 
-**Everything that needs asking goes into one question**: the ambiguous bucket A
+**Everything needing an answer goes into one question**: those ambiguous bucket A
 branches, the bucket B branches, and any **locked worktree belonging to a branch
 in this candidate set** whose lock you cannot attribute to this session (below).
-A run with three of each costs one question, not nine.
-
-Ask about nothing outside that set. In particular, do not ask per branch — that
+Three of each costs one question, not nine. **Do not ask per branch** — that
 trains the user to say yes without reading, which costs exactly the case the
-asking exists for — and do not ask about locked worktrees on branches nobody
-proposed to touch.
+asking exists for. **Ask about nothing outside that set**, and in particular not
+about locked worktrees on branches nobody proposed to touch.
 
 ### Pass 2 — act on the `delete` set only
 
@@ -568,53 +493,41 @@ for.
 So split on whether the lock is demonstrably **yours**:
 
 - **This session created it, and the harness says so.** Where the worktree-exit
-  tool in step 1 reported leaving *this* worktree **and** this session is the one
-  that created it, the lock is yours and you have already left it. `git worktree
-  unlock <path>`, then remove.
+  tool in step 1 reported leaving *this* worktree **and** this session created
+  it, the lock is yours and you have already left. `git worktree unlock <path>`,
+  then remove.
 
-  Both halves are needed, and the second is the one that is easy to drop. A
-  session can *enter* a worktree it did not create — Claude Code's own
-  `EnterWorktree` takes an existing path — and the exit tool will happily report
-  leaving that one too. Treating the exit report alone as proof of ownership
-  therefore silently unlocks another, possibly still-running, session's worktree:
-  cornered, since it needs an enter-by-path and a live owner, but not impossible,
-  and worth not writing an impossibility claim about. Where you cannot tell
-  whether this session created it, you cannot tell — take the bullet below.
-- **Everything else**, including a reason naming some other session, and
-  including a reason you cannot attribute at all. Show the user the path and the
-  lock reason verbatim, and ask before unlocking. A lock someone else set is a
-  deliberate "not yet," and the reason text is what they left to explain it.
-  **Then act on the answer**: where the user approves, `git worktree unlock
-  <path>` and remove, exactly as in the first bullet; where they decline, keep
-  the branch and report it with the lock reason.
+  Both halves are needed, and the second is the one that gets dropped. A session
+  can *enter* a worktree it did not create — Claude Code's `EnterWorktree` takes
+  an existing path — and the exit tool reports leaving that one too. So the exit
+  report alone is not proof of ownership, and **treating it as proof silently
+  unlocks and removes another, possibly still-running, session's working
+  directory.** That needs an enter-by-path and a live owner, so it is cornered
+  rather than likely — but it is the reason the second half is there, and the
+  reason collapsing this to "the tool said we left it, so it is ours" is wrong.
+  Where you cannot tell, you cannot tell: take the bullet below.
+- **Everything else**, including a reason naming another session and a reason you
+  cannot attribute at all. Show the user the path and the lock reason verbatim
+  and ask before unlocking, then **act on the answer**: approved → unlock and
+  remove, as above; declined → keep the branch and report it with the reason.
 
-That consequent is not a formality — **it is the ordinary path, not the
-exception.** This section says twice that the worktree being cleaned up was
-normally created by the session whose PR just merged rather than by this one, so
-its lock is precisely the "cannot attribute" case that routes here. Leave the
-bullet ending at "ask before unlocking" and the commonest run in this skill's
-whole remit asks the user, gets a yes, and then has no instruction covering the
-yes: the worktree stays locked, the branch stays undeleted, and both are
-reported as kept despite explicit consent. Re-running asks the same question and
-produces the same non-result.
+  **This is the ordinary path, not the exception**, since the worktree being
+  cleaned up is usually another session's. A rule that stops at "ask" leaves the
+  commonest run in this skill's remit asking, getting a yes, and having no
+  instruction for the yes — worktree still locked, branch still undeleted, both
+  reported as kept despite consent, and a re-run producing the same non-result.
 
-**Ask in the batch, not one at a time.** These go into the same pass-1 question
-as the ambiguous branches, so a run with three locked worktrees costs one
-question rather than three.
+**Ask in the batch**, in the same pass-1 question as the ambiguous branches, so
+three locked worktrees cost one question rather than three.
 
-Two things this rule deliberately does not do. It does not treat "I was standing
-in it" as proof of ownership: the worktree this run vacated in step 1 is usually
-*not* this session's, since the session that created it is normally the one
-whose PR just merged, so that test would silently unlock and remove another —
-possibly still-running — session's working directory. And it does not ask you to
-parse a session id or pid out of the reason text and match it against your own.
-That is not reliably knowable from inside the skill, and a rule written on it
-would in practice send every lock down the ask path, which is the outcome the
-first bullet exists to avoid. The harness's own answer is the one signal here
-that is trustworthy; absent it, ask.
+Two tests this rule deliberately does not use: "I was standing in it", which is
+not ownership for the reason above; and matching a session id or pid parsed out
+of the reason text, which is not reliably knowable from inside the skill and
+would send every lock down the ask path. The harness's own answer is the only
+trustworthy signal; absent it, ask.
 
-Never unlock a worktree that step 6 flagged as holding uncommitted work. The
-lock question only arises for worktrees already established as clean.
+Never unlock a worktree step 6 flagged as holding uncommitted work. The lock
+question only arises for worktrees already established as clean.
 
 Then the branch:
 
@@ -622,27 +535,23 @@ Then the branch:
 git branch -D <branch>
 ```
 
-**`-D`, deliberately, and only for a branch pass 1 put in the `delete` set.**
-This looks like the dangerous flag and here it is the honest one. `git branch
--d` asks a *different question* than this skill has been asking: it accepts a
-branch contained in its own upstream, and falls back to `HEAD` where the
-upstream is gone. Neither is containment in the default branch. So `-d` would
-refuse every squash-merged branch the user has just confirmed, and would accept
-some branch whose work is in a stale upstream and nowhere else — a safety net
-that catches the wrong things in both directions.
-
-The check that decides this is step 6's, run explicitly, against a ref step 2
-pinned for the purpose. `-D` here executes a decision already made rather than
+**`-D`, deliberately, and only for a branch pass 1 put in the `delete` set.** It
+looks like the dangerous flag and here it is the honest one, so do not "fix" it
+back to `-d`: `-d` answers a *different question* — containment in the branch's
+own upstream, falling back to `HEAD` where the upstream is gone, neither of which
+is containment in the default branch. It would refuse every squash-merged branch
+the user just confirmed, and accept a branch whose work is in a stale upstream
+and nowhere else. Step 6's check is what decides this, run explicitly against a
+ref step 2 pinned for the purpose; `-D` executes that decision rather than
 skipping one.
 
 **Record the sha of every branch deleted and put it in the report.** `git branch
--D` prints it. It is the only thing standing between a wrong answer — the
-skill's or the user's — and reflog archaeology.
+-D` prints it, and it is the only thing between a wrong answer — the skill's or
+the user's — and reflog archaeology.
 
-No second `git worktree prune` is needed here. Between them, step 6's prune
-(unlocked stale entries) and its per-entry unlock-and-prune (locked ones, for
-the branches in scope) already cleared what this run is responsible for, and
-`git worktree remove` clears the entry for each worktree it removes.
+No second `git worktree prune` is needed: step 6's prune and its per-entry
+unlock-and-prune already cleared what this run is responsible for, and `git
+worktree remove` clears the entry for each worktree it removes.
 
 ## Step 8: Report
 
