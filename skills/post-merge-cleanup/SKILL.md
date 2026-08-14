@@ -95,47 +95,83 @@ branch will be left behind with no explanation that fits.
 
 If the repo has no linked worktrees at all, this step is a no-op — carry on.
 
-## Step 2: Determine the default branch
+## Step 2: Determine the remote and the default branch
+
+**The remote first**, because everything below is qualified by its name and
+`origin` is a convention rather than a guarantee — a fork clone routinely has
+`upstream` alongside it, and a remote can simply be named something else.
 
 ```bash
-git symbolic-ref --quiet --short refs/remotes/origin/HEAD
+git remote
 ```
 
-That prints e.g. `origin/main`; the default branch is the part after the slash.
-If it prints nothing (the ref is commonly unset on clones), fall back in this
-order: `main` if `refs/remotes/origin/main` exists, else `master` if
-`refs/remotes/origin/master` exists, else ask the user.
+- **Nothing printed** → the repo has no remote. Skip step 3 and the pull in step
+  4; there is nothing to prune against and nothing to pull.
+- **Exactly one** → that is `<remote>`.
+- **More than one** → take the one the checked-out branch tracks, via
+  `git config --get branch.<current-branch>.remote`. Where that is unset or the
+  checkout is detached, fall back to `origin` if it is among them, and otherwise
+  ask the user which to use.
+
+Then the default branch:
+
+```bash
+git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD
+```
+
+That prints e.g. `<remote>/main`; the default branch is the part after the
+slash. If it prints nothing — the ref is commonly unset on clones — fall back in
+this order: `main` if `refs/remotes/<remote>/main` exists, else `master` if
+`refs/remotes/<remote>/master` exists, else ask the user.
 
 Remember this name. **The default branch is never deleted**, whatever the later
 steps say about it.
 
 Remember one more thing: **`<default-ref>`**, the ref every later containment
 test is asked against. Where the repo has a remote, that is
-`origin/<default-branch>`; where it has none, the local `<default-branch>`.
+`<remote>/<default-branch>`; where it has none, the local `<default-branch>`.
 
-The distinction matters because step 3 makes `origin/<default-branch>` current,
-and does so without needing the working tree to cooperate. Every question of the
-form "are this branch's commits already in the default branch?" is therefore
-answerable in full even when step 4 cannot switch — so classifying against
-`<default-ref>` rather than against whatever is checked out keeps the sweep's
-evidence sound on paths where the checkout is not.
+The distinction matters because step 3 makes `<remote>/<default-branch>`
+current, and does so without needing the working tree to cooperate. Every
+question of the form "are this branch's commits already in the default branch?"
+is therefore answerable in full even when step 4 cannot switch — so classifying
+against `<default-ref>` rather than against whatever is checked out keeps the
+sweep's evidence sound on paths where the checkout is not.
 
-If the repo has no remote at all, skip step 3 and the pull in step 4 — there is
-nothing to prune against and nothing to pull. Everything else still runs, and
-`<default-ref>` being the local branch is what keeps those steps executable: an
-`origin/`-qualified ref would fail outright with a bad-revision error, not
-merely find nothing. Bucket A is empty on that path — with no remote there are
-no upstreams to have gone — so `--merged` is the only evidence there is.
+**Then confirm the ref you derived actually resolves:**
+
+```bash
+git rev-parse --verify <default-ref>
+```
+
+One line, and it catches the case resolving the remote does not: a stale
+`refs/remotes/<remote>/HEAD` still pointing at a default branch that has since
+been renamed away. `symbolic-ref` answers happily, so the fallback chain never
+fires, and without this the failure surfaces two steps later as a bad-revision
+error in the middle of classification. Fail here instead, naming the ref you
+tried.
+
+On the no-remote path, `<default-ref>` being the local branch is what keeps the
+later steps executable: a remote-qualified ref would fail outright with a
+bad-revision error, not merely find nothing. Bucket A is empty there too — with
+no remote there are no upstreams to have gone — so `--merged` is the only
+evidence there is.
 
 ## Step 3: Prune remote-tracking refs
 
 ```bash
-git fetch --prune
+git fetch --prune <remote>
 ```
 
 This is what marks branches `[gone]`. Without it the whole sweep silently finds
 nothing to do, because the deleted remote branch is still sitting in
 `refs/remotes/`.
+
+Name the remote rather than relying on a bare `git fetch --prune`, which picks
+the default remote and so can prune a different one than every later step is
+asking about. A branch tracking some *other* remote then simply never reaches
+bucket A — it is not pruned, so it is not `[gone]` — which under-reports rather
+than misfires, and under-reporting is the safe direction here.
 
 ## Step 4: Get on the default branch and fast-forward it
 
@@ -145,16 +181,34 @@ branch made in the main checkout, PR merged, remote branch deleted — that is t
 *one* branch the sweep exists to remove. Switch first and the exclusion protects
 only the default branch, which is what it is for.
 
-Check the tree before touching it:
+**Are you already on the default branch?** That decides which half of this step
+runs, and it is worth asking first because the common worktree-based flow leaves
+the main checkout sitting on the default branch the whole time.
+
+**If you are**, there is no switch to make and no gate to apply. Go straight to
+the pull:
+
+```bash
+git pull --ff-only
+```
+
+Do not gate this on a clean tree. `git pull --ff-only` fast-forwards a dirty
+tree perfectly well when the incoming commits do not touch the modified files,
+and refuses on its own — `error: Your local changes to the following files would
+be overwritten by merge` — when they do. Gating it instead would cost the user
+the fast-forward over a stray modified file that had nothing to do with the
+incoming commits.
+
+**If you are not**, the switch needs a gate, so check the tree first:
 
 ```bash
 git status --porcelain --untracked-files=no
 ```
 
-**Any output means do not switch**, because uncommitted changes to tracked files
-follow you across a `git switch` and would carry the user's work-in-progress
-onto the default branch. Say so, skip to step 5, and note that the exclusion in
-step 5 is now protecting whatever branch is checked out instead.
+**Any output means do not switch**, and do not pull either — `git pull` acts on
+the *current* branch, so pulling here would fast-forward the wrong one. Say so
+and skip to step 5, noting that step 5's exclusion is now protecting whatever
+branch is checked out rather than the default branch.
 
 `--untracked-files=no` is doing real work here and is not a tidiness flag.
 Untracked files do not follow a `git switch` anywhere — they simply stay where
@@ -164,7 +218,7 @@ single scratch file in the main checkout stops the switch, which leaves step 5's
 exclusion protecting the very branch this skill exists to remove. That is an
 extremely ordinary tree state to be defeated by.
 
-Otherwise:
+Clean, so:
 
 ```bash
 git switch <default-branch>
@@ -305,8 +359,8 @@ For each such branch:
   Do not run the status check, and do not treat any of this as a failure.
 - **Path exists** → run the check below.
 
-**Test existence by looking at the path itself** — your own file tools, or
-`test -d` / `Test-Path` where you are driving a shell. `git worktree list
+**Test existence by looking at the path itself** — `test -d "<worktree-path>"`,
+or `Test-Path` where the shell is PowerShell. `git worktree list
 --porcelain` gives you the paths to test and nothing more: it reports a
 `prunable` field for an *unlocked* stale entry, but a **locked** one whose
 directory is gone prints exactly what a live locked worktree prints —
@@ -410,6 +464,21 @@ So this step runs in two passes.
 ### Pass 1 — decide, touching nothing
 
 Sort every candidate into `delete` or `keep`, using what step 6 established:
+
+- **Any branch step 6 skipped for uncommitted work** → `keep`, before any other
+  bullet is considered. Report it with its worktree path so the user can go and
+  look. It is not a candidate, no question is asked about it, and nothing below
+  applies to it.
+
+  This bullet comes first because the ones below key only on bucket and
+  containment, and a dirty worktree is neither. Without it a bucket A branch
+  with an empty containment check sorts to `delete` — and then pass 2 does two
+  wrong things in order: it clears the worktree's lock (where the lock is this
+  session's) on a directory holding the user's only copy of that work, and then
+  fails the removal with `fatal: '<path>' contains modified or untracked files`,
+  which falls to pass 2's "something changed underneath you" bullet and reports
+  the user's own work as an unexplained anomaly. Git refuses the deletion either
+  way, so no commits are lost; what is lost is the lock and the explanation.
 
 - **Bucket A, containment check empty** → `delete`, no question. The remote
   branch is gone and every commit is already in the default branch, so there is
