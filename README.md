@@ -287,10 +287,12 @@ first ever park it stays quiet, because an empty store produces no digest even
 when the hook is working perfectly.
 
 Nothing is stored in your repositories. Repository-scoped thoughts live at
-`~/.claude/projects/<mangled-repo-root>/later.md`, beside that project's
-`memory/` directory, and user-level ones at `~/.claude/later.md` — so they're
-never a diff, never a collaborator's problem, and never deleted along with a
-worktree when its branch lands.
+`<claude-config>/projects/<mangled-repo-root>/later.md`, beside that project's
+`memory/` directory, and user-level ones at `<claude-config>/later.md` — so
+they're never a diff, never a collaborator's problem, and never deleted along
+with a worktree when its branch lands. `<claude-config>` is `CLAUDE_CONFIG_DIR`
+where you've set it, and `~/.claude` otherwise; `later.sh path` prints the
+resolved location.
 
 ## Design principles
 

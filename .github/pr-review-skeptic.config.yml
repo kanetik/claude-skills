@@ -19,8 +19,9 @@ irreplaceable_data: >-
   user's account, resolves threads, pushes commits, or removes a worktree
   and refs from a checkout that is not the skill's own. None of that can be
   unsent, and some of it cannot be undone. Second, and the only genuinely
-  irreplaceable data any skill here touches: the `later` store, at
-  ~/.claude/later.md and ~/.claude/projects/<mangled>/later.md. It is
+  irreplaceable data any skill here touches: the `later` store, under
+  CLAUDE_CONFIG_DIR (defaulting to ~/.claude) at later.md and
+  projects/<mangled>/later.md. It is
   unversioned, sits outside any repository, is rewritten in place, and holds
   thoughts the user deliberately wrote nowhere else. A defect that truncates,
   clobbers or silently misroutes it loses them with no copy anywhere.
