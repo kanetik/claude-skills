@@ -1,12 +1,16 @@
 # CLAUDE.md — instructions for AI working on this repo
 
-This repo is a **collection of Claude Code skills** I find useful and worth sharing, published for others to use. It's not themed around one domain — whatever makes a good, self-contained skill can live here. It's not an application — it has no build, no tests, no runtime. The deliverable is the prose inside each `SKILL.md`.
+This repo is a **collection of Claude Code skills** I find useful and worth sharing, published for others to use. It's not themed around one domain — whatever makes a good, self-contained skill can live here. It's not an application: there's no build and no runtime, and for most skills the deliverable is the prose inside each `SKILL.md`.
+
+**But a skill may bundle executable support files, and one does.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `skills/later/selfcheck.sh` (63 assertions, `sh skills/later/selfcheck.sh`, touches nothing outside its own temp directory). Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
 
 ## What goes here
 
 - `skills/<name>/SKILL.md` — one skill per folder, frontmatter + body
-- `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports
+- `skills/<name>/*.sh` — optional bundled scripts, each with a self-check beside it
+- `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports, and any hook a skill declares
 - `README.md` — what the skills do, how to install, design principles
+- `.gitattributes` — pins `*.sh` to LF so shipped scripts work off a Windows checkout
 - `LICENSE`, `.gitignore` — standard
 
 ## Rules for changing skills

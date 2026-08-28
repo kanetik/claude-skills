@@ -3,8 +3,10 @@
 
 project: >-
   A collection of Claude Code skills, published as an installable plugin.
-  Not an application: no build, no tests, no runtime. The deliverable is
-  the prose inside each SKILL.md.
+  No build and no runtime, and for most skills the deliverable is the prose
+  inside each SKILL.md. One skill bundles a POSIX shell script, which is real
+  code and has a runnable self-check at skills/later/selfcheck.sh -- so "no
+  tests" is not true of this repo, and that suite is worth running.
 
 users: >-
   Claude Code users who install the plugin or copy individual skill folders

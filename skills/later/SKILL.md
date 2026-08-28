@@ -185,12 +185,14 @@ hand**, to the user's own `settings.json`:
 ```
 
 Use a literal path. **`${CLAUDE_PLUGIN_ROOT}` does not work here** — it is
-substituted only for hooks a plugin declares in its own manifest, where the
-plugin identity is known, and Claude Code refuses it in a `settings.json` hook
-with an explicit message rather than expanding it. That failure is at least
-loud. A wrong *literal* path is the silent one, and it is the one to check:
-the hook prints nothing when nothing is parked, so a broken hook and an empty
-store look identical. On Windows the bare `sh` in these commands resolves
+substituted only for hooks a plugin declares itself, where the plugin identity
+is known. In a user's own `settings.json` there is no plugin context, and on
+the version checked the token reaches the shell as an unset variable and
+expands to empty, so the hook silently runs `sh "/skills/later/later.sh"` at
+every session start. **Assume it fails silently**: a wrong literal path fails
+the same way, the digest prints nothing when nothing is parked, and a broken
+hook is therefore indistinguishable from an empty store. That is the whole
+reason this is worth getting right the first time. On Windows the bare `sh` in these commands resolves
 because hooks run in the Git Bash environment Claude Code uses there — **not**
 because `sh` is on the Windows PATH, where a default Git for Windows install
 does not put it. So `where sh` finding nothing says nothing about the hook, but

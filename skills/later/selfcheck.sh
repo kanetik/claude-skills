@@ -62,9 +62,10 @@ check "worktree resolves to the same store" "$wt_store" "$store"
 
 # --- add / list -------------------------------------------------------------
 
-# SKILL.md's "is the hook wired?" rule reads this count and warns only when it
-# is above 1, so the first park in an empty store must report exactly 1. Report
-# 2 there and the skill tells every new user their hook is broken.
+# The other half of the count contract: the second park must report 2, so the
+# warning above 1 can fire at all. (The first-park-reports-1 half, which is the
+# one that stops the skill telling every new user their hook is broken, is
+# asserted at the top of this file where that first park happens.)
 first=$(cd "$repo" && sh "$LATER" add "count contract" 2>&1)
 case "$first" in
   *"2 open"*) ok "add reports the count including the item just parked" ;;
@@ -174,8 +175,8 @@ run maybe -- 1 "--no-verify was needed" > /dev/null 2>&1 &&
 # one. Folding an unreadable mode into the pass would make this check green on
 # macOS whatever `umask 077` does -- a test that cannot fail for the regression
 # it names, which is worse than no test, because it reads as coverage.
-# `-c '%a'` is GNU; `-f '%OLp'` is BSD, which macOS ships -- L selects the low
-# nine permission bits and `p` is already octal. Not `%A`: that is GNU's letter
+# `-c '%a'` is GNU; `-f '%OLp'` is BSD, which macOS ships -- O asks for octal
+# and L selects the low nine permission bits. Not `%A`: that is GNU's letter
 # for the *symbolic* mode and is not a BSD datum letter at all, so BSD stat
 # exits 1 with "%A: bad format" (swallowed by 2>/dev/null) and every macOS run
 # reported "could not read the mode" instead of checking it.
@@ -354,12 +355,22 @@ grep -q '(from .*) parked on old git' "$ustore" &&
 # A write that fails must never be reported as a park. This is the one file
 # with no other copy, so a false "Parked" is the thought gone.
 #
-# The store path is made a DIRECTORY rather than the config root, so the
-# redirection itself is what fails. Aiming at an uncreatable directory instead
-# would trip the earlier `mkdir -p` guard and never reach the write check --
-# passing without exercising it, which is the failure mode this whole suite
-# keeps finding in its own assertions. Deliberately not chmod-based: MSYS does
-# not honour a read-only bit here, so that form would pass vacuously on Windows.
+# The two writes need two different setups, and getting that wrong is easy in a
+# way that leaves one guard uncovered while both checks pass. `cmd_add` takes
+# the header branch whenever the store is not a regular file -- a directory
+# included -- so a directory-based setup exercises the header write TWICE and
+# never reaches the append at all.
+
+# Header write: the store path is a directory, so the redirection fails. Not an
+# uncreatable config root, which would trip the earlier `mkdir -p` guard and
+# pass without reaching the write check.
+#
+# This one asserts the BEHAVIOUR, not one particular `||`: with the header
+# guard removed the run still refuses, because the append that follows fails on
+# the same directory and dies there. Mutation-tested -- removing the header
+# guard alone leaves this green. That is defence in depth rather than a hole
+# (nothing reaches the user either way), and saying so beats implying a
+# coverage this check does not have.
 blocked="$tmp/blocked"
 mkdir -p "$blocked/later.md"
 out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$blocked" sh "$LATER" add --user "unwritable" 2>&1)
@@ -368,13 +379,25 @@ case "$out" in
   *) ok "a failed header write is never reported as a park" ;;
 esac
 
-# And the append path, where the store already exists and is fine but the write
-# cannot land: same store file, made unappendable by being a directory.
-out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$blocked" sh "$LATER" add --user "unwritable again" 2>&1)
-case "$out" in
-  *Parked*) no "a failed append is never reported as a park" "$out" ;;
-  *) ok "a failed append is never reported as a park" ;;
-esac
+# Append write: a real store file, created normally and then made read-only, so
+# the header branch is skipped and the append is what fails. This is the common
+# path -- every park after the first goes through it.
+appendro="$tmp/appendro"
+mkdir -p "$appendro"
+(cd "$repo" && CLAUDE_CONFIG_DIR="$appendro" sh "$LATER" add --user "first, writable" > /dev/null 2>&1)
+chmod 0400 "$appendro/later.md" 2>/dev/null
+if [ -w "$appendro/later.md" ]; then
+  # Some filesystems ignore the read-only bit (running as root, certain mounts).
+  # A skipped check is honest; a vacuous one is not.
+  ok "a failed append is never reported as a park (skipped: read-only bit not honoured here)"
+else
+  out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$appendro" sh "$LATER" add --user "second, blocked" 2>&1)
+  case "$out" in
+    *Parked*) no "a failed append is never reported as a park" "$out" ;;
+    *) ok "a failed append is never reported as a park" ;;
+  esac
+  chmod 0600 "$appendro/later.md" 2>/dev/null
+fi
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

@@ -270,11 +270,11 @@ there. So `where sh` coming up empty says nothing about the hook; you only need
 the full path to `sh.exe` if you run the command by hand to test it.)
 `${CLAUDE_PLUGIN_ROOT}`
 does *not* work in your own `settings.json`: it's substituted only for hooks a
-plugin declares in its own manifest, and Claude Code rejects it elsewhere with
-*"Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated
-with a plugin."* That one is at least loud. The failure to watch for is a
-**wrong literal path**, which is silent — the hook is designed to print nothing
-when nothing is parked, so a broken one looks exactly like an empty store.
+plugin declares itself, and elsewhere the token reaches the shell as an unset
+variable and expands to empty — so the hook silently runs `sh "/skills/later/later.sh"`
+forever. **Assume any mistake here is silent**, that one and a wrong literal
+path alike: the hook is designed to print nothing when nothing is parked, so a
+broken one looks exactly like an empty store.
 
 That same silence is why it costs you nothing on the sessions where you have no
 backlog. It's also why the skill won't go hunting for your hook: whether one
