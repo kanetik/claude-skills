@@ -174,7 +174,14 @@ run maybe -- 1 "--no-verify was needed" > /dev/null 2>&1 &&
 # one. Folding an unreadable mode into the pass would make this check green on
 # macOS whatever `umask 077` does -- a test that cannot fail for the regression
 # it names, which is worse than no test, because it reads as coverage.
-perms=$(stat -c '%a' "$store" 2>/dev/null || stat -f '%A' "$store" 2>/dev/null || echo unreadable)
+# `-c '%a'` is GNU; `-f '%OLp'` is BSD, which macOS ships -- O for octal, L for
+# the low (permission) bits. Not `%A`: that is GNU's letter for the *symbolic*
+# mode, and BSD stat prints nothing for an unrecognised specifier while still
+# exiting 0, so the `|| echo unreadable` guard would never fire and every macOS
+# run would fail on an empty string for a store that is correctly 0600. Hence
+# the explicit empty test as well -- exit status alone does not settle this.
+perms=$(stat -c '%a' "$store" 2>/dev/null || stat -f '%OLp' "$store" 2>/dev/null || echo unreadable)
+[ -n "$perms" ] || perms=unreadable
 case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*) ok "store permissions (skipped: no POSIX bits on this platform)" ;;
   *)

@@ -77,6 +77,11 @@ the working directory at run time is the project root, not this folder.
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" show` | The digest the SessionStart hook prints |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" path` | Where this repository's store lives |
 
+**`add` is the one command whose flag must come first.** Its text is free-form,
+so a flag after the text is text: `add "a stray thought" --user` parks into the
+*repository* store with `--user` glued onto the end of the thought, and says
+nothing. Write `add --user "a stray thought"`.
+
 Item numbers match what `list` last printed, and they shift as items are
 handled — always `list` before `done` or `maybe` rather than reusing a number
 from earlier in the session.
