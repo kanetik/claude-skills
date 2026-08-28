@@ -1,0 +1,5 @@
+# Shell scripts must check out with LF endings on every platform. A CRLF
+# checkout of a script authored on Windows fails on Linux and macOS with
+# "bad interpreter: /usr/bin/env sh^M", and the skills here are published for
+# other people to run.
+*.sh text eol=lf

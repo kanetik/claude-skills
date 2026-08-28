@@ -6,6 +6,7 @@
     "./skills/whats-new",
     "./skills/pr-review-loop",
     "./skills/pr-review-skeptic",
-    "./skills/post-merge-cleanup"
+    "./skills/post-merge-cleanup",
+    "./skills/later"
   ]
 }

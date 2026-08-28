@@ -29,8 +29,10 @@ architecture: >-
   One folder per skill under skills/<name>/, each holding a SKILL.md (YAML
   frontmatter + prose body) plus optional config/ and reference/ files it
   loads on demand by relative path. .claude-plugin/plugin.json lists the
-  exported skills. There is no code -- the implementation is instructions
-  an agent reads.
+  exported skills. Nearly all of it is instructions an agent reads rather
+  than code that runs; the exception is a skill that bundles a POSIX shell
+  script it invokes, which is real code and is wrong in the ordinary ways
+  code is wrong.
 
 # Lets pr-review-loop's skeptic reviewer post its findings to the PR.
 # Only counts when committed to the default branch: it is read from the

@@ -13,9 +13,20 @@ The skills here are deliberately small and single-purpose. Each one does **one j
 | [`/whats-new`](skills/whats-new/SKILL.md) | Author Play Store "What's New" release notes from your commit log (English only). Pulls commits since the last release tag, drafts bullets within Play's 500-char limit, waits for approval, then writes the source-locale file and hands off to `/translate-content` for the other locales. |
 | [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop with a strict role split: reviewers review and post findings to the PR, and this skill is the author — the only thing that touches code. It reads every finding off the PR and decides each one on whether the problem is real and whether it is this PR's work (fix a real problem the change owns, whatever its severity / acknowledge a correct observation that names no problem / reject with a public rationale / file a follow-up issue for genuinely unrelated work), replies, resolves the thread, pushes, and asks for review again, until a round changes no code — nothing blocking outstanding, and nothing fixed that a reviewer hasn't since seen. Reviewers can be bots (Copilot, Codex, anything that posts a review) or `/pr-review-skeptic`, which it re-runs on every fix push. Bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
 | [`/pr-review-skeptic`](skills/pr-review-skeptic/SKILL.md) | Get an honest second opinion on a PR from reviewers with no stake in it. Blind subagents read the changes at HEAD knowing the project but nothing about why the change exists, treating comments and docs as claims to check against the code, and reporting what is materially wrong rather than what is merely imperfect. A finding is something someone should change — severity then says how bad it is, never whether it counts — and something correct that nobody should have to act on is noted for the record instead, with no thread and nothing owed in reply. Large PRs are partitioned across reviewers plus a pass on how the pieces compose. They are blind to the *author*, not to the review: the first run reads the whole change cold, and later runs stay as cold on the author's account while being scoped to what has changed since the last review and told which non-blocking consequences the project has already accepted — except the composition reviewer, which is never scoped to the delta and takes the whole change whenever it runs. The review history also reconciles what they found afterwards — a decision that was already weighed stops blocking but stays named in the verdict with the thread that settled it, a defect raised and patched before and still present comes back a severity higher, and a concern that was dismissed once and independently found again comes back flagged with the thread that dismissed it. Every finding gets its own thread, plus a go/no-go verdict: posted when you invoke `/pr-review-skeptic` or ask for it on the PR, shown in the terminal first for question-shaped asks like "is this ready to merge?". |
+| [`/later`](skills/later/SKILL.md) | Park a thought that isn't about the work in progress, and get it back when it's useful again. A tangent said out loud drags the session sideways; kept quiet, it's lost. This takes it verbatim, answers in a word, and carries straight on — no clarifying question, no scoping, no offer to do it, because a fragmented session is the cost of *responding*, not of *mentioning*. Thoughts go to a per-repository store or, when the idea belongs to some other project entirely, a user-level one. The store lives outside the repo, keyed on the main repository root, so it's never a diff for collaborators and never dies with a worktree when the branch lands. A `SessionStart` hook replays what's parked at the top of later sessions and stays silent when there's nothing, and finished work gets reconciled against the list — an item the work happened to cover is marked *possibly* handled with the reason, never quietly deleted. Storing and returning thoughts is the whole job; doing them is yours. |
 | [`/post-merge-cleanup`](skills/post-merge-cleanup/SKILL.md) | Put a repo back to a clean state after a PR lands. Moves the session out of whatever worktree it was in and back to the main checkout, prunes remote-tracking refs, fast-forwards the default branch, and only then removes the worktrees and local branches the merge made stale. Containment is decided by one explicit check against a ref that is current whether or not the checkout cooperated, so the skill can tell a branch whose work is safely contained from one holding commits that exist nowhere else. It refuses to delete anything holding uncommitted work — an untracked file in a worktree exists nowhere else — and asks, with the commits in hand, wherever git genuinely cannot tell a squash-merge from work that never landed. Cleanup only: it doesn't merge the PR, close issues, or tag anything. |
 
 ## Typical workflow
+
+`/later` runs across all of the others rather than at a point in any of them.
+Mid-task, a thought arrives that isn't about the task — *"oh, the settings
+screen should remember its scroll position"* while you're deep in a translation
+pass. Say `later: settings screen should remember scroll position` and it's
+written down, acknowledged in a word, and the translation pass carries on
+uninterrupted. Nothing gets asked about it, and nothing gets proposed. It shows
+up again at the top of a later session in that repo, and if the work happens to
+cover it in the meantime, it comes back marked *possibly handled* with the
+reason attached rather than quietly vanishing.
 
 Translating a feature branch's new strings after review settles:
 
@@ -83,6 +94,7 @@ ln -s ~/Projects/claude-skills/skills/whats-new           ~/.claude/skills/whats
 ln -s ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/pr-review-loop
 ln -s ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/pr-review-skeptic
 ln -s ~/Projects/claude-skills/skills/post-merge-cleanup  ~/.claude/skills/post-merge-cleanup
+ln -s ~/Projects/claude-skills/skills/later               ~/.claude/skills/later
 ```
 
 **Windows (directory junctions, no admin required):**
@@ -94,6 +106,7 @@ mklink /J "%USERPROFILE%\.claude\skills\whats-new"          "%USERPROFILE%\Proje
 mklink /J "%USERPROFILE%\.claude\skills\pr-review-loop"     "%USERPROFILE%\Projects\claude-skills\skills\pr-review-loop"
 mklink /J "%USERPROFILE%\.claude\skills\pr-review-skeptic"  "%USERPROFILE%\Projects\claude-skills\skills\pr-review-skeptic"
 mklink /J "%USERPROFILE%\.claude\skills\post-merge-cleanup" "%USERPROFILE%\Projects\claude-skills\skills\post-merge-cleanup"
+mklink /J "%USERPROFILE%\.claude\skills\later"             "%USERPROFILE%\Projects\claude-skills\skills\later"
 ```
 
 ### Option C — plain copy
@@ -107,7 +120,12 @@ cp -r ~/Projects/claude-skills/skills/whats-new           ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/post-merge-cleanup  ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/later               ~/.claude/skills/
 ```
+
+`/later` needs one extra step whichever option you pick: a `SessionStart` hook,
+without which nothing you park is ever read back. See [Per-project setup](#for-later)
+below.
 
 Installing a subset is fine. The loop ships defaulting to Copilot, so it works on its own; add the skeptic when you want the pairing described above, and the loop will tell you at kickoff if it's configured for skeptic and can't find it.
 
@@ -215,6 +233,43 @@ Nothing about any individual change belongs in this file — it describes the pr
 **About `allow_agent_posting`.** Leave it out unless you're running `/pr-review-loop` against this repo. By default a review invoked by another skill or agent posts nothing: it hands the draft back to whoever called it, because the decision to publish under your GitHub account is yours. This key is how a repository gives that up standingly — any skill or agent that invokes the skeptic here can then publish a review under the invoking user's account, notifying every collaborator, with no preview. That's the right trade when a review loop needs threads to reply to, and it isn't part of the minimal setup.
 
 It's deliberately the one key that doesn't follow the usual merge rules: it counts only from this file, committed, read at the PR's base ref. Not from `~/.claude/`, not from an uncommitted copy in your tree. So a PR can't grant itself the right to publish in its own diff, the permission is visible and revocable by everyone who works on the repo, and it can't ride your machine's user-level config into someone else's project. It never overrides *"don't post"*, never posts on a merged or closed PR, and `confirm_before_posting: true` cancels it outright.
+
+### For `/later`
+
+No per-project config — but one **user-level** step, once, and the skill is
+half-useless without it. Capture writes to a store; nothing reads that store
+back unless a `SessionStart` hook is wired up to replay it:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$HOME/.claude/skills/later/later.sh\" show",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Point the path at wherever you installed the skill (`${CLAUDE_PLUGIN_ROOT}/skills/later/later.sh`
+for a plugin install; a full path to Git Bash's `sh` on Windows if a bare `sh`
+isn't on PATH). The hook prints nothing when nothing is parked, so it costs you
+nothing on the sessions where you have no backlog. The skill checks for it the
+first time you park something in a session and offers to add it if it's
+missing.
+
+Nothing is stored in your repositories. Repository-scoped thoughts live at
+`~/.claude/projects/<mangled-repo-root>/later.md`, beside that project's
+`memory/` directory, and user-level ones at `~/.claude/later.md` — so they're
+never a diff, never a collaborator's problem, and never deleted along with a
+worktree when its branch lands.
 
 ## Design principles
 
