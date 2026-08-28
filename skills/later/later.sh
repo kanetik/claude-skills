@@ -141,11 +141,18 @@ cmd_add() {
   dir=$(dirname "$store")
   mkdir -p "$dir" || die "cannot create $dir"
 
+  # Every write is checked. A full disk or a read-only directory makes the
+  # redirection fail while the script sails on to print "Parked (...)", which
+  # reports a thought saved that was never written -- to the one file in this
+  # design that has no other copy. A refusal the user can see is recoverable;
+  # a false confirmation is the thought gone.
   if [ ! -f "$store" ]; then
     if [ "$scope" = user ]; then
-      printf '# Later (user)\n\nParked thoughts belonging to no single repository. Written by the /later skill.\n\n' > "$store"
+      printf '# Later (user)\n\nParked thoughts belonging to no single repository. Written by the /later skill.\n\n' > "$store" ||
+        die "could not write $store"
     else
-      printf '# Later (%s)\n\nParked thoughts for this repository. Written by the /later skill.\n\n' "$(repo_name)" > "$store"
+      printf '# Later (%s)\n\nParked thoughts for this repository. Written by the /later skill.\n\n' "$(repo_name)" > "$store" ||
+        die "could not write $store"
     fi
   fi
 
@@ -156,9 +163,11 @@ cmd_add() {
     origin=$(repo_name) || origin=""
   fi
   if [ -n "$origin" ]; then
-    printf -- '- [ ] %s (from %s) %s\n' "$(date +%Y-%m-%d)" "$origin" "$text" >> "$store"
+    printf -- '- [ ] %s (from %s) %s\n' "$(date +%Y-%m-%d)" "$origin" "$text" >> "$store" ||
+      die "could not append to $store -- nothing was parked"
   else
-    printf -- '- [ ] %s %s\n' "$(date +%Y-%m-%d)" "$text" >> "$store"
+    printf -- '- [ ] %s %s\n' "$(date +%Y-%m-%d)" "$text" >> "$store" ||
+      die "could not append to $store -- nothing was parked"
   fi
 
   printf 'Parked (%s store, %s open).\n' "$scope" "$(count_entries "$store")"

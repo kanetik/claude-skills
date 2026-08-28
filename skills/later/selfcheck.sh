@@ -334,6 +334,48 @@ case "$out" in
   *) no "an unrelated git failure is reported as itself" "$out" ;;
 esac
 
+# On pre-2.31 git the origin tag cannot be resolved -- repo_name goes through
+# repo_root, which is what needs --path-format. The thought must still be
+# parked; only the "(from <repo>)" label is absent. Locking that down so a
+# later change cannot quietly turn the missing tag into a lost thought.
+before=$(grep -c '^- \[' "$ustore")
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" add --user "parked on old git" 2>&1)
+case "$out" in
+  *"Parked (user store"*) ok "add --user still parks on pre-2.31 git" ;;
+  *) no "add --user still parks on pre-2.31 git" "$out" ;;
+esac
+after=$(grep -c '^- \[' "$ustore")
+[ "$after" -eq "$((before + 1))" ] && ok "the pre-2.31 user item reaches the store" ||
+  no "the pre-2.31 user item reaches the store" "$before -> $after"
+grep -q '(from .*) parked on old git' "$ustore" &&
+  no "the origin tag is absent on pre-2.31 git, as documented" "a tag was written" ||
+  ok "the origin tag is absent on pre-2.31 git, as documented"
+
+# A write that fails must never be reported as a park. This is the one file
+# with no other copy, so a false "Parked" is the thought gone.
+#
+# The store path is made a DIRECTORY rather than the config root, so the
+# redirection itself is what fails. Aiming at an uncreatable directory instead
+# would trip the earlier `mkdir -p` guard and never reach the write check --
+# passing without exercising it, which is the failure mode this whole suite
+# keeps finding in its own assertions. Deliberately not chmod-based: MSYS does
+# not honour a read-only bit here, so that form would pass vacuously on Windows.
+blocked="$tmp/blocked"
+mkdir -p "$blocked/later.md"
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$blocked" sh "$LATER" add --user "unwritable" 2>&1)
+case "$out" in
+  *Parked*) no "a failed header write is never reported as a park" "$out" ;;
+  *) ok "a failed header write is never reported as a park" ;;
+esac
+
+# And the append path, where the store already exists and is fine but the write
+# cannot land: same store file, made unappendable by being a directory.
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$blocked" sh "$LATER" add --user "unwritable again" 2>&1)
+case "$out" in
+  *Parked*) no "a failed append is never reported as a park" "$out" ;;
+  *) ok "a failed append is never reported as a park" ;;
+esac
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
   printf 'all checks passed\n'

@@ -286,8 +286,9 @@ that failure is silent — the thought is written, `list` from anywhere else say
 nothing is parked, and no error is ever printed.
 
 So on older git a repository-scoped `add` is refused, with a message naming the
-version. `--user` still works, and `show` still prints the user store and exits
-0: a missing store must never stop a session from starting.
+version. `--user` still works — minus the `(from <repo>)` tag, which needs the
+same resolution the store key does — and `show` still prints the user store and
+exits 0: a missing store must never stop a session from starting.
 
 `sh "${CLAUDE_SKILL_DIR}/selfcheck.sh"` exercises the store end to end in a
 throwaway directory, touching nothing real.
