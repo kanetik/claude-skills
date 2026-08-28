@@ -95,6 +95,13 @@ to write to. The scope flag may appear anywhere in the arguments of every
 command except `add`, whose text is free-form — so `done 1 --user` works and
 means what it looks like, rather than silently marking a repository item.
 
+`--` ends the flags, for the case where a thought or a reason begins with one:
+`add -- "--no-verify keeps biting us"`.
+
+The store is created with `umask 077`. It holds things the user wrote nowhere
+else, so it should not inherit a default that makes it readable by every other
+account on the machine.
+
 ## Choosing the scope
 
 Default to the repository store. Use `--user` when the thought is not about the

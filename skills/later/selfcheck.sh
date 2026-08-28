@@ -136,6 +136,33 @@ done
 run list --all > /dev/null 2>&1 && ok "list --all is still accepted" ||
   no "list --all is still accepted" "it failed"
 
+# `--` ends the flags, so text and reasons that begin with a dash can still be
+# passed. Without it the unknown-flag guard refuses a reason like
+# "--no-verify was needed", which is ordinary prose about a flag.
+run add -- "--user is a flag, not a scope here" > /dev/null 2>&1 &&
+  ok "-- lets add park text that starts with a flag" ||
+  no "-- lets add park text that starts with a flag" "it failed"
+run list | grep -q -- '--user is a flag, not a scope here' &&
+  ok "the dash-led thought is stored verbatim" || no "the dash-led thought is stored verbatim" "$(run list)"
+
+run maybe -- 1 "--no-verify was needed" > /dev/null 2>&1 &&
+  ok "-- lets maybe take a reason that starts with a flag" ||
+  no "-- lets maybe take a reason that starts with a flag" "$(run maybe -- 1 '--no-verify was needed' 2>&1)"
+
+# The store holds thoughts written nowhere else; it must not be created at a
+# permissive default umask. Windows reports 0644 regardless, so only assert
+# where the platform actually carries POSIX bits.
+perms=$(stat -c '%a' "$store" 2>/dev/null || echo skip)
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*) ok "store permissions (skipped: no POSIX bits on this platform)" ;;
+  *)
+    case "$perms" in
+      600|skip) ok "the store is created private" ;;
+      *) no "the store is created private" "mode $perms" ;;
+    esac
+    ;;
+esac
+
 # Flag position. `done 1 --user` is the natural typo of the command `list --all`
 # prints; with leading-only parsing the flag was dropped and the mark landed on
 # the same-numbered REPOSITORY item, hiding an unrelated thought.

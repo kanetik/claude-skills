@@ -6,19 +6,29 @@
 # reason -- two implementations of the mangling rule would drift, and a drifted
 # path does not error, it silently starts a second invisible store.
 #
-# Usage (flags come before the text):
+# Usage (a scope flag may go anywhere except in `add`, whose text is free-form):
 #   later.sh add [--user] <text>          park a thought
 #   later.sh list [--user|--all]          numbered open items
 #   later.sh done [--user] <n>            mark item n handled
 #   later.sh maybe [--user] <n> <why>     mark item n possibly handled
 #   later.sh show                         hook mode: digest, or nothing at all
-#   later.sh path [--user]              print the store path
+#   later.sh path [--user]                print the store path
+#
+# -- ends the flags, for text or a reason that starts with one.
 #
 # --all is for `list` only: every other command acts on exactly one store.
 #
 # `show` always exits 0. A broken store must never stop a session starting.
 
 set -u
+
+# The store holds thoughts written nowhere else, so it is created private
+# rather than at whatever the caller's umask happens to be -- commonly 022,
+# which makes it 0644 and readable by every other account on the machine. This
+# covers the store, the directory holding it, and the temp file `maybe`/`done`
+# rewrite through, which would otherwise expose the whole store for the length
+# of the rewrite. Existing files keep the permissions they already have.
+umask 077
 
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SHOW_REPO_MAX="${LATER_SHOW_REPO_MAX:-7}"
@@ -322,6 +332,7 @@ scope=repo
 if [ "$cmd" = add ]; then
   while [ $# -gt 0 ]; do
     case "$1" in
+      --) shift; break ;;
       --user) scope=user; shift ;;
       --all) scope=all; shift ;;
       *) break ;;
@@ -333,15 +344,21 @@ else
   # must not quietly become `done 1`.
   remaining=$#
   i=0
+  endflags=0
   while [ "$i" -lt "$remaining" ]; do
     a=$1
     shift
-    case "$a" in
-      --user) scope=user ;;
-      --all) scope=all ;;
-      --*) die "unknown flag '$a'" ;;
-      *) set -- "$@" "$a" ;;
-    esac
+    if [ "$endflags" -eq 1 ]; then
+      set -- "$@" "$a"
+    else
+      case "$a" in
+        --) endflags=1 ;;
+        --user) scope=user ;;
+        --all) scope=all ;;
+        --*) die "unknown flag '$a' -- put -- before it if it is text" ;;
+        *) set -- "$@" "$a" ;;
+      esac
+    fi
     i=$((i + 1))
   done
 fi
