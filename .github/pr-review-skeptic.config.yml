@@ -13,12 +13,17 @@ users: >-
 
 irreplaceable_data: >-
   Nothing in THIS repo is unrecoverable -- it is all versioned text. The
-  blast radius is on the consuming side: pr-review-loop and
-  pr-review-skeptic drive git and the GitHub API against other people's
-  repositories. A defect there posts a review under the user's account,
-  resolves threads, pushes commits, or removes a worktree and refs from a
-  checkout that is not the skill's own. None of that can be unsent, and
-  some of it cannot be undone.
+  blast radius is on the consuming side, and there are two kinds. First,
+  pr-review-loop and pr-review-skeptic drive git and the GitHub API against
+  other people's repositories: a defect there posts a review under the
+  user's account, resolves threads, pushes commits, or removes a worktree
+  and refs from a checkout that is not the skill's own. None of that can be
+  unsent, and some of it cannot be undone. Second, and the only genuinely
+  irreplaceable data any skill here touches: the `later` store, at
+  ~/.claude/later.md and ~/.claude/projects/<mangled>/later.md. It is
+  unversioned, sits outside any repository, is rewritten in place, and holds
+  thoughts the user deliberately wrote nowhere else. A defect that truncates,
+  clobbers or silently misroutes it loses them with no copy anywhere.
 
 production_status: >-
   Published and installable (Claude Code plugin, MIT, public). Skills are

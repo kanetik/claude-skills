@@ -83,6 +83,21 @@ run maybe 1 "commit def456" > /dev/null
 count=$(grep -c 'possibly handled by' "$store")
 check "re-marking replaces the reason rather than appending" "$count" "1"
 
+# A newline in the reason used to end the entry there and leave the remainder
+# as a line matching no entry pattern -- in the file for good, invisible to
+# both `list` and the digest.
+before=$(wc -l < "$store")
+run maybe 1 "$(printf 'first line\nsecond line')" > /dev/null
+after=$(wc -l < "$store")
+check "a multi-line reason adds no orphan line" "$after" "$before"
+grep -q 'possibly handled by first line second line' "$store" &&
+  ok "a multi-line reason is collapsed, not truncated" ||
+  no "a multi-line reason is collapsed, not truncated" "$(grep 'possibly handled' "$store")"
+
+run maybe 1 'path C:\dir\file' > /dev/null
+grep -q 'possibly handled by path C:\\dir\\file' "$store" &&
+  ok "backslashes in the reason survive awk" || no "backslashes in the reason survive awk" "$(grep 'possibly handled' "$store")"
+
 # --- user store -------------------------------------------------------------
 
 run add --user "cross-repo idea" > /dev/null
@@ -93,6 +108,65 @@ grep -q '(from myrepo) cross-repo idea' "$ustore" &&
   ok "user items record the originating repo" || no "user items record the originating repo" "$(cat "$ustore")"
 grep -q 'cross-repo idea' "$store" && no "user item stays out of the repo store" "leaked" ||
   ok "user item stays out of the repo store"
+
+# The collision three reviewers found: both stores number from 1, so a bare
+# number read off `--all` marked a repository item instead of the user item it
+# was read from -- hiding an unrelated thought while the finished one stayed
+# open. The prefix is what carries the scope from the listing to the command.
+run list --all | grep -q '  u1\. .*cross-repo idea' &&
+  ok "list --all prefixes user items with u" || no "list --all prefixes user items with u" "$(run list --all)"
+run list --all | grep -q 'later.sh done --user' &&
+  ok "list --all says how to mark a u-prefixed item" || no "list --all says how to mark a u-prefixed item" "$(run list --all)"
+run list --user | grep -q '  1\. .*cross-repo idea' &&
+  ok "list --user numbers plainly from 1" || no "list --user numbers plainly from 1" "$(run list --user)"
+
+repo_before=$(opens)
+run done --user 1 > /dev/null
+check "done --user leaves the repo store untouched" "$(opens)" "$repo_before"
+grep -q '^- \[x\] .*cross-repo idea' "$ustore" &&
+  ok "done --user marks the user item" || no "done --user marks the user item" "$(cat "$ustore")"
+
+for bad in done maybe add; do
+  if run "$bad" --all 1 > /dev/null 2>&1; then
+    no "$bad --all is refused" "it succeeded"
+  else
+    ok "$bad --all is refused"
+  fi
+done
+
+# Flag position. `done 1 --user` is the natural typo of the command `list --all`
+# prints; with leading-only parsing the flag was dropped and the mark landed on
+# the same-numbered REPOSITORY item, hiding an unrelated thought.
+run add --user "trailing flag target" > /dev/null
+repo_before=$(opens)
+run done 1 --user > /dev/null 2>&1
+check "done <n> --user does not touch the repo store" "$(opens)" "$repo_before"
+grep -q '^- \[x\] .*trailing flag target' "$ustore" &&
+  ok "done <n> --user marks the user item" || no "done <n> --user marks the user item" "$(cat "$ustore")"
+
+run done 1 --usr > /dev/null 2>&1 && no "an unknown flag is refused" "it succeeded" ||
+  ok "an unknown flag is refused"
+run done 1 banana > /dev/null 2>&1 && no "trailing junk after the number is refused" "it succeeded" ||
+  ok "trailing junk after the number is refused"
+run maybe 1 "" > /dev/null 2>&1 && no "an empty reason is refused" "it succeeded" ||
+  ok "an empty reason is refused"
+run done 0 2>&1 | grep -qi 'sed' && no "done 0 leaks no raw sed error" "$(run done 0 2>&1)" ||
+  ok "done 0 leaks no raw sed error"
+
+# The delimiter between an item and its reason is ordinary prose, so a parked
+# thought can contain it. Marking such an item used to truncate the user's own
+# words out of the only copy that exists.
+sentinel="audit -- possibly handled by nobody, keep this tail"
+run add "$sentinel" > /dev/null
+idx=$(run list | awk '/keep this tail/ { gsub(/[^0-9]/, "", $1); print $1; exit }')
+run maybe "$idx" "commit abc" > /dev/null
+grep -q 'audit -- possibly handled by nobody, keep this tail -- possibly handled by commit abc' "$store" &&
+  ok "marking keeps item text that contains the delimiter" ||
+  no "marking keeps item text that contains the delimiter" "$(grep 'keep this tail' "$store")"
+run maybe "$idx" "commit def" > /dev/null
+grep -q 'audit -- possibly handled by nobody, keep this tail -- possibly handled by commit def' "$store" &&
+  ok "re-marking strips only the reason it wrote" ||
+  no "re-marking strips only the reason it wrote" "$(grep 'keep this tail' "$store")"
 
 # --- show (hook mode) -------------------------------------------------------
 
@@ -126,6 +200,76 @@ run done 99 > /dev/null 2>&1 && no "done on a bad index fails" "it succeeded" ||
   ok "done on a bad index fails"
 run done abc > /dev/null 2>&1 && no "done on a non-number fails" "it succeeded" ||
   ok "done on a non-number fails"
+
+# Pre-2.31 git. There is no fallback on purpose: resolving a relative
+# --git-common-dir against $PWD keys a different store for every working
+# directory, and that failure is silent. Refusing is recoverable.
+realgit=$(command -v git)
+shim="$tmp/shim"
+mkdir -p "$shim"
+{
+  printf '#!/usr/bin/env sh\n'
+  printf 'for a in "$@"; do case "$a" in --path-format=*) echo "error: unknown option" >&2; exit 129 ;; esac; done\n'
+  printf 'exec "%s" "$@"\n' "$realgit"
+} > "$shim/git"
+chmod +x "$shim/git"
+
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" add "on old git" 2>&1)
+if [ $? -eq 0 ]; then
+  no "add is refused on pre-2.31 git" "it succeeded -- the store would fragment by cwd"
+else
+  ok "add is refused on pre-2.31 git"
+fi
+case "$out" in
+  *2.31*) ok "the pre-2.31 message names the git requirement" ;;
+  *) no "the pre-2.31 message names the git requirement" "$out" ;;
+esac
+
+# The digest must degrade rather than break: the repo store is unreachable on
+# old git, but a broken store must never stop a session starting, and the user
+# store is unaffected.
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" show 2>&1)
+rc=$?
+check "show exits 0 on pre-2.31 git" "$rc" "0"
+case "$out" in
+  *"Parked in myrepo"*) no "show drops the unreachable repo store on pre-2.31 git" "$out" ;;
+  *) ok "show drops the unreachable repo store on pre-2.31 git" ;;
+esac
+case "$out" in
+  *error*|*fatal*) no "show emits no git error on pre-2.31 git" "$out" ;;
+  *) ok "show emits no git error on pre-2.31 git" ;;
+esac
+
+# Refusing to WRITE on old git was only half of it. `list` reporting an empty
+# store over items that exist is the same silent failure, on the read side.
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" list 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "list does not claim an unreachable store is empty" "$out" ;;
+  *2.31*) ok "list does not claim an unreachable store is empty" ;;
+  *) no "list does not claim an unreachable store is empty" "$out" ;;
+esac
+
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" path 2>&1)
+case "$out" in
+  *2.31*) ok "path says why rather than printing nothing" ;;
+  *) no "path says why rather than printing nothing" "[$out]" ;;
+esac
+
+# A git that fails for some other reason inside a repo -- dubious ownership is
+# the common one on Windows -- must not be reported as "not a git repository".
+badshim="$tmp/badshim"
+mkdir -p "$badshim"
+{
+  printf '#!/usr/bin/env sh\n'
+  printf 'echo "fatal: detected dubious ownership in repository" >&2\n'
+  printf 'exit 128\n'
+} > "$badshim/git"
+chmod +x "$badshim/git"
+out=$(cd "$repo" && PATH="$badshim:$PATH" sh "$LATER" add "x" 2>&1)
+case "$out" in
+  *"dubious ownership"*) ok "an unrelated git failure is reported as itself" ;;
+  *) no "an unrelated git failure is reported as itself" "$out" ;;
+esac
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

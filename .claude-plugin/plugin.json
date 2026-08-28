@@ -8,5 +8,18 @@
     "./skills/pr-review-skeptic",
     "./skills/post-merge-cleanup",
     "./skills/later"
-  ]
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/later/later.sh\" show",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }

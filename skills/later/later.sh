@@ -41,25 +41,49 @@ mangle() {
 # worktree's own path would tie parked thoughts to a directory that gets
 # deleted when the branch lands, losing them at the exact moment the work they
 # were parked behind finishes.
-# --path-format=absolute (git 2.31+) matters more than it looks: without it git
-# answers with a bare ".git" in the main checkout but an absolute path from a
-# linked worktree, and resolving the relative form against $PWD produces a
-# different string for the same directory -- on Windows a different flavour of
-# path entirely (/c/Users/... against C:/Users/...). Two spellings are two
-# stores, which is this whole function's failure mode rather than an error.
+# --path-format=absolute (git 2.31+) is required rather than preferred, and the
+# reason is that every alternative spelling of this path is a second store.
+#
+# Without it git answers with a bare ".git" in the main checkout, an absolute
+# path from a linked worktree, and "../../.git" from a subdirectory. Resolving
+# those relative forms against $PWD gives a different string for the same
+# directory every time the working directory moves -- and on Windows a
+# different flavour of path entirely (/c/Users/... against C:/Users/...).
+#
+# Two spellings are two stores, and that failure is silent: the thought is
+# written, `list` from elsewhere says "Nothing parked", and nothing errors. So
+# there is no fallback. On older git a repository-scoped store is refused with
+# a message that says why, which is recoverable; a fragmented one is not.
 repo_root() {
-  d=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) ||
-    d=$(git rev-parse --git-common-dir 2>/dev/null) ||
-    return 1
+  d=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   [ -n "$d" ] || return 1
-  case "$d" in
-    /* | ?:*) ;;
-    *) d="$PWD/$d" ;;
-  esac
   case "$d" in
     */.git) d=${d%/.git} ;;
   esac
   printf '%s' "$d"
+}
+
+# Deliberately not wrapped in a resolve_store() helper: `die` inside a command
+# substitution exits only the subshell, so the caller sails on with an empty
+# path and writes nowhere. The check belongs at the call site.
+NO_REPO="not inside a git repository -- use --user to park this at user level"
+
+# Why store_path failed, so the message names the actual problem. Being inside
+# a repository and getting "not inside a git repository" sends the reader
+# looking in the wrong place entirely.
+no_repo_reason() {
+  if err=$(git rev-parse --git-dir 2>&1); then
+    printf '%s' "git 2.31 or newer is required for a repository-scoped store (it needs --path-format) -- park this with --user, or upgrade git"
+    return 0
+  fi
+  case "$err" in
+    # Anything else git says -- a dubious-ownership refusal being much the
+    # commonest -- is passed through rather than reported as "not a repo",
+    # which sends the reader looking in the wrong place entirely.
+    *"not a git repository"*) printf '%s' "$NO_REPO" ;;
+    '') printf '%s' "$NO_REPO" ;;
+    *) printf 'git could not resolve this repository: %s' "$err" ;;
+  esac
 }
 
 repo_name() {
@@ -76,11 +100,6 @@ store_path() {
   [ -n "$r" ] || return 1
   printf '%s/projects/%s/later.md' "$CLAUDE_HOME" "$(mangle "$r")"
 }
-
-# Deliberately not wrapped in a resolve_store() helper: `die` inside a command
-# substitution exits only the subshell, so the caller sails on with an empty
-# path and writes nowhere. The check belongs at the call site.
-NO_REPO="not inside a git repository -- use --user to park this at user level"
 
 # Open and possibly-handled items, as "lineno:text". Handled items stay in the
 # file -- "did I already do this?" is worth answering -- but never display.
@@ -102,8 +121,8 @@ cmd_add() {
   text=$(printf '%s' "$*" | tr '\n\r\t' '   ' | sed 's/  */ /g; s/^ *//; s/ *$//')
   [ -n "$text" ] || die "nothing to park"
 
-  store=$(store_path "$scope") || die "$NO_REPO"
-  [ -n "$store" ] || die "$NO_REPO"
+  store=$(store_path "$scope") || die "$(no_repo_reason)"
+  [ -n "$store" ] || die "$(no_repo_reason)"
   dir=$(dirname "$store")
   mkdir -p "$dir" || die "cannot create $dir"
 
@@ -133,13 +152,20 @@ cmd_add() {
 print_list() {
   store=$1
   label=$2
+  prefix=${3:-}
   n=$(count_entries "$store")
   [ "$n" -gt 0 ] || return 0
   printf '%s:\n' "$label"
-  entries "$store" | awk '{ sub(/^[0-9]+:/, ""); printf "  %d. %s\n", NR, $0 }'
+  entries "$store" | awk -v pfx="$prefix" '{ sub(/^[0-9]+:/, ""); printf "  %s%d. %s\n", pfx, NR, $0 }'
   printf '\n'
 }
 
+# Each store numbers from 1, and `--all` shows both -- so without the prefix
+# there are two items called "1" and the number alone does not say which store
+# it came from. `done`/`maybe` default to the repository store, so a number
+# read off the user half of an `--all` listing would mark an unrelated
+# repository item and hide it, while the item actually finished stayed open.
+# The `u` is what carries the scope from the listing to the command.
 cmd_list() {
   scope=$1
   found=0
@@ -148,11 +174,24 @@ cmd_list() {
     if [ -n "$store" ]; then
       print_list "$store" "Parked in $(repo_name)"
       [ "$(count_entries "$store")" -gt 0 ] && found=1
+    else
+      # Say why rather than reporting an empty list. An unreachable store and
+      # an empty one look identical from here, and reporting "nothing parked"
+      # over items that exist is the silent failure this whole design is
+      # arranged to avoid -- refusing to write was only half of it.
+      printf 'later: repository store unreachable -- %s\n' "$(no_repo_reason)" >&2
+      found=1
     fi
   fi
   if [ "$scope" = user ] || [ "$scope" = all ]; then
     ustore=$(store_path user)
-    print_list "$ustore" "Parked (user)"
+    if [ "$scope" = all ]; then
+      print_list "$ustore" "Parked (user)" "u"
+      [ "$(count_entries "$ustore")" -gt 0 ] &&
+        printf 'Mark a u-prefixed item with --user: later.sh done --user <n>\n\n'
+    else
+      print_list "$ustore" "Parked (user)"
+    fi
     [ "$(count_entries "$ustore")" -gt 0 ] && found=1
   fi
   [ "$found" -eq 1 ] || printf 'Nothing parked.\n'
@@ -164,25 +203,55 @@ cmd_mark() {
   scope=$1
   n=$2
   mark=$3
-  why=${4:-}
+  # Same one-line collapse `add` applies to a parked thought, and for the same
+  # reason: a newline in the reason ends the entry there and leaves the rest as
+  # a line matching no entry pattern -- invisible to `list` and the digest, and
+  # sitting in the store for good.
+  why=$(printf '%s' "${4:-}" | tr '\n\r\t' '   ' | sed 's/  */ /g; s/^ *//; s/ *$//')
 
   case "$n" in
     '' | *[!0-9]*) die "expected an item number, got '${n}'" ;;
   esac
+  # `sed -n "0p"` is an error, not an empty result, so 0 would reach sed and
+  # leak a raw diagnostic before the script's own message.
+  [ "$n" -ge 1 ] || die "item numbers start at 1"
 
-  store=$(store_path "$scope") || die "$NO_REPO"
-  [ -n "$store" ] || die "$NO_REPO"
+  store=$(store_path "$scope") || die "$(no_repo_reason)"
+  [ -n "$store" ] || die "$(no_repo_reason)"
   target=$(entries "$store" | sed -n "${n}p")
-  [ -n "$target" ] || die "no item $n -- run 'list' to see what is parked"
+  if [ -z "$target" ]; then
+    # Name the store the number was looked up in. "run list" alone points at
+    # the repository store, which is the wrong one to go and check.
+    if [ "$scope" = user ]; then
+      die "no user item $n -- run 'list --user' to see what is parked there"
+    fi
+    die "no item $n in this repository -- run 'list' to see what is parked"
+  fi
   lineno=${target%%:*}
 
+  # `why` goes through the environment rather than -v: awk processes escape
+  # sequences in a -v assignment, so a backslash in the reason arrives mangled.
+  #
+  # Stripping a previous reason is deliberately narrow, because the delimiter
+  # is ordinary prose a user could have parked. Two guards: strip only when the
+  # entry is ALREADY marked `~` -- an unmarked one carries no reason of ours,
+  # whatever its text looks like -- and strip at the LAST occurrence, since
+  # that is the one this script appended. Without both, parking a thought that
+  # happens to contain the delimiter and then marking it truncates the user's
+  # own words out of the only copy that exists.
   tmp="${store}.tmp.$$"
-  awk -v ln="$lineno" -v mark="$mark" -v why="$why" '
+  LATER_WHY="$why" awk -v ln="$lineno" -v mark="$mark" '
+    BEGIN { why = ENVIRON["LATER_WHY"]; sep = " -- possibly handled by " }
     NR == ln {
-      sub(/^- \[[ ~]\] /, "")
-      sub(/ -- possibly handled by .*$/, "")
-      if (why != "") printf "- [%s] %s -- possibly handled by %s\n", mark, $0, why
-      else printf "- [%s] %s\n", mark, $0
+      was = substr($0, 4, 1)
+      body = substr($0, 7)
+      if (was == "~") {
+        cut = 0; off = 1
+        while ((i = index(substr(body, off), sep)) > 0) { cut = off + i - 1; off = cut + 1 }
+        if (cut > 0) body = substr(body, 1, cut - 1)
+      }
+      if (why != "") printf "- [%s] %s%s%s\n", mark, body, sep, why
+      else printf "- [%s] %s\n", mark, body
       next
     }
     { print }
@@ -237,24 +306,72 @@ cmd=$1
 shift
 
 scope=repo
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --user) scope=user; shift ;;
-    --all) scope=all; shift ;;
-    *) break ;;
-  esac
-done
 
+# `add` takes leading flags only, because its text is free-form and may
+# legitimately contain something that looks like one. Every other command
+# accepts a scope flag ANYWHERE in its arguments.
+#
+# That asymmetry is the point rather than an inconsistency. `done 1 --user` is
+# the natural typo of the command `list --all` tells you to run, and with
+# leading-only parsing the flag is silently dropped: the mark lands on the
+# repository item with the same number, hiding an unrelated thought while the
+# one actually finished stays open. Silently marking the wrong item in the
+# wrong store is the one failure here with no copy to recover from.
+if [ "$cmd" = add ]; then
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --user) scope=user; shift ;;
+      --all) scope=all; shift ;;
+      *) break ;;
+    esac
+  done
+else
+  # Rotate the argument list, dropping flags and keeping order. An unknown
+  # `--flag` is refused rather than read as a positional -- `done 1 --usr`
+  # must not quietly become `done 1`.
+  remaining=$#
+  i=0
+  while [ "$i" -lt "$remaining" ]; do
+    a=$1
+    shift
+    case "$a" in
+      --user) scope=user ;;
+      --all) scope=all ;;
+      --*) die "unknown flag '$a'" ;;
+      *) set -- "$@" "$a" ;;
+    esac
+    i=$((i + 1))
+  done
+fi
+
+# `--all` names no store to write to, so it is refused rather than quietly
+# meaning "repo" -- which would mark a repository item under a flag the caller
+# used to mean "the other one too".
 case "$cmd" in
-  add) cmd_add "$scope" "$@" ;;
+  add)
+    [ "$scope" = all ] && die "--all is for listing; park with --user or no flag"
+    cmd_add "$scope" "$@"
+    ;;
   list) cmd_list "$scope" ;;
-  done) cmd_mark "$scope" "${1:-}" x ;;
+  done)
+    [ "$scope" = all ] && die "--all does not name a store -- use --user, or no flag for this repository"
+    [ $# -le 1 ] || die "done takes one item number, got: $*"
+    cmd_mark "$scope" "${1:-}" x
+    ;;
   maybe)
+    [ "$scope" = all ] && die "--all does not name a store -- use --user, or no flag for this repository"
     n=${1:-}
     [ $# -gt 0 ] && shift
+    # An empty reason would blank an existing one and re-mark with nothing --
+    # the reason is the whole difference between `maybe` and `done`.
+    [ -n "$*" ] || die "maybe needs a reason -- use 'done $n' to mark it handled outright"
     cmd_mark "$scope" "$n" '~' "$*"
     ;;
   show) cmd_show ;;
-  path) store_path "$scope" && printf '\n' ;;
+  path)
+    p=$(store_path "$scope") || die "$(no_repo_reason)"
+    [ -n "$p" ] || die "$(no_repo_reason)"
+    printf '%s\n' "$p"
+    ;;
   *) die "unknown command '$cmd'" ;;
 esac

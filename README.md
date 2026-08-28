@@ -123,9 +123,10 @@ cp -r ~/Projects/claude-skills/skills/post-merge-cleanup  ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/later               ~/.claude/skills/
 ```
 
-`/later` needs one extra step whichever option you pick: a `SessionStart` hook,
-without which nothing you park is ever read back. See [Per-project setup](#for-later)
-below.
+`/later` needs a `SessionStart` hook to replay what you park. Option A ships it
+declared in the plugin manifest, so there's nothing to do; Options B and C need
+it added by hand. It also needs **git 2.31 or newer** for its per-repository
+store. See [Per-project setup](#for-later) below.
 
 Installing a subset is fine. The loop ships defaulting to Copilot, so it works on its own; add the skeptic when you want the pairing described above, and the loop will tell you at kickoff if it's configured for skeptic and can't find it.
 
@@ -236,9 +237,13 @@ It's deliberately the one key that doesn't follow the usual merge rules: it coun
 
 ### For `/later`
 
-No per-project config — but one **user-level** step, once, and the skill is
-half-useless without it. Capture writes to a store; nothing reads that store
-back unless a `SessionStart` hook is wired up to replay it:
+No per-project config. **Installed as a plugin (Option A), there is nothing to
+set up** — the `SessionStart` hook ships declared in `.claude-plugin/plugin.json`.
+
+**Installed by symlink or copy (Options B and C), add the hook by hand**, once.
+Capture writes to a store, and `later.sh list` will read it back on demand, but
+nothing replays it *unprompted* — which is the half that makes the skill worth
+having — unless the hook is wired up:
 
 ```json
 {
@@ -258,12 +263,19 @@ back unless a `SessionStart` hook is wired up to replay it:
 }
 ```
 
-Point the path at wherever you installed the skill (`${CLAUDE_PLUGIN_ROOT}/skills/later/later.sh`
-for a plugin install; a full path to Git Bash's `sh` on Windows if a bare `sh`
-isn't on PATH). The hook prints nothing when nothing is parked, so it costs you
-nothing on the sessions where you have no backlog. The skill checks for it the
-first time you park something in a session and offers to add it if it's
-missing.
+Use a **literal path** to wherever you installed the skill (and a full path to
+Git Bash's `sh` on Windows, if a bare `sh` isn't on PATH — that applies to the
+plugin install too, whose manifest uses a bare `sh`). `${CLAUDE_PLUGIN_ROOT}`
+does *not* work in your own `settings.json`: it's substituted only for hooks a
+plugin declares in its own manifest, and Claude Code rejects it elsewhere with
+*"Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated
+with a plugin."* That one is at least loud. The failure to watch for is a
+**wrong literal path**, which is silent — the hook is designed to print nothing
+when nothing is parked, so a broken one looks exactly like an empty store.
+
+That same silence is why it costs you nothing on the sessions where you have no
+backlog. The skill checks the hook is wired up the first time you park something
+in a session, and offers to add it if it isn't.
 
 Nothing is stored in your repositories. Repository-scoped thoughts live at
 `~/.claude/projects/<mangled-repo-root>/later.md`, beside that project's
