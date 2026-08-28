@@ -12,7 +12,9 @@
 #   later.sh done [--user] <n>            mark item n handled
 #   later.sh maybe [--user] <n> <why>     mark item n possibly handled
 #   later.sh show                         hook mode: digest, or nothing at all
-#   later.sh path [--user]                print the store path
+#   later.sh path [--user]              print the store path
+#
+# --all is for `list` only: every other command acts on exactly one store.
 #
 # `show` always exits 0. A broken store must never stop a session starting.
 
@@ -344,22 +346,22 @@ else
   done
 fi
 
-# `--all` names no store to write to, so it is refused rather than quietly
-# meaning "repo" -- which would mark a repository item under a flag the caller
-# used to mean "the other one too".
+# `--all` means "both stores", which only `list` can honour. Every other command
+# acts on exactly one, so it is refused rather than quietly meaning "repo" --
+# which would act on a repository item under a flag the caller used to mean the
+# other one too.
+if [ "$scope" = all ] && [ "$cmd" != list ]; then
+  die "--all is only for 'list' -- use --user, or no flag for this repository"
+fi
+
 case "$cmd" in
-  add)
-    [ "$scope" = all ] && die "--all is for listing; park with --user or no flag"
-    cmd_add "$scope" "$@"
-    ;;
+  add) cmd_add "$scope" "$@" ;;
   list) cmd_list "$scope" ;;
   done)
-    [ "$scope" = all ] && die "--all does not name a store -- use --user, or no flag for this repository"
     [ $# -le 1 ] || die "done takes one item number, got: $*"
     cmd_mark "$scope" "${1:-}" x
     ;;
   maybe)
-    [ "$scope" = all ] && die "--all does not name a store -- use --user, or no flag for this repository"
     n=${1:-}
     [ $# -gt 0 ] && shift
     # An empty reason would blank an existing one and re-mark with nothing --

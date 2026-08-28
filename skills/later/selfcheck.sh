@@ -126,13 +126,15 @@ check "done --user leaves the repo store untouched" "$(opens)" "$repo_before"
 grep -q '^- \[x\] .*cross-repo idea' "$ustore" &&
   ok "done --user marks the user item" || no "done --user marks the user item" "$(cat "$ustore")"
 
-for bad in done maybe add; do
+for bad in done maybe add path; do
   if run "$bad" --all 1 > /dev/null 2>&1; then
     no "$bad --all is refused" "it succeeded"
   else
     ok "$bad --all is refused"
   fi
 done
+run list --all > /dev/null 2>&1 && ok "list --all is still accepted" ||
+  no "list --all is still accepted" "it failed"
 
 # Flag position. `done 1 --user` is the natural typo of the command `list --all`
 # prints; with leading-only parsing the flag was dropped and the mark landed on
