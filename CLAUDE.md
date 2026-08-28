@@ -24,11 +24,12 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 2. Add `./skills/<name>` to the `skills` array in `.claude-plugin/plugin.json`.
 3. Add a row to the README's "What's in here" table.
 4. Update the README's "Typical workflow" section if the new skill changes a typical flow.
+5. If the skill needs a hook to work, declare it — either in a `hooks` block in the same `plugin.json`, or in a `hooks/hooks.json` at the plugin root. `${CLAUDE_PLUGIN_ROOT}` is substituted in anything a *plugin* declares and never in a user's own `settings.json`, so declaring it is the only way a plugin install gets a working hook without the user hand-editing their settings. Say in the skill's own `SKILL.md` what a manual install has to add by hand.
 
 ## Rules for removing or renaming a skill
 
 1. Delete the skill folder.
-2. Remove from `.claude-plugin/plugin.json`.
+2. Remove from `.claude-plugin/plugin.json` — from the `skills` array **and from any hook the skill declared**, in that file's `hooks` block or in `hooks/hooks.json`. On a **rename**, update the hook's path rather than deleting it. Either way, a hook left pointing at the old folder means every installed user runs a failing command at every session start. The `skills` array is the obvious half; the hook is the one that ships broken, and a rename is the case that looks least like it needs checking.
 3. Remove from the README table.
 4. Note the removal/rename in the commit message — users may have it installed.
 

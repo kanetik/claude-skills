@@ -175,18 +175,41 @@ plugin identity is known, and Claude Code refuses it in a `settings.json` hook
 with an explicit message rather than expanding it. That failure is at least
 loud. A wrong *literal* path is the silent one, and it is the one to check:
 the hook prints nothing when nothing is parked, so a broken hook and an empty
-store look identical. On Windows, point the command at Git Bash's `sh` by full
-path if a bare `sh` is not resolvable — the plugin manifest uses a bare `sh`
-too, so that applies to a plugin install as much as a manual one.
+store look identical. On Windows a bare `sh` is normally resolvable where Git
+Bash is installed, which Claude Code requires anyway; where it turns out not to
+be, give the full path to `sh.exe`. The bundled plugin hook uses a bare `sh`,
+so a machine where that does not resolve needs the manual install rather than
+an edit to the plugin's own cached manifest.
 
-**Check the hook is wired up the first time a thought is parked in a session.**
-Look for `later.sh` in the user's `settings.json`, and — where this is a plugin
-install — in the plugin manifest. If neither has it, say so once, in one line,
-after the acknowledgement: a write-only store is the worst outcome this skill
-has, and a hook that prints nothing when nothing is parked looks exactly like a
-hook that is missing. Offer to add it; merge into any existing `SessionStart`
-array rather than replacing it. Do not add it unasked, and do not repeat the
-offer later in the session if it is declined.
+**Noticing the hook is not wired.** A write-only store is the worst outcome
+this skill has, so it is worth catching — but only by a test that cannot be
+wrong, because the alternative is telling a user their hook is broken when it
+is not, or worse, "fixing" a hook that was working.
+
+There is exactly one such test, and it needs nothing but what is already in
+front of you: **the digest either appeared at the top of this session or it did
+not.**
+
+So, the first time a thought is parked in a session: if the store already held
+open items *before* this park — `list` says so — and no digest appeared at the
+start of this session, then nothing is replaying the store. Say so once, in one
+line, after the acknowledgement, and point at this file's Resurfacing section.
+Where the store was empty at session start, the absence of a digest means
+nothing and there is nothing to report.
+
+**Do not go looking for the hook, and do not offer to write one.** Neither is
+safe from here. Whether a hook exists cannot be settled by looking at files:
+hooks are equally valid in `settings.json`, `settings.local.json`, a project's
+`.claude/settings.json`, managed settings, a plugin manifest, or a plugin's
+`hooks/hooks.json` — so anything short of reading all of them reports a missing
+hook that exists. And the path to write is not knowable either: under a plugin
+install this skill lives in a **version-stamped cache directory**, so a hook
+written to that path works until the next plugin update and then fails
+silently, for good. That is the failure this section exists to prevent, arrived
+at by trying to prevent it.
+
+Telling the user is the whole job. Where they want it wired, the two install
+shapes are above, and the plugin one needs nothing.
 
 ## Raising a parked item
 

@@ -263,9 +263,9 @@ having — unless the hook is wired up:
 }
 ```
 
-Use a **literal path** to wherever you installed the skill (and a full path to
-Git Bash's `sh` on Windows, if a bare `sh` isn't on PATH — that applies to the
-plugin install too, whose manifest uses a bare `sh`). `${CLAUDE_PLUGIN_ROOT}`
+Use a **literal path** to wherever you installed the skill. (On Windows a bare
+`sh` is normally resolvable wherever Git Bash is installed, which Claude Code
+needs anyway; give the full path to `sh.exe` if it isn't.) `${CLAUDE_PLUGIN_ROOT}`
 does *not* work in your own `settings.json`: it's substituted only for hooks a
 plugin declares in its own manifest, and Claude Code rejects it elsewhere with
 *"Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated
@@ -274,8 +274,12 @@ with a plugin."* That one is at least loud. The failure to watch for is a
 when nothing is parked, so a broken one looks exactly like an empty store.
 
 That same silence is why it costs you nothing on the sessions where you have no
-backlog. The skill checks the hook is wired up the first time you park something
-in a session, and offers to add it if it isn't.
+backlog. It's also why the skill won't go hunting for your hook: whether one
+exists can't be settled by reading files (hooks are valid in several settings
+files, a plugin manifest, or a plugin's `hooks/hooks.json`), and a hook written
+into a plugin's version-stamped cache path would break on the next update. What
+it does instead is notice the one thing it can be sure of — you had items parked
+and no digest appeared — and tell you.
 
 Nothing is stored in your repositories. Repository-scoped thoughts live at
 `~/.claude/projects/<mangled-repo-root>/later.md`, beside that project's
