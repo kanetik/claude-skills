@@ -27,7 +27,10 @@ set -u
 # which makes it 0644 and readable by every other account on the machine. This
 # covers the store, the directory holding it, and the temp file `maybe`/`done`
 # rewrite through, which would otherwise expose the whole store for the length
-# of the rewrite. Existing files keep the permissions they already have.
+# of the rewrite. An existing store keeps its permissions until the next `done`
+# or `maybe`, which replaces it with that temp file and so tightens it -- only
+# ever in that direction. On MSYS/Git Bash the mode reads 0644 whatever the
+# umask; NTFS profile ACLs cover the exposure there instead.
 umask 077
 
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"

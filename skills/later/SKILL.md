@@ -77,9 +77,9 @@ the working directory at run time is the project root, not this folder.
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" show` | The digest the SessionStart hook prints |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" path` | Where this repository's store lives |
 
-Flags come before the text. Item numbers match what `list` last printed, and
-they shift as items are handled — always `list` before `done` or `maybe` rather
-than reusing a number from earlier in the session.
+Item numbers match what `list` last printed, and they shift as items are
+handled — always `list` before `done` or `maybe` rather than reusing a number
+from earlier in the session.
 
 **An item number only means something together with a scope.** Each store
 numbers from 1, so a bare `1` names a repository item and a user item both, and
@@ -100,7 +100,8 @@ means what it looks like, rather than silently marking a repository item.
 
 The store is created with `umask 077`. It holds things the user wrote nowhere
 else, so it should not inherit a default that makes it readable by every other
-account on the machine.
+account on the machine. (On MSYS/Git Bash the mode reads 0644 whatever the
+umask, and NTFS profile permissions cover it there instead.)
 
 ## Choosing the scope
 
@@ -182,11 +183,14 @@ plugin identity is known, and Claude Code refuses it in a `settings.json` hook
 with an explicit message rather than expanding it. That failure is at least
 loud. A wrong *literal* path is the silent one, and it is the one to check:
 the hook prints nothing when nothing is parked, so a broken hook and an empty
-store look identical. On Windows a bare `sh` is normally resolvable where Git
-Bash is installed, which Claude Code requires anyway; where it turns out not to
-be, give the full path to `sh.exe`. The bundled plugin hook uses a bare `sh`,
-so a machine where that does not resolve needs the manual install rather than
-an edit to the plugin's own cached manifest.
+store look identical. On Windows the bare `sh` in these commands resolves
+because hooks run in the Git Bash environment Claude Code uses there — **not**
+because `sh` is on the Windows PATH, where a default Git for Windows install
+does not put it. So `where sh` finding nothing says nothing about the hook, but
+running the command by hand to test it does need the full path to `sh.exe`.
+The bundled plugin hook uses a bare `sh` for the same reason; a machine where
+that turns out not to resolve wants the manual install rather than an edit to
+the plugin's own cached manifest.
 
 **Noticing the hook is not wired.** A write-only store is the worst outcome
 this skill has, so it is worth catching — but only by a test that cannot be
@@ -197,12 +201,19 @@ There is exactly one such test, and it needs nothing but what is already in
 front of you: **the digest either appeared at the top of this session or it did
 not.**
 
-So, the first time a thought is parked in a session: if the store already held
-open items *before* this park — `list` says so — and no digest appeared at the
-start of this session, then nothing is replaying the store. Say so once, in one
-line, after the acknowledgement, and point at this file's Resurfacing section.
-Where the store was empty at session start, the absence of a digest means
-nothing and there is nothing to report.
+So, the first time a thought is parked in a session, read the count `add` just
+printed — `Parked (repo store, N open).` **If `N` is greater than 1** the store
+held items before this park, so a working hook would have shown a digest; if no
+digest appeared at the start of this session, nothing is replaying the store.
+Say so once, in one line, after the acknowledgement, and point at this file's
+Resurfacing section.
+
+**At `N` of 1 there is nothing to report** — the store was empty at session
+start, a working hook correctly printed nothing, and its absence is evidence of
+nothing at all. Take the number from `add`'s own output rather than running
+`list`, which reports the item just parked and so can never tell those two
+apart: read that way, the warning fires on a user's very first park, which is
+the false positive this section exists to rule out.
 
 **Do not go looking for the hook, and do not offer to write one.** Neither is
 safe from here. Whether a hook exists cannot be settled by looking at files:

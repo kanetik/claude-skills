@@ -263,9 +263,12 @@ having — unless the hook is wired up:
 }
 ```
 
-Use a **literal path** to wherever you installed the skill. (On Windows a bare
-`sh` is normally resolvable wherever Git Bash is installed, which Claude Code
-needs anyway; give the full path to `sh.exe` if it isn't.) `${CLAUDE_PLUGIN_ROOT}`
+Use a **literal path** to wherever you installed the skill. (On Windows the
+bare `sh` resolves because hooks run in Claude Code's Git Bash environment, not
+because `sh` is on your PATH — a default Git for Windows install doesn't put it
+there. So `where sh` coming up empty says nothing about the hook; you only need
+the full path to `sh.exe` if you run the command by hand to test it.)
+`${CLAUDE_PLUGIN_ROOT}`
 does *not* work in your own `settings.json`: it's substituted only for hooks a
 plugin declares in its own manifest, and Claude Code rejects it elsewhere with
 *"Hook command references ${CLAUDE_PLUGIN_ROOT} but the hook is not associated
@@ -278,8 +281,10 @@ backlog. It's also why the skill won't go hunting for your hook: whether one
 exists can't be settled by reading files (hooks are valid in several settings
 files, a plugin manifest, or a plugin's `hooks/hooks.json`), and a hook written
 into a plugin's version-stamped cache path would break on the next update. What
-it does instead is notice the one thing it can be sure of — you had items parked
-and no digest appeared — and tell you.
+it does instead is notice the one thing it can be sure of — you already had
+items parked before this one, and no digest appeared — and tell you. On your
+first ever park it stays quiet, because an empty store produces no digest even
+when the hook is working perfectly.
 
 Nothing is stored in your repositories. Repository-scoped thoughts live at
 `~/.claude/projects/<mangled-repo-root>/later.md`, beside that project's

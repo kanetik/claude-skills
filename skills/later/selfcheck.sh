@@ -37,7 +37,15 @@ opens() { run list | grep -c '^  [0-9]*\.' || true; }
 
 # --- store location ---------------------------------------------------------
 
-run add "idea one" > /dev/null
+# The first park into an empty store must report exactly 1. SKILL.md warns
+# "nothing is replaying the store" only above 1, so a 2 here would fire that
+# warning on every user's first ever park -- on a correctly installed hook.
+firstpark=$(cd "$repo" && sh "$LATER" add "idea one" 2>&1)
+case "$firstpark" in
+  *"1 open"*) ok "the first park into an empty store reports 1" ;;
+  *) no "the first park into an empty store reports 1" "$firstpark" ;;
+esac
+
 store=$(run path)
 case "$store" in
   "$CLAUDE_CONFIG_DIR"/projects/*/later.md) ok "store lands under projects/<mangled>/later.md" ;;
@@ -53,6 +61,16 @@ wt_store=$(cd "$wt" && sh "$LATER" path)
 check "worktree resolves to the same store" "$wt_store" "$store"
 
 # --- add / list -------------------------------------------------------------
+
+# SKILL.md's "is the hook wired?" rule reads this count and warns only when it
+# is above 1, so the first park in an empty store must report exactly 1. Report
+# 2 there and the skill tells every new user their hook is broken.
+first=$(cd "$repo" && sh "$LATER" add "count contract" 2>&1)
+case "$first" in
+  *"2 open"*) ok "add reports the count including the item just parked" ;;
+  *) no "add reports the count including the item just parked" "$first" ;;
+esac
+run done 2 > /dev/null
 
 run add "idea two" > /dev/null
 check "two items open" "$(opens)" "2"
@@ -152,12 +170,17 @@ run maybe -- 1 "--no-verify was needed" > /dev/null 2>&1 &&
 # The store holds thoughts written nowhere else; it must not be created at a
 # permissive default umask. Windows reports 0644 regardless, so only assert
 # where the platform actually carries POSIX bits.
-perms=$(stat -c '%a' "$store" 2>/dev/null || echo skip)
+# Both spellings: `-c` is GNU coreutils, `-f` is BSD, and macOS ships the BSD
+# one. Folding an unreadable mode into the pass would make this check green on
+# macOS whatever `umask 077` does -- a test that cannot fail for the regression
+# it names, which is worse than no test, because it reads as coverage.
+perms=$(stat -c '%a' "$store" 2>/dev/null || stat -f '%A' "$store" 2>/dev/null || echo unreadable)
 case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*) ok "store permissions (skipped: no POSIX bits on this platform)" ;;
   *)
     case "$perms" in
-      600|skip) ok "the store is created private" ;;
+      600) ok "the store is created private" ;;
+      unreadable) no "the store is created private" "could not read the mode; neither stat -c nor stat -f worked" ;;
       *) no "the store is created private" "mode $perms" ;;
     esac
     ;;
