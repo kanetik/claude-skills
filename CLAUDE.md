@@ -1,12 +1,16 @@
 # CLAUDE.md — instructions for AI working on this repo
 
-This repo is a **collection of Claude Code skills** I find useful and worth sharing, published for others to use. It's not themed around one domain — whatever makes a good, self-contained skill can live here. It's not an application — it has no build, no tests, no runtime. The deliverable is the prose inside each `SKILL.md`.
+This repo is a **collection of Claude Code skills** I find useful and worth sharing, published for others to use. It's not themed around one domain — whatever makes a good, self-contained skill can live here. It's not an application: there's no build and no runtime, and for most skills the deliverable is the prose inside each `SKILL.md`.
+
+**But a skill may bundle executable support files, and one does.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `skills/later/selfcheck.sh` (63 assertions, `sh skills/later/selfcheck.sh`, touches nothing outside its own temp directory). Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
 
 ## What goes here
 
 - `skills/<name>/SKILL.md` — one skill per folder, frontmatter + body
-- `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports
+- `skills/<name>/*.sh` — optional bundled scripts, each with a self-check beside it
+- `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports, and any hook a skill declares
 - `README.md` — what the skills do, how to install, design principles
+- `.gitattributes` — pins `*.sh` to LF so shipped scripts work off a Windows checkout
 - `LICENSE`, `.gitignore` — standard
 
 ## Rules for changing skills
@@ -24,11 +28,12 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 2. Add `./skills/<name>` to the `skills` array in `.claude-plugin/plugin.json`.
 3. Add a row to the README's "What's in here" table.
 4. Update the README's "Typical workflow" section if the new skill changes a typical flow.
+5. If the skill needs a hook to work, declare it — either in a `hooks` block in the same `plugin.json`, or in a `hooks/hooks.json` at the plugin root. `${CLAUDE_PLUGIN_ROOT}` is substituted in anything a *plugin* declares and never in a user's own `settings.json`, so declaring it is the only way a plugin install gets a working hook without the user hand-editing their settings. Say in the skill's own `SKILL.md` what a manual install has to add by hand.
 
 ## Rules for removing or renaming a skill
 
 1. Delete the skill folder.
-2. Remove from `.claude-plugin/plugin.json`.
+2. Remove from `.claude-plugin/plugin.json` — from the `skills` array **and from any hook the skill declared**, in that file's `hooks` block or in `hooks/hooks.json`. On a **rename**, update the hook's path rather than deleting it. Either way, a hook left pointing at the old folder means every installed user runs a failing command at every session start. The `skills` array is the obvious half; the hook is the one that ships broken, and a rename is the case that looks least like it needs checking.
 3. Remove from the README table.
 4. Note the removal/rename in the commit message — users may have it installed.
 
