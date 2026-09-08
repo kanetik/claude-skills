@@ -96,6 +96,7 @@ ln -s ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/pr-re
 ln -s ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/pr-review-skeptic
 ln -s ~/Projects/claude-skills/skills/post-merge-cleanup  ~/.claude/skills/post-merge-cleanup
 ln -s ~/Projects/claude-skills/skills/later               ~/.claude/skills/later
+ln -s ~/Projects/claude-skills/skills/ga4-custom-dimension ~/.claude/skills/ga4-custom-dimension
 ```
 
 **Windows (directory junctions, no admin required):**
@@ -108,6 +109,7 @@ mklink /J "%USERPROFILE%\.claude\skills\pr-review-loop"     "%USERPROFILE%\Proje
 mklink /J "%USERPROFILE%\.claude\skills\pr-review-skeptic"  "%USERPROFILE%\Projects\claude-skills\skills\pr-review-skeptic"
 mklink /J "%USERPROFILE%\.claude\skills\post-merge-cleanup" "%USERPROFILE%\Projects\claude-skills\skills\post-merge-cleanup"
 mklink /J "%USERPROFILE%\.claude\skills\later"             "%USERPROFILE%\Projects\claude-skills\skills\later"
+mklink /J "%USERPROFILE%\.claude\skills\ga4-custom-dimension" "%USERPROFILE%\Projects\claude-skills\skills\ga4-custom-dimension"
 ```
 
 ### Option C — plain copy
@@ -122,6 +124,7 @@ cp -r ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/post-merge-cleanup  ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/later               ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/ga4-custom-dimension ~/.claude/skills/
 ```
 
 `/later` needs a `SessionStart` hook to replay what you park. Option A ships it
