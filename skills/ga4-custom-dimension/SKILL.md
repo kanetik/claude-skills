@@ -63,9 +63,12 @@ Do **not** re-authenticate ADC to fix this. Mint a scoped token instead.
 The service account needs Editor on the GA4 property, granted in GA4 Admin →
 Property Access Management by adding its email. A GCP IAM role grants nothing
 here, so granting one and still getting a `403` is the usual first wrong turn.
-**A service account named `*-reader` may still hold write access** — test rather
-than assume. Step 2's read is that test; never probe with step 3's write, which
-cannot be undone.
+**A service account named `*-reader` may still hold write access** — the name is
+not the role. Step 2's read does not settle it: any role down to Viewer can read
+a property, so a `200` there says the identity reaches the property and the scope
+is good, and nothing about Editor. Write access is not testable without writing,
+so a `403` on step 3 is the first sign that this grant is missing — "When it
+fails" says what to do about it.
 
 ## Procedure
 
@@ -90,8 +93,8 @@ a credentials problem when the credentials were fine.
 
 **2. Check the property is the one you mean.** The id is a bare number, so a
 stale one from another project looks exactly like the right one — and the write
-in step 3 cannot be undone. Read the property back and confirm the name with the
-user before writing to it:
+in step 3 cannot be undone. Read the property back, and put the name it
+returns to the user:
 
 ```bash
 # Impersonating instead? Replace --account with --impersonate-service-account,
@@ -110,16 +113,17 @@ $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceacco
 Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>"
 ```
 
-`displayName` is the property as it appears in the GA4 console, and seeing it is
-what licenses the write. A name you do not recognise means the wrong property —
-stop and ask.
+**Go on to step 3 only when both of these hold**: the call returned the
+property, and the user has confirmed `displayName` is the one they mean. That
+second judgement is not yours to make — a property name you have never seen reads
+as plausible either way, and what it gates cannot be undone.
 
-Anything else means you did not read the property at all, and `403` is the
+**Anything else stops here** — an error, or a name the user does not confirm.
+Say what came back and ask. The PowerShell form prints no status line and throws
+on a 4xx, so there what came back is the error it raises. A `403` is the
 ambiguous one: a property that does not exist, one this identity cannot see, a
-missing scope, and an API that is not enabled all return it. None of them tells
-you the id is right. Resolve it and run this step again rather than writing —
-the PowerShell form throws on a 4xx and prints nothing, so the rule reads the
-same either way: no `displayName`, no write.
+missing scope, and an API that is not enabled all return it, and none of them
+tells you the id is right.
 
 **3. Create the dimension.**
 
@@ -129,7 +133,7 @@ same either way: no `displayName`, no write.
 TOKEN=$(gcloud auth print-access-token \
   --account="<sa>@<project>.iam.gserviceaccount.com" \
   --scopes="https://www.googleapis.com/auth/analytics.edit") && \
-curl -sS -X POST \
+curl -sS -w "\nHTTP %{http_code}\n" -X POST \
   "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -156,7 +160,8 @@ has — minting the token again in the same invocation, for the reason above:
 TOKEN=$(gcloud auth print-access-token \
   --account="<sa>@<project>.iam.gserviceaccount.com" \
   --scopes="https://www.googleapis.com/auth/analytics.edit") && \
-curl -sS "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" \
+curl -sS -w "\nHTTP %{http_code}\n" \
+  "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -166,9 +171,10 @@ $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceacco
 Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions"
 ```
 
-Reporting on the new dimension starts from events sent after this point, so a
-Data API query for it returns nothing until new events arrive. An empty report
-immediately afterwards is expected and is not a failed registration.
+Look for the `parameterName` you just registered in that list. Reporting on the
+new dimension starts from events sent after this point, so a Data API query for
+it returns nothing until new events arrive. An empty report immediately
+afterwards is expected and is not a failed registration.
 
 ## Where the identifiers live
 
@@ -178,8 +184,8 @@ this skill, and never assume a value carried over from another project.
 
 A wrong property id is the one that costs something you cannot take back — it registers
 a real dimension against someone else's property, and dimensions cannot be
-deleted, only archived — which is why step 2 reads the property back rather than
-trusting the number.
+deleted, only archived — which is why step 3 does not run until step 2's read
+has been confirmed with you.
 
 ## When it fails
 
@@ -195,6 +201,11 @@ what is wrong.
 
 A `403 SERVICE_DISABLED` means the Analytics Admin API is not enabled on the
 service account's project; the body carries the activation URL.
+
+A `403` on the create call *after* step 2's read succeeded is the property role:
+the identity can see the property but is not an Editor on it. Grant that in GA4
+Admin → Property Access Management — step 2 cannot catch this, because reading a
+property needs no more than Viewer.
 
 A property has a cap on custom dimensions and the API refuses once it is
 reached; the error names the limit. Archive one that is no longer read rather
