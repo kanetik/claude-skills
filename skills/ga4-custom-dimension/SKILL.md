@@ -73,19 +73,21 @@ try the call before concluding you need a different identity.
 gcloud auth list
 ```
 
-**2. Mint an Analytics-scoped token for it.** `--scopes` on
-`print-access-token` does this *without* modifying ADC, which is what makes it
-safe to run on a machine whose ADC is set up for something else:
+**2. Mint a scoped token and create the dimension, in one invocation.** `--scopes`
+on `print-access-token` mints an Analytics-scoped token *without* modifying ADC,
+which is what makes this safe on a machine whose ADC is set up for something
+else.
+
+**Keep it to one shell invocation.** Agent shells commonly do not carry
+environment variables between calls, so a token minted in one call and used in
+the next sends an empty `Authorization` header and the API answers `401
+UNAUTHENTICATED` — which reads as a credentials problem when the credentials
+were fine.
 
 ```bash
 TOKEN=$(gcloud auth print-access-token \
   --account="<sa>@<project>.iam.gserviceaccount.com" \
-  --scopes="https://www.googleapis.com/auth/analytics.edit")
-```
-
-**3. Create the dimension.**
-
-```bash
+  --scopes="https://www.googleapis.com/auth/analytics.edit") && \
 curl -sS -X POST \
   "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" \
   -H "Authorization: Bearer $TOKEN" \
@@ -97,7 +99,8 @@ curl -sS -X POST \
 `parameterName` must match the emitted parameter exactly; `displayName` is what
 appears in reports and only has to be unique.
 
-PowerShell, where `curl` is awkward:
+PowerShell, where `curl` is awkward — run the block as one unit, for the same
+reason:
 
 ```powershell
 $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
@@ -105,10 +108,13 @@ $body = @{ parameterName = "<param>"; displayName = "<Display Name>"; scope = "E
 Invoke-RestMethod -Method Post -ContentType "application/json" -Body $body -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions"
 ```
 
-**4. Confirm it landed.** A `GET` on the same collection lists what the property
-has:
+**3. Confirm it landed.** A `GET` on the same collection lists what the property
+has — minting the token again in the same invocation, for the reason above:
 
 ```bash
+TOKEN=$(gcloud auth print-access-token \
+  --account="<sa>@<project>.iam.gserviceaccount.com" \
+  --scopes="https://www.googleapis.com/auth/analytics.edit") && \
 curl -sS "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" \
   -H "Authorization: Bearer $TOKEN"
 ```
