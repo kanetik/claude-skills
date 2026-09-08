@@ -91,10 +91,10 @@ between calls, so a token minted in one call and used in the next sends an empty
 `Authorization` header and the API answers `401 UNAUTHENTICATED` — which reads as
 a credentials problem when the credentials were fine.
 
-**2. Check the property is the one you mean.** The id is a bare number, so a
-stale one from another project looks exactly like the right one — and the write
-in step 3 cannot be undone. Read the property back, and put the name it
-returns to the user:
+**2. Check what step 3 is about to write.** The property id is a bare number, so
+a stale one from another project looks exactly like the right one — and nothing
+step 3 writes can be undone. Read the property back, and put the name it returns
+to the user:
 
 ```bash
 # Impersonating instead? Replace --account with --impersonate-service-account,
@@ -113,12 +113,23 @@ $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceacco
 Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>"
 ```
 
-**Go on to step 3 only when both of these hold**: the call returned the
-property, and the user has confirmed `displayName` is the one they mean. That
-second judgement is not yours to make — a property name you have never seen reads
-as plausible either way, and what it gates cannot be undone.
+**Go on to step 3 only when the call returned the property and the user has
+confirmed all three of these**, which is everything step 3 writes that cannot be
+changed afterwards:
 
-**Anything else stops here** — an error, or a name the user does not confirm.
+| | |
+|---|---|
+| the property | `displayName` from the response, not the number you sent |
+| `parameterName` | exactly as the app emits it, read off the analytics call site in the code — `Immutable`, and pre-release there is nowhere else to check it |
+| `scope` | `EVENT`, `USER` or `ITEM`, matching how the parameter is sent — also `Immutable` |
+
+None of those judgements is yours to make, and **none of the three fails
+loudly**. A property you can reach but did not mean returns `200` and takes the
+write; so do a wrong `parameterName` and a wrong `scope`, on a dimension that
+then reports `(not set)` for ever. A name you have never seen reads as plausible
+either way, which is what the confirmation is for.
+
+**Anything else stops here** — an error, or anything the user does not confirm.
 Say what came back and ask. The PowerShell form prints no status line and throws
 on a 4xx, so there what came back is the error it raises. A `403` is the
 ambiguous one: a property that does not exist, one this identity cannot see, a
@@ -140,9 +151,9 @@ curl -sS -w "\nHTTP %{http_code}\n" -X POST \
   -d '{"parameterName":"<param>","displayName":"<Display Name>","scope":"EVENT"}'
 ```
 
-`scope` is `EVENT`, `USER`, or `ITEM`, and matches how the parameter is sent.
-`parameterName` must match the emitted parameter exactly; `displayName` is what
-appears in reports and only has to be unique.
+`displayName` is what appears in reports and is one of the fields you can change
+afterwards: max 82 characters, alphanumeric plus space and underscore, starting
+with a letter.
 
 ```powershell
 # Impersonating instead? Replace --account with --impersonate-service-account.
@@ -185,22 +196,34 @@ Property IDs, service account names and project ids are per-project. Keep them
 in the consuming repo's own config, `CLAUDE.md`, or project memory — never in
 this skill, and never assume a value carried over from another project.
 
-A wrong property id is the one that costs something you cannot take back — it registers
-a real dimension against someone else's property, and dimensions cannot be
-deleted, only archived — which is why step 3 does not run until step 2's read
-has been confirmed with the user.
+None of it can be taken back. A wrong property id registers a real dimension
+against a property you did not mean; a wrong `parameterName` or `scope`
+registers one that never reports anything. Dimensions cannot be deleted, only
+archived, and each one spends a slot against the property's cap — which is why
+step 3 does not run until the user has confirmed all three.
 
 ## When it fails
 
-A `400` naming the field usually means `parameterName` does not match what is
-actually emitted — check the event in DebugView or the Firebase console before
-changing anything here.
+A `400` is answered by the response body, which names the constraint that was
+violated — an invalid character or an over-length value in `parameterName` or
+`displayName`, a reserved `ga_`/`firebase_`/`google_` prefix, or a
+`parameterName` already registered at this scope. The create call validates
+the request and nothing else: it cannot see your event data, so a `400` never
+means the app is not emitting the parameter. That question belongs after the
+release, when a registered dimension reports `(not set)` and DebugView has
+something to show.
+
+On the impersonation route gcloud warns that `--scopes` "may not work as
+expected and will be ignored for account type impersonated_account". It is not
+ignored — the scopes are applied to the impersonated credential and reach
+`generateAccessToken`. Proceed; the call returning `200` is the answer.
 
 `Invalid value for [--scopes]` from gcloud, listing a fixed set that includes
-`cloud-platform` and `drive`, means the token was minted for a user account —
-`--scopes` is accepted only for service-account or impersonated credentials. The
-message names the scopes, so it reads as a bad scope string when the account is
-what is wrong.
+`cloud-platform` and `drive`, means the token was minted for a user account. A
+user account takes `--scopes` only from that fixed list, and `analytics.edit` is
+not on it; a service account or an impersonated one takes any scope. The message
+names the scopes, so it reads as a bad scope string when the account is what is
+wrong.
 
 A `403 SERVICE_DISABLED` means the Analytics Admin API is not enabled on the
 service account's project; the body carries the activation URL.
