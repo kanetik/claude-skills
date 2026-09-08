@@ -64,7 +64,8 @@ The service account needs Editor on the GA4 property, granted in GA4 Admin →
 Property Access Management by adding its email. A GCP IAM role grants nothing
 here, so granting one and still getting a `403` is the usual first wrong turn.
 **A service account named `*-reader` may still hold write access** — test rather
-than assume, and try the call before concluding you need a different identity.
+than assume. Step 2's read is that test; never probe with step 3's write, which
+cannot be undone.
 
 ## Procedure
 
@@ -76,18 +77,51 @@ gcloud auth list
 
 That lists *credentialed* accounts, service and user alike. A service account
 you can only impersonate does not appear there; its name is a per-project
-identifier like the others below.
+identifier, as are the property id and project id the blocks below need. Ask for
+any of the three you do not have rather than guessing.
 
-**2. Mint a scoped token and create the dimension, in one invocation.** `--scopes`
-on `print-access-token` mints an Analytics-scoped token *without* modifying ADC,
-which is what makes this safe on a machine whose ADC is set up for something
-else.
+**Two things govern every block below.** `--scopes` on `print-access-token` mints
+an Analytics-scoped token *without* modifying ADC, which is what makes this safe
+on a machine whose ADC is set up for something else. And **keep each block to one
+shell invocation**: agent shells commonly do not carry environment variables
+between calls, so a token minted in one call and used in the next sends an empty
+`Authorization` header and the API answers `401 UNAUTHENTICATED` — which reads as
+a credentials problem when the credentials were fine.
 
-**Keep it to one shell invocation.** Agent shells commonly do not carry
-environment variables between calls, so a token minted in one call and used in
-the next sends an empty `Authorization` header and the API answers `401
-UNAUTHENTICATED` — which reads as a credentials problem when the credentials
-were fine.
+**2. Check the property is the one you mean.** The id is a bare number, so a
+stale one from another project looks exactly like the right one — and the write
+in step 3 cannot be undone. Read the property back and confirm the name with the
+user before writing to it:
+
+```bash
+# Impersonating instead? Replace --account with --impersonate-service-account,
+# same value, in this block and every other one here.
+TOKEN=$(gcloud auth print-access-token \
+  --account="<sa>@<project>.iam.gserviceaccount.com" \
+  --scopes="https://www.googleapis.com/auth/analytics.edit") && \
+curl -sS -w "\nHTTP %{http_code}\n" \
+  "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```powershell
+# Impersonating instead? Replace --account with --impersonate-service-account.
+$tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>"
+```
+
+`displayName` is the property as it appears in the GA4 console, and seeing it is
+what licenses the write. A name you do not recognise means the wrong property —
+stop and ask.
+
+Anything else means you did not read the property at all, and `403` is the
+ambiguous one: a property that does not exist, one this identity cannot see, a
+missing scope, and an API that is not enabled all return it. None of them tells
+you the id is right. Resolve it and run this step again rather than writing —
+the PowerShell form throws on a 4xx and prints nothing, so the rule reads the
+same either way: no `displayName`, no write.
+
+**3. Create the dimension.**
 
 ```bash
 # Impersonating instead? Replace --account with --impersonate-service-account,
@@ -106,9 +140,6 @@ curl -sS -X POST \
 `parameterName` must match the emitted parameter exactly; `displayName` is what
 appears in reports and only has to be unique.
 
-PowerShell, where `curl` is awkward — run the block as one unit, for the same
-reason:
-
 ```powershell
 # Impersonating instead? Replace --account with --impersonate-service-account.
 $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
@@ -116,7 +147,7 @@ $body = @{ parameterName = "<param>"; displayName = "<Display Name>"; scope = "E
 Invoke-RestMethod -Method Post -ContentType "application/json" -Body $body -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions"
 ```
 
-**3. Confirm it landed.** A `GET` on the same collection lists what the property
+**4. Confirm it landed.** A `GET` on the same collection lists what the property
 has — minting the token again in the same invocation, for the reason above:
 
 ```bash
@@ -129,6 +160,12 @@ curl -sS "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/c
   -H "Authorization: Bearer $TOKEN"
 ```
 
+```powershell
+# Impersonating instead? Replace --account with --impersonate-service-account.
+$tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions"
+```
+
 Reporting on the new dimension starts from events sent after this point, so a
 Data API query for it returns nothing until new events arrive. An empty report
 immediately afterwards is expected and is not a failed registration.
@@ -139,9 +176,10 @@ Property IDs, service account names and project ids are per-project. Keep them
 in the consuming repo's own config, `CLAUDE.md`, or project memory — never in
 this skill, and never assume a value carried over from another project.
 
-Ask for whichever of the three you do not have rather than guessing: a wrong
-property id registers a real dimension against the wrong property, and
-dimensions cannot be deleted, only archived.
+A wrong property id is the one that costs something you cannot take back — it registers
+a real dimension against someone else's property, and dimensions cannot be
+deleted, only archived — which is why step 2 reads the property back rather than
+trusting the number.
 
 ## When it fails
 
