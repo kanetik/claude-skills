@@ -168,7 +168,7 @@ curl -sS -w "\nHTTP %{http_code}\n" \
 ```powershell
 # Impersonating instead? Replace --account with --impersonate-service-account.
 $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
-Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions"
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" | Select-Object -ExpandProperty customDimensions | Format-Table parameterName, displayName, scope
 ```
 
 Look for the `parameterName` you just registered in that list. Reporting on the
@@ -185,7 +185,7 @@ this skill, and never assume a value carried over from another project.
 A wrong property id is the one that costs something you cannot take back — it registers
 a real dimension against someone else's property, and dimensions cannot be
 deleted, only archived — which is why step 3 does not run until step 2's read
-has been confirmed with you.
+has been confirmed with the user.
 
 ## When it fails
 
