@@ -148,7 +148,7 @@ curl -sS -w "\nHTTP %{http_code}\n" -X POST \
   "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"parameterName":"<param>","displayName":"<Display Name>","scope":"EVENT"}'
+  -d '{"parameterName":"<param>","displayName":"<Display Name>","scope":"<EVENT|USER|ITEM>"}'
 ```
 
 `displayName` is what appears in reports and is one of the fields you can change
@@ -158,7 +158,7 @@ with a letter.
 ```powershell
 # Impersonating instead? Replace --account with --impersonate-service-account.
 $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
-$body = @{ parameterName = "<param>"; displayName = "<Display Name>"; scope = "EVENT" } | ConvertTo-Json
+$body = @{ parameterName = "<param>"; displayName = "<Display Name>"; scope = "<EVENT|USER|ITEM>" } | ConvertTo-Json
 Invoke-RestMethod -Method Post -ContentType "application/json" -Body $body -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions"
 ```
 
