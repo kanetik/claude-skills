@@ -12,7 +12,6 @@ description: |
   /ga4-custom-dimension.
 allowed-tools:
   - Bash
-  - Read
   - AskUserQuestion
 ---
 
@@ -61,9 +60,11 @@ Do **not** re-authenticate ADC to fix this. Mint a scoped token instead.
 | A GA4 property ID | numeric, from the GA4 admin UI or `properties/<id>` in any Data API call |
 | `curl` | or any HTTP client; a PowerShell form is given below |
 
-A service account needs the Editor role on the property. **A service account
-named `*-reader` may still hold write access** — test rather than assume, and
-try the call before concluding you need a different identity.
+The service account needs Editor on the GA4 property, granted in GA4 Admin →
+Property Access Management by adding its email. A GCP IAM role grants nothing
+here, so granting one and still getting a `403` is the usual first wrong turn.
+**A service account named `*-reader` may still hold write access** — test rather
+than assume, and try the call before concluding you need a different identity.
 
 ## Procedure
 
@@ -72,6 +73,11 @@ try the call before concluding you need a different identity.
 ```bash
 gcloud auth list
 ```
+
+If none is listed, impersonate one rather than installing a key: drop `--account`
+from the command below and pass
+`--impersonate-service-account="<sa>@<project>.iam.gserviceaccount.com"` instead,
+which needs Service Account Token Creator on that account.
 
 **2. Mint a scoped token and create the dimension, in one invocation.** `--scopes`
 on `print-access-token` mints an Analytics-scoped token *without* modifying ADC,
@@ -138,6 +144,15 @@ dimensions cannot be deleted, only archived.
 A `400` naming the field usually means `parameterName` does not match what is
 actually emitted — check the event in DebugView or the Firebase console before
 changing anything here.
+
+`Invalid value for [--scopes]` from gcloud, listing a fixed set that includes
+`cloud-platform` and `drive`, means the token was minted for a user account —
+`--scopes` is accepted only for service-account or impersonated credentials. The
+message names the scopes, so it reads as a bad scope string when the account is
+what is wrong.
+
+A `403 SERVICE_DISABLED` means the Analytics Admin API is not enabled on the
+service account's project; the body carries the activation URL.
 
 A property has a cap on custom dimensions and the API refuses once it is
 reached; the error names the limit. Archive one that is no longer read rather
