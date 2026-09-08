@@ -56,7 +56,7 @@ Do **not** re-authenticate ADC to fix this. Mint a scoped token instead.
 
 | | |
 |---|---|
-| `gcloud` | authenticated, with at least one service account credentialed |
+| `gcloud` | authenticated, with a credentialed service account — or Service Account Token Creator on one to impersonate |
 | A GA4 property ID | numeric, from the GA4 admin UI or `properties/<id>` in any Data API call |
 | `curl` | or any HTTP client; a PowerShell form is given below |
 
@@ -68,16 +68,15 @@ than assume, and try the call before concluding you need a different identity.
 
 ## Procedure
 
-**1. Find a credentialed service account.**
+**1. Find a service account to mint the token for.**
 
 ```bash
 gcloud auth list
 ```
 
-If none is listed, impersonate one rather than installing a key: drop `--account`
-from the command below and pass
-`--impersonate-service-account="<sa>@<project>.iam.gserviceaccount.com"` instead,
-which needs Service Account Token Creator on that account.
+That lists *credentialed* accounts, service and user alike. A service account
+you can only impersonate does not appear there; its name is a per-project
+identifier like the others below.
 
 **2. Mint a scoped token and create the dimension, in one invocation.** `--scopes`
 on `print-access-token` mints an Analytics-scoped token *without* modifying ADC,
@@ -91,6 +90,8 @@ UNAUTHENTICATED` — which reads as a credentials problem when the credentials
 were fine.
 
 ```bash
+# Impersonating instead? Replace --account with --impersonate-service-account,
+# same value, in this block and every other one here.
 TOKEN=$(gcloud auth print-access-token \
   --account="<sa>@<project>.iam.gserviceaccount.com" \
   --scopes="https://www.googleapis.com/auth/analytics.edit") && \
@@ -109,6 +110,7 @@ PowerShell, where `curl` is awkward — run the block as one unit, for the same
 reason:
 
 ```powershell
+# Impersonating instead? Replace --account with --impersonate-service-account.
 $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
 $body = @{ parameterName = "<param>"; displayName = "<Display Name>"; scope = "EVENT" } | ConvertTo-Json
 Invoke-RestMethod -Method Post -ContentType "application/json" -Body $body -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions"
@@ -118,6 +120,8 @@ Invoke-RestMethod -Method Post -ContentType "application/json" -Body $body -Head
 has — minting the token again in the same invocation, for the reason above:
 
 ```bash
+# Impersonating instead? Replace --account with --impersonate-service-account,
+# same value, in this block and every other one here.
 TOKEN=$(gcloud auth print-access-token \
   --account="<sa>@<project>.iam.gserviceaccount.com" \
   --scopes="https://www.googleapis.com/auth/analytics.edit") && \
