@@ -161,20 +161,23 @@ TOKEN=$(gcloud auth print-access-token \
   --account="<sa>@<project>.iam.gserviceaccount.com" \
   --scopes="https://www.googleapis.com/auth/analytics.edit") && \
 curl -sS -w "\nHTTP %{http_code}\n" \
-  "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" \
+  "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions?pageSize=200" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ```powershell
 # Impersonating instead? Replace --account with --impersonate-service-account.
 $tok = gcloud auth print-access-token --account="<sa>@<project>.iam.gserviceaccount.com" --scopes="https://www.googleapis.com/auth/analytics.edit"
-Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions" | Select-Object -ExpandProperty customDimensions | Format-Table parameterName, displayName, scope
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $tok" } -Uri "https://analyticsadmin.googleapis.com/v1beta/properties/<propertyId>/customDimensions?pageSize=200" | Select-Object -ExpandProperty customDimensions | Format-Table parameterName, displayName, scope
 ```
 
-Look for the `parameterName` you just registered in that list. Reporting on the
-new dimension starts from events sent after this point, so a Data API query for
-it returns nothing until new events arrive. An empty report immediately
-afterwards is expected and is not a failed registration.
+Look for the `parameterName` you just registered in that list. A `nextPageToken`
+in the response means the list is truncated, and a missing name proves nothing
+until you have fetched the rest.
+
+Reporting on the new dimension starts from events sent after this point, so a
+Data API query for it returns nothing until new events arrive. An empty report
+immediately afterwards is expected and is not a failed registration.
 
 ## Where the identifiers live
 
