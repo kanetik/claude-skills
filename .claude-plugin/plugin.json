@@ -7,7 +7,8 @@
     "./skills/pr-review-loop",
     "./skills/pr-review-skeptic",
     "./skills/post-merge-cleanup",
-    "./skills/later"
+    "./skills/later",
+    "./skills/ga4-custom-dimension"
   ],
   "hooks": {
     "SessionStart": [
