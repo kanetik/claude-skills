@@ -37,9 +37,8 @@ opens() { run list | grep -c '^  [0-9]*\.' || true; }
 
 # --- store location ---------------------------------------------------------
 
-# The first park into an empty store must report exactly 1. SKILL.md warns
-# "nothing is replaying the store" only above 1, so a 2 here would fire that
-# warning on every user's first ever park -- on a correctly installed hook.
+# The count `add` reports includes the park it just made, so the first one into
+# an empty store is 1.
 firstpark=$(cd "$repo" && sh "$LATER" add "idea one" 2>&1)
 case "$firstpark" in
   *"1 open"*) ok "the first park into an empty store reports 1" ;;
@@ -237,15 +236,15 @@ grep -q 'audit -- possibly handled by nobody, keep this tail -- possibly handled
 run show | grep -q 'Parked in myrepo' && ok "show reports the repo store" ||
   no "show reports the repo store" "$(run show)"
 
-# Silence when there is nothing to say -- the property that keeps the digest
-# worth reading.
+# An empty store still prints. A digest that is silent when it has no news is
+# indistinguishable from a hook that never ran.
 empty="$tmp/empty"
 mkdir -p "$empty"
 git -C "$empty" init -q
 out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show)
-check "show prints nothing when nothing is parked" "$out" ""
+check "show says so when nothing is parked" "$out" "Nothing parked, via the /later skill."
 
-out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show; echo "rc=$?")
+out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show >/dev/null; echo "rc=$?")
 check "show exits 0 with an empty store" "$out" "rc=0"
 
 # --- failure modes ----------------------------------------------------------

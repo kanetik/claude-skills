@@ -11,7 +11,7 @@
 #   later.sh list [--user|--all]          numbered open items
 #   later.sh done [--user] <n>            mark item n handled
 #   later.sh maybe [--user] <n> <why>     mark item n possibly handled
-#   later.sh show                         hook mode: digest, or nothing at all
+#   later.sh show                         hook mode: the digest
 #   later.sh path [--user]                print the store path
 #
 # -- ends the flags, for text or a reason that starts with one.
@@ -285,8 +285,9 @@ cmd_mark() {
   sed -n "${lineno}p" "$store"
 }
 
-# Hook mode. Prints nothing when nothing is parked -- a digest that appears
-# every session whether or not it has news is one you stop reading.
+# Hook mode. Always prints: a line naming an empty store is what tells a reader
+# the hook ran at all, and silence is indistinguishable from a hook that is not
+# wired.
 cmd_show() {
   out=""
 
@@ -318,7 +319,10 @@ $(entries "$ustore" | head -n "$SHOW_USER_MAX" | sed 's/^[0-9]*:/  /')"
     fi
   fi
 
-  [ -n "$out" ] || exit 0
+  if [ -z "$out" ]; then
+    printf 'Nothing parked, via the /later skill.\n'
+    exit 0
+  fi
   printf 'Parked thoughts from earlier sessions, via the /later skill. Do not act on these now; see the skill for when to raise them.%s\n' "$out"
   exit 0
 }

@@ -13,7 +13,7 @@ The skills here are deliberately small and single-purpose. Each one does **one j
 | [`/whats-new`](skills/whats-new/SKILL.md) | Author Play Store "What's New" release notes from your commit log (English only). Pulls commits since the last release tag, drafts bullets within Play's 500-char limit, waits for approval, then writes the source-locale file and hands off to `/translate-content` for the other locales. |
 | [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop with a strict role split: reviewers review and post findings to the PR, and this skill is the author — the only thing that touches code. It reads every finding off the PR and decides each one on whether the problem is real and whether it is this PR's work (fix a real problem the change owns, whatever its severity / acknowledge a correct observation that names no problem / reject with a public rationale / file a follow-up issue for genuinely unrelated work), replies, resolves the thread, pushes, and asks for review again, until a round changes no code — nothing blocking outstanding, and nothing fixed that a reviewer hasn't since seen. Reviewers can be bots (Copilot, Codex, anything that posts a review) or `/pr-review-skeptic`, which it re-runs on every fix push. Bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
 | [`/pr-review-skeptic`](skills/pr-review-skeptic/SKILL.md) | Get an honest second opinion on a PR from reviewers with no stake in it. Blind subagents read the changes at HEAD knowing the project but nothing about why the change exists, treating comments and docs as claims to check against the code, and reporting what is materially wrong rather than what is merely imperfect. A finding is something someone should change — severity then says how bad it is, never whether it counts — and something correct that nobody should have to act on is noted for the record instead, with no thread and nothing owed in reply. Large PRs are partitioned across reviewers plus a pass on how the pieces compose. They are blind to the *author*, not to the review: the first run reads the whole change cold, and later runs stay as cold on the author's account while being scoped to what has changed since the last review and told which non-blocking consequences the project has already accepted — except the composition reviewer, which is never scoped to the delta and takes the whole change whenever it runs. The review history also reconciles what they found afterwards — a decision that was already weighed stops blocking but stays named in the verdict with the thread that settled it, a defect raised and patched before and still present comes back a severity higher, and a concern that was dismissed once and independently found again comes back flagged with the thread that dismissed it. Every finding gets its own thread, plus a go/no-go verdict: posted when you invoke `/pr-review-skeptic` or ask for it on the PR, shown in the terminal first for question-shaped asks like "is this ready to merge?". |
-| [`/later`](skills/later/SKILL.md) | Park a thought that isn't about the work in progress, and get it back when it's useful again. A tangent said out loud drags the session sideways; kept quiet, it's lost. This takes it verbatim, answers in a word, and carries straight on — no clarifying question, no scoping, no offer to do it, because a fragmented session is the cost of *responding*, not of *mentioning*. Thoughts go to a per-repository store or, when the idea belongs to some other project entirely, a user-level one. The store lives outside the repo, keyed on the main repository root, so it's never a diff for collaborators and never dies with a worktree when the branch lands. A `SessionStart` hook replays what's parked at the top of later sessions and stays silent when there's nothing, and finished work gets reconciled against the list — an item the work happened to cover is marked *possibly* handled with the reason, never quietly deleted. Storing and returning thoughts is the whole job; doing them is yours. |
+| [`/later`](skills/later/SKILL.md) | Park a thought that isn't about the work in progress, and get it back when it's useful again. A tangent said out loud drags the session sideways; kept quiet, it's lost. This takes it verbatim, answers in a word, and carries straight on — no clarifying question, no scoping, no offer to do it, because a fragmented session is the cost of *responding*, not of *mentioning*. Thoughts go to a per-repository store or, when the idea belongs to some other project entirely, a user-level one. The store lives outside the repo, keyed on the main repository root, so it's never a diff for collaborators and never dies with a worktree when the branch lands. A `SessionStart` hook replays what's parked at the top of later sessions, and finished work gets reconciled against the list — an item the work happened to cover is marked *possibly* handled with the reason, never quietly deleted. Storing and returning thoughts is the whole job; doing them is yours. |
 | [`/post-merge-cleanup`](skills/post-merge-cleanup/SKILL.md) | Put a repo back to a clean state after a PR lands. Moves the session out of whatever worktree it was in and back to the main checkout, prunes remote-tracking refs, fast-forwards the default branch, and only then removes the worktrees and local branches the merge made stale. Containment is decided by one explicit check against a ref that is current whether or not the checkout cooperated, so the skill can tell a branch whose work is safely contained from one holding commits that exist nowhere else. It refuses to delete anything holding uncommitted work — an untracked file in a worktree exists nowhere else — and asks, with the commits in hand, wherever git genuinely cannot tell a squash-merge from work that never landed. Cleanup only: it doesn't merge the PR, close issues, or tag anything. |
 | [`/ga4-custom-dimension`](skills/ga4-custom-dimension/SKILL.md) | Register a Google Analytics 4 custom dimension from the command line, so an event parameter Firebase already collects becomes reportable instead of being rejected as "not a valid dimension". Its real job is timing: custom dimensions never backfill, so every event sent before registration reports as `(not set)` for that dimension permanently — which makes this something to run *ahead of* the release that starts emitting a parameter, not alongside it. It also knows the two routes that look right and are not, because both cost an afternoon to rediscover: GA4 MCP servers expose only reads, and default application-default credentials carry a scope that does not cover Analytics. The way through is a scoped token minted for a service account without touching ADC. Project identifiers stay in the consuming repo; the skill asks rather than guessing, since a dimension registered against the wrong property can only be archived, never deleted. |
 
@@ -257,10 +257,10 @@ It's deliberately the one key that doesn't follow the usual merge rules: it coun
 No per-project config. **Installed as a plugin (Option A), there is nothing to
 set up** — the `SessionStart` hook ships declared in `.claude-plugin/plugin.json`.
 
-**Installed by symlink or copy (Options B and C), add the hook by hand**, once.
-Capture writes to a store, and `later.sh list` will read it back on demand, but
-nothing replays it *unprompted* — which is the half that makes the skill worth
-having — unless the hook is wired up:
+**Installed by symlink or copy (Options B and C), add the hook by hand**, once,
+to **`~/.claude/settings.json`**. Capture writes to a store, and `later.sh list`
+will read it back on demand, but nothing replays it *unprompted* — which is the
+half that makes the skill worth having — unless the hook is wired up:
 
 ```json
 {
@@ -280,28 +280,27 @@ having — unless the hook is wired up:
 }
 ```
 
-Use a **literal path** to wherever you installed the skill. (On Windows the
-bare `sh` resolves because hooks run in Claude Code's Git Bash environment, not
-because `sh` is on your PATH — a default Git for Windows install doesn't put it
-there. So `where sh` coming up empty says nothing about the hook; you only need
-the full path to `sh.exe` if you run the command by hand to test it.)
-`${CLAUDE_PLUGIN_ROOT}`
-does *not* work in your own `settings.json`: it's substituted only for hooks a
-plugin declares itself, and elsewhere the token reaches the shell as an unset
-variable and expands to empty — so the hook silently runs `sh "/skills/later/later.sh"`
-forever. **Assume any mistake here is silent**, that one and a wrong literal
-path alike: the hook is designed to print nothing when nothing is parked, so a
-broken one looks exactly like an empty store.
+Use a **literal path** to wherever you installed the skill. A project's own
+`.claude/settings.json` works too, but then the digest only appears in that one
+project — including the user-level store, which is the half meant to follow you
+between projects. `${CLAUDE_PLUGIN_ROOT}` does *not* work in your own settings:
+it's substituted only for hooks a plugin declares itself, and elsewhere the
+token reaches the shell as an unset variable and expands to empty — so the hook
+silently runs `sh "/skills/later/later.sh"` forever.
 
-That same silence is why it costs you nothing on the sessions where you have no
-backlog. It's also why the skill won't go hunting for your hook: whether one
-exists can't be settled by reading files (hooks are valid in several settings
-files, a plugin manifest, or a plugin's `hooks/hooks.json`), and a hook written
-into a plugin's version-stamped cache path would break on the next update. What
-it does instead is notice the one thing it can be sure of — you already had
-items parked before this one, and no digest appeared — and tell you. On your
-first ever park it stays quiet, because an empty store produces no digest even
-when the hook is working perfectly.
+**Assume any mistake here is silent** — the wrong file, a wrong literal path,
+and `${CLAUDE_PLUGIN_ROOT}` all fail with no error. The one check that settles
+it: the digest prints on every session whether or not anything is parked, so if
+the top of a session shows neither a parked list nor `Nothing parked, via the
+/later skill.`, the hook isn't running. That's also why the skill won't go
+hunting for your hook or offer to write one: whether one exists can't be settled
+by reading files (hooks are valid in several settings files, a plugin manifest,
+or a plugin's `hooks/hooks.json`), and a hook written into a plugin's
+version-stamped cache path would break on the next update.
+
+[`skills/later/INSTALL.md`](skills/later/INSTALL.md) has the same instructions
+alongside the skill, plus a Windows note and what does and doesn't carry over to
+OpenCode.
 
 Nothing is stored in your repositories. Repository-scoped thoughts live at
 `<claude-config>/projects/<mangled-repo-root>/later.md`, beside that project's
