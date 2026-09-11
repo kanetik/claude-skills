@@ -9,7 +9,7 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 - `skills/<name>/SKILL.md` — one skill per folder, frontmatter + body
 - `skills/<name>/*.sh` — optional bundled scripts, each with a self-check beside it
 - `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports, and any hook a skill declares
-- `.claude-plugin/marketplace.json` — what a marketplace install resolves against. Its plugin entry carries the description shown *before* install; `plugin.json`'s is shown only after. Two surfaces, so both are needed and neither substitutes for the other
+- `.claude-plugin/marketplace.json` — what a marketplace install resolves against. It and `plugin.json` each carry a `description` enumerating the skills; both are kept current
 - `README.md` — what the skills do, how to install, design principles
 - `.gitattributes` — pins `*.sh` to LF so shipped scripts work off a Windows checkout
 - `LICENSE`, `.gitignore` — standard
