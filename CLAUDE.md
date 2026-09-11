@@ -9,7 +9,7 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 - `skills/<name>/SKILL.md` — one skill per folder, frontmatter + body
 - `skills/<name>/*.sh` — optional bundled scripts, each with a self-check beside it
 - `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports, and any hook a skill declares
-- `.claude-plugin/marketplace.json` — what a marketplace install resolves against. It and `plugin.json` each carry a `description` enumerating the skills; both are kept current
+- `.claude-plugin/marketplace.json` — what a marketplace install resolves against. Its `plugins[0].description` enumerates the skills, as `plugin.json`'s `description` does; both are kept current. Its *top-level* `description` is the marketplace blurb and is not a skill list
 - `README.md` — what the skills do, how to install, design principles
 - `.gitattributes` — pins `*.sh` to LF so shipped scripts work off a Windows checkout
 - `LICENSE`, `.gitignore` — standard
@@ -26,7 +26,7 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 ## Rules for adding a new skill
 
 1. Create `skills/<name>/SKILL.md` with valid frontmatter.
-2. Add `./skills/<name>` to the `skills` array in `.claude-plugin/plugin.json`, and check whether the skill list in both manifests' `description` fields still reads correctly.
+2. Add `./skills/<name>` to the `skills` array in `.claude-plugin/plugin.json`, and check whether the skill list still reads correctly in `plugin.json`'s `description` and `marketplace.json`'s `plugins[0].description`.
 3. Add a row to the README's "What's in here" table.
 4. Update the README's "Typical workflow" section if the new skill changes a typical flow.
 5. If the skill needs a hook to work, declare it — either in a `hooks` block in the same `plugin.json`, or in a `hooks/hooks.json` at the plugin root. `${CLAUDE_PLUGIN_ROOT}` is substituted in anything a *plugin* declares and never in a user's own `settings.json`, so declaring it is the only way a plugin install gets a working hook without the user hand-editing their settings. Say in the skill's own `SKILL.md` what a manual install has to add by hand.
@@ -34,7 +34,7 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 ## Rules for removing or renaming a skill
 
 1. Delete the skill folder.
-2. Remove from `.claude-plugin/plugin.json` — from the `skills` array **and from any hook the skill declared**, in that file's `hooks` block or in `hooks/hooks.json`. On a **rename**, update the hook's path rather than deleting it. Either way, a hook left pointing at the old folder means every installed user runs a failing command at every session start. The `skills` array is the obvious half; the hook is the one that ships broken, and a rename is the case that looks least like it needs checking. Check the `description` in both manifests too — it enumerates the skills.
+2. Remove from `.claude-plugin/plugin.json` — from the `skills` array **and from any hook the skill declared**, in that file's `hooks` block or in `hooks/hooks.json`. On a **rename**, update the hook's path rather than deleting it. Either way, a hook left pointing at the old folder means every installed user runs a failing command at every session start. The `skills` array is the obvious half; the hook is the one that ships broken, and a rename is the case that looks least like it needs checking. Check those same two `description` fields too — they enumerate the skills.
 3. Remove from the README table.
 4. Note the removal/rename in the commit message — users may have it installed.
 
