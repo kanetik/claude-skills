@@ -259,6 +259,13 @@ fi
 (cd "$outside" && sh "$LATER" add --user "fine" > /dev/null 2>&1) &&
   ok "add --user works outside a repo" || no "add --user works outside a repo" "it failed"
 
+# A session outside a repository is the ordinary case, not a store that could
+# not be read: there is no repository store to reach, so the digest reports an
+# empty one rather than naming a failure -- and never repeats `add`'s advice to
+# park "this" at user level, there being no thought in hand at session start.
+out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show 2>&1)
+check "show outside a repo reports an empty store" "$out" "Nothing parked, via the /later skill."
+
 run done 99 > /dev/null 2>&1 && no "done on a bad index fails" "it succeeded" ||
   ok "done on a bad index fails"
 run done abc > /dev/null 2>&1 && no "done on a non-number fails" "it succeeded" ||
@@ -295,12 +302,25 @@ out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" show 2>&1)
 rc=$?
 check "show exits 0 on pre-2.31 git" "$rc" "0"
 case "$out" in
-  *"Parked in myrepo"*) no "show drops the unreachable repo store on pre-2.31 git" "$out" ;;
-  *) ok "show drops the unreachable repo store on pre-2.31 git" ;;
+  *"Parked in myrepo"*) no "show lists no items from an unreachable repo store" "$out" ;;
+  *) ok "show lists no items from an unreachable repo store" ;;
 esac
 case "$out" in
   *error*|*fatal*) no "show emits no git error on pre-2.31 git" "$out" ;;
   *) ok "show emits no git error on pre-2.31 git" ;;
+esac
+
+# The digest is the line the skill tells the reader to trust, so it must not
+# claim an empty store over one it could not read. Only reachable with the USER
+# store empty too: with items in it the digest is non-empty and the
+# nothing-parked branch is never taken, which is why the case above misses this.
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH="$shim:$PATH" sh "$LATER" show 2>&1)
+rc=$?
+check "show exits 0 on an unreachable repo store with an empty user store" "$rc" "0"
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an unreachable store is empty" "$out" ;;
+  *2.31*) ok "show does not claim an unreachable store is empty" ;;
+  *) no "show does not claim an unreachable store is empty" "$out" ;;
 esac
 
 # Refusing to WRITE on old git was only half of it. `list` reporting an empty

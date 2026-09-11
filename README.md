@@ -258,7 +258,7 @@ No per-project config. **Installed as a plugin (Option A), there is nothing to
 set up** — the `SessionStart` hook ships declared in `.claude-plugin/plugin.json`.
 
 **Installed by symlink or copy (Options B and C), add the hook by hand**, once,
-to **`~/.claude/settings.json`**. Capture writes to a store, and `later.sh list`
+to **`<claude-config>/settings.json`**. Capture writes to a store, and `later.sh list`
 will read it back on demand, but nothing replays it *unprompted* — which is the
 half that makes the skill worth having — unless the hook is wired up:
 
@@ -280,10 +280,16 @@ half that makes the skill worth having — unless the hook is wired up:
 }
 ```
 
-Use a **literal path** to wherever you installed the skill. A project's own
-`.claude/settings.json` works too, but then the digest only appears in that one
-project — including the user-level store, which is the half meant to follow you
-between projects. `${CLAUDE_PLUGIN_ROOT}` does *not* work in your own settings:
+Use a **literal path** to wherever you installed the skill. The block above
+spells out the default `~/.claude`; if you have set `CLAUDE_CONFIG_DIR`,
+substitute it yourself in both the settings file you edit and the path inside
+the command — neither follows it on its own. A
+project's own `.claude/settings.json` works too, but then the digest only
+appears in that one project — including the user-level store, which is the half
+meant to follow you between projects — and that file is committed, so the hook
+ships to collaborators who do not have the skill installed;
+`.claude/settings.local.json` is the uncommitted equivalent.
+`${CLAUDE_PLUGIN_ROOT}` does *not* work in your own settings:
 it's substituted only for hooks a plugin declares itself, and elsewhere the
 token reaches the shell as an unset variable and expands to empty — so the hook
 silently runs `sh "/skills/later/later.sh"` forever.
@@ -291,8 +297,8 @@ silently runs `sh "/skills/later/later.sh"` forever.
 **Assume any mistake here is silent** — the wrong file, a wrong literal path,
 and `${CLAUDE_PLUGIN_ROOT}` all fail with no error. The one check that settles
 it: the digest prints on every session whether or not anything is parked, so if
-the top of a session shows neither a parked list nor `Nothing parked, via the
-/later skill.`, the hook isn't running. That's also why the skill won't go
+the top of a session shows nothing at all — no parked list, no `Nothing parked,
+via the /later skill.`, no unreachable-store line — the hook isn't running. That's also why the skill won't go
 hunting for your hook or offer to write one: whether one exists can't be settled
 by reading files (hooks are valid in several settings files, a plugin manifest,
 or a plugin's `hooks/hooks.json`), and a hook written into a plugin's

@@ -11,8 +11,13 @@ Nothing to do. The hook is declared in `.claude-plugin/plugin.json` and
 
 ## By symlink or copy into `~/.claude/skills/`
 
-Add the hook by hand, to **`~/.claude/settings.json`** — the user-level
-settings file, not the skill folder and not a file in the repository:
+Add the hook by hand, to **`<claude-config>/settings.json`** — the user-level
+settings file, not the skill folder and not a file in the repository.
+`<claude-config>` is `CLAUDE_CONFIG_DIR` where you have set it and `~/.claude`
+otherwise. The block below spells out the default; where you have relocated the
+config root, substitute it yourself in both places — the settings file you edit,
+and the path inside the command, which is literal and expands nothing but
+`$HOME`:
 
 ```json
 {
@@ -34,8 +39,11 @@ settings file, not the skill folder and not a file in the repository:
 
 A project's own `.claude/settings.json` takes the same block and works, but the
 digest then appears only in that project — including the user store, which is
-the half meant to follow you between projects. Put it in `~/.claude` unless you
-want it scoped deliberately.
+the half meant to follow you between projects. That file is also committed, so
+the hook ships to collaborators who do not have the skill installed and fails
+for them at every session start; `.claude/settings.local.json` is the
+uncommitted equivalent. Put it in `<claude-config>` unless you want it scoped
+deliberately.
 
 **Use a literal path. `${CLAUDE_PLUGIN_ROOT}` does not work here** — it is
 substituted only for hooks a plugin declares itself. In your own settings there
@@ -47,8 +55,9 @@ wrong path, and `${CLAUDE_PLUGIN_ROOT}`. All three fail the same way — no erro
 no digest.
 
 The one check that settles it: the digest now prints on every session, whether
-or not anything is parked. If the top of a session shows neither a parked list
-nor `Nothing parked, via the /later skill.`, the hook is not running.
+or not anything is parked. If the top of a session shows nothing at all — no
+parked list, no `Nothing parked, via the /later skill.`, no unreachable-store
+line — the hook is not running.
 
 ### Windows
 

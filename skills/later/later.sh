@@ -287,12 +287,22 @@ cmd_mark() {
 
 # Hook mode. Always prints: a line naming an empty store is what tells a reader
 # the hook ran at all, and silence is indistinguishable from a hook that is not
-# wired.
+# wired. A store that could not be READ is named rather than counted as empty,
+# for the reason cmd_list gives -- and it matters more here, because this is the
+# line the skill tells the reader to trust.
 cmd_show() {
   out=""
+  note=""
 
   store=$(store_path repo 2>/dev/null) || store=""
-  if [ -n "$store" ] && [ -f "$store" ]; then
+  if [ -z "$store" ]; then
+    # Outside a repository there is no repository store to reach and never
+    # will be -- the normal state of every non-git session, not something to
+    # report at the top of it. Only a repository this cannot resolve is news.
+    reason=$(no_repo_reason)
+    [ "$reason" = "$NO_REPO" ] ||
+      note="later: repository store unreachable -- $reason"
+  elif [ -f "$store" ]; then
     n=$(count_entries "$store")
     if [ "$n" -gt 0 ]; then
       out="$out
@@ -319,8 +329,9 @@ $(entries "$ustore" | head -n "$SHOW_USER_MAX" | sed 's/^[0-9]*:/  /')"
     fi
   fi
 
+  [ -z "$note" ] || printf '%s\n' "$note"
   if [ -z "$out" ]; then
-    printf 'Nothing parked, via the /later skill.\n'
+    [ -n "$note" ] || printf 'Nothing parked, via the /later skill.\n'
     exit 0
   fi
   printf 'Parked thoughts from earlier sessions, via the /later skill. Do not act on these now; see the skill for when to raise them.%s\n' "$out"

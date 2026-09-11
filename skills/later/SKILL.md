@@ -131,16 +131,18 @@ hole thoughts go into.
 
 The mechanism is a `SessionStart` hook that runs `later.sh show`, whose output
 is injected as context at the top of each session. **The digest always prints**
-— `Nothing parked, via the /later skill.` when both stores are empty — so its
-presence is what says the hook ran.
+— `Nothing parked, via the /later skill.` when both stores are empty, and a line
+naming the reason where the repository store cannot be read — so its presence is
+what says the hook ran.
 
 Installed as part of the plugin, the hook is already declared and there is
 nothing to set up. Installed by symlink or copy into `~/.claude/skills/`, it
 has to be added by hand: `INSTALL.md` beside this file has both shapes.
 
-**If no digest appeared at the top of this session, nothing is replaying the
-store.** Say so once, in one line, the first time a thought is parked, and
-point at `INSTALL.md`.
+**If nothing at all appeared at the top of this session — no parked list, no
+`Nothing parked`, no unreachable-store line — nothing is replaying the store.**
+Say so once, in one line, the first time a thought is parked, and point at
+`INSTALL.md`.
 
 **Do not go looking for the hook, and do not offer to write one.** A hook is
 equally valid in any of several settings files and plugin manifests, so not
