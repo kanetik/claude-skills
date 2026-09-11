@@ -208,7 +208,13 @@ cmd_list() {
   found=0
   if [ "$scope" != user ]; then
     store=$(store_path repo 2>/dev/null) || store=""
-    if [ -n "$store" ]; then
+    if [ -n "$store" ] && [ -f "$store" ] && [ ! -r "$store" ]; then
+      # Present and unreadable counts as empty otherwise, for the same reason
+      # the else branch exists: entries() swallows the grep failure.
+      printf 'later: repository store unreachable -- %s cannot be read
+' "$store" >&2
+      found=1
+    elif [ -n "$store" ]; then
       print_list "$store" "Parked in $(repo_name)"
       [ "$(count_entries "$store")" -gt 0 ] && found=1
     else
@@ -302,9 +308,11 @@ cmd_mark() {
 # the hook ran at all, and silence is indistinguishable from a hook that is not
 # wired. A store whose key cannot be RESOLVED is named rather than counted as
 # empty, for the reason cmd_list gives -- and it matters more here, because this
-# is the line the skill tells the reader to trust. A resolved store that cannot
-# be read still counts as empty: entries() swallows a grep failure, which is the
-# same silent failure one layer down.
+# is the line the skill tells the reader to trust. A store present but not
+# readable is named too -- entries() swallows a grep failure, so without the
+# check it would count as empty, which is the same silent failure one layer
+# down. No test pins that branch: the mode it turns on is not enforced on the
+# NTFS checkouts this is developed against.
 cmd_show() {
   out=""
   note=""
@@ -318,6 +326,8 @@ cmd_show() {
     reason=$(no_repo_reason)
     [ "$reason" = "$NO_REPO" ] ||
       note="later: repository store unreachable -- $reason"
+  elif [ -f "$store" ] && [ ! -r "$store" ]; then
+    note="later: repository store unreachable -- $store cannot be read"
   elif [ -f "$store" ]; then
     n=$(count_entries "$store")
     if [ "$n" -gt 0 ]; then
