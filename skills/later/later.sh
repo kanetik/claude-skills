@@ -208,9 +208,11 @@ cmd_list() {
   found=0
   if [ "$scope" != user ]; then
     store=$(store_path repo 2>/dev/null) || store=""
-    if [ -n "$store" ] && [ -f "$store" ] && [ ! -r "$store" ]; then
-      # Present and unreadable counts as empty otherwise, for the same reason
-      # the else branch exists: entries() swallows the grep failure.
+    if [ -n "$store" ] && [ -e "$store" ] && { [ ! -f "$store" ] || [ ! -r "$store" ]; }; then
+      # Anything present that is not a readable regular file counts as empty
+      # otherwise, for the same reason the else branch exists: entries()
+      # swallows the grep failure, and -f alone passes a directory through to
+      # it. Both arrive as "nothing parked" over a store that was never read.
       printf 'later: repository store unreachable -- %s cannot be read\n' "$store" >&2
       found=1
     elif [ -n "$store" ]; then
@@ -227,7 +229,7 @@ cmd_list() {
   fi
   if [ "$scope" = user ] || [ "$scope" = all ]; then
     ustore=$(store_path user)
-    if [ -f "$ustore" ] && [ ! -r "$ustore" ]; then
+    if [ -e "$ustore" ] && { [ ! -f "$ustore" ] || [ ! -r "$ustore" ]; }; then
       # Named rather than listed as empty, and nothing is listed after it: an
       # empty "Parked (user)" heading under this notice says the store was
       # read and held nothing.
@@ -333,7 +335,7 @@ cmd_show() {
     reason=$(no_repo_reason)
     [ "$reason" = "$NO_REPO" ] ||
       note="later: repository store unreachable -- $reason"
-  elif [ -f "$store" ] && [ ! -r "$store" ]; then
+  elif [ -e "$store" ] && { [ ! -f "$store" ] || [ ! -r "$store" ]; }; then
     note="later: repository store unreachable -- $store cannot be read"
   elif [ -f "$store" ]; then
     n=$(count_entries "$store")
@@ -349,7 +351,7 @@ $(entries "$store" | head -n "$SHOW_REPO_MAX" | sed 's/^[0-9]*:/  /')"
   fi
 
   ustore=$(store_path user)
-  if [ -f "$ustore" ] && [ ! -r "$ustore" ]; then
+  if [ -e "$ustore" ] && { [ ! -f "$ustore" ] || [ ! -r "$ustore" ]; }; then
     note="${note:+$note
 }later: user store unreachable -- $ustore cannot be read"
   elif [ -f "$ustore" ]; then

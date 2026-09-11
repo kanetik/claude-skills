@@ -271,8 +271,11 @@ check "show outside a repo reports an empty store" "$out" "Nothing parked, via t
 # was on it still exists and is now unreadable, so reporting "nothing parked"
 # would be the very claim this design refuses to make -- and reporting it via
 # the shell's not-found error would put this script's path and line number in
-# front of the user on every call. An empty PATH reaches the branch; nothing on
-# it is read, so no external tool is needed to get there.
+# front of the user on every call. An empty PATH is how git is removed, so the
+# config root has to be empty too: with a populated one the user store is read,
+# and count_entries needs wc and tr, which are gone with everything else. The
+# repository store cannot be resolved without git under any config, so there is
+# no fixture in which this path reads one.
 out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH= "$REALSH" "$LATER" show 2>&1)
 case "$out" in
   *"Nothing parked"*) no "show does not claim an empty store when git is not installed" "$out" ;;
@@ -283,6 +286,27 @@ case "$out" in
   *"command not found"*|*"line "*|*later.sh:*)
     no "the no-git message carries no shell error, path or line number" "$out" ;;
   *) ok "the no-git message carries no shell error, path or line number" ;;
+esac
+
+# A path that exists but is not a readable regular file is the same false-empty
+# claim: -f alone passes a directory through to entries(), whose grep failure is
+# swallowed. Unlike the unreadable-mode case this is reachable on every
+# platform, so it is the one that pins the guard here.
+dirstore="$tmp/dirstore"
+mkdir -p "$dirstore"
+realstore=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" path)
+mkdir -p "$realstore"
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" show 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an empty store over a non-file store path" "$out" ;;
+  *"cannot be read"*) ok "show does not claim an empty store over a non-file store path" ;;
+  *) no "show does not claim an empty store over a non-file store path" "$out" ;;
+esac
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" list 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "list does not claim an empty store over a non-file store path" "$out" ;;
+  *"cannot be read"*) ok "list does not claim an empty store over a non-file store path" ;;
+  *) no "list does not claim an empty store over a non-file store path" "$out" ;;
 esac
 
 run done 99 > /dev/null 2>&1 && no "done on a bad index fails" "it succeeded" ||
