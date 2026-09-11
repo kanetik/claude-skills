@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "kanetik",
+  "description": "Claude Code skills for Android release work, PR review, and repo hygiene.",
+  "owner": {
+    "name": "Jeremy Kane",
+    "url": "https://github.com/kanetik"
+  },
+  "plugins": [
+    {
+      "name": "kanetik-skills",
+      "description": "Translation, Play Store release notes, an iterative PR review loop with an independent skeptic, post-merge cleanup, parked thoughts, and GA4 custom dimension registration.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
