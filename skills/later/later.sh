@@ -81,7 +81,7 @@ repo_root() {
 # Deliberately not wrapped in a resolve_store() helper: `die` inside a command
 # substitution exits only the subshell, so the caller sails on with an empty
 # path and writes nowhere. The check belongs at the call site.
-NO_REPO="not inside a git repository -- use --user to park this at user level"
+NO_REPO="not inside a git repository -- use --user instead"
 
 # Why store_path failed, so the message names the actual problem. Being inside
 # a repository and getting "not inside a git repository" sends the reader
@@ -211,8 +211,7 @@ cmd_list() {
     if [ -n "$store" ] && [ -f "$store" ] && [ ! -r "$store" ]; then
       # Present and unreadable counts as empty otherwise, for the same reason
       # the else branch exists: entries() swallows the grep failure.
-      printf 'later: repository store unreachable -- %s cannot be read
-' "$store" >&2
+      printf 'later: repository store unreachable -- %s cannot be read\n' "$store" >&2
       found=1
     elif [ -n "$store" ]; then
       print_list "$store" "Parked in $(repo_name)"
@@ -228,14 +227,22 @@ cmd_list() {
   fi
   if [ "$scope" = user ] || [ "$scope" = all ]; then
     ustore=$(store_path user)
-    if [ "$scope" = all ]; then
-      print_list "$ustore" "Parked (user)" "u"
-      [ "$(count_entries "$ustore")" -gt 0 ] &&
-        printf 'Mark a u-prefixed item with --user: later.sh done --user <n>\n\n'
+    if [ -f "$ustore" ] && [ ! -r "$ustore" ]; then
+      # Named rather than listed as empty, and nothing is listed after it: an
+      # empty "Parked (user)" heading under this notice says the store was
+      # read and held nothing.
+      printf 'later: user store unreachable -- %s cannot be read\n' "$ustore" >&2
+      found=1
     else
-      print_list "$ustore" "Parked (user)"
+      if [ "$scope" = all ]; then
+        print_list "$ustore" "Parked (user)" "u"
+        [ "$(count_entries "$ustore")" -gt 0 ] &&
+          printf 'Mark a u-prefixed item with --user: later.sh done --user <n>\n\n'
+      else
+        print_list "$ustore" "Parked (user)"
+      fi
+      [ "$(count_entries "$ustore")" -gt 0 ] && found=1
     fi
-    [ "$(count_entries "$ustore")" -gt 0 ] && found=1
   fi
   [ "$found" -eq 1 ] || printf 'Nothing parked.\n'
 }
@@ -342,7 +349,10 @@ $(entries "$store" | head -n "$SHOW_REPO_MAX" | sed 's/^[0-9]*:/  /')"
   fi
 
   ustore=$(store_path user)
-  if [ -f "$ustore" ]; then
+  if [ -f "$ustore" ] && [ ! -r "$ustore" ]; then
+    note="${note:+$note
+}later: user store unreachable -- $ustore cannot be read"
+  elif [ -f "$ustore" ]; then
     un=$(count_entries "$ustore")
     if [ "$un" -gt 0 ]; then
       out="$out
