@@ -320,8 +320,7 @@ cmd_mark() {
 # is the line the skill tells the reader to trust. A store present but not
 # readable is named too -- entries() swallows a grep failure, so without the
 # check it would count as empty, which is the same silent failure one layer
-# down. No test pins that branch: the mode it turns on is not enforced on the
-# NTFS checkouts this is developed against.
+# down.
 cmd_show() {
   out=""
   note=""

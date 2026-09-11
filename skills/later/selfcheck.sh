@@ -309,6 +309,25 @@ case "$out" in
   *) no "list does not claim an empty store over a non-file store path" "$out" ;;
 esac
 
+# The same two, for the USER store. Its guards are separate code and were
+# unpinned while the repository pair had a test: deleting both left the suite
+# green. It is the half that matters more, holding thoughts that belong to no
+# repository and have no copy anywhere.
+userdir="$tmp/userdir"
+mkdir -p "$userdir/later.md"
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$LATER" show 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an empty user store over a non-file store path" "$out" ;;
+  *"user store unreachable"*) ok "show does not claim an empty user store over a non-file store path" ;;
+  *) no "show does not claim an empty user store over a non-file store path" "$out" ;;
+esac
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$LATER" list --user 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "list --user does not claim an empty store over a non-file store path" "$out" ;;
+  *"user store unreachable"*) ok "list --user does not claim an empty store over a non-file store path" ;;
+  *) no "list --user does not claim an empty store over a non-file store path" "$out" ;;
+esac
+
 run done 99 > /dev/null 2>&1 && no "done on a bad index fails" "it succeeded" ||
   ok "done on a bad index fails"
 run done abc > /dev/null 2>&1 && no "done on a non-number fails" "it succeeded" ||
