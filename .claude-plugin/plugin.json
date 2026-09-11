@@ -1,6 +1,5 @@
 {
   "name": "kanetik-skills",
-  "version": "1.0.0",
   "description": "Translation, Play Store release notes, an iterative PR review loop with an independent skeptic, post-merge cleanup, parked thoughts, and GA4 custom dimension registration.",
   "author": {
     "name": "Jeremy Kane",

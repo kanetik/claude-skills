@@ -78,11 +78,16 @@ In Claude Code, add the marketplace, then install from it:
 This wires the skills in via the `.claude-plugin/plugin.json` manifest.
 
 Installing copies the skills into Claude Code's plugin cache, so later changes here
-don't reach you until you ask for them:
+don't reach you until you ask for them. A plugin updates from your local copy of the
+marketplace, so refresh that first:
 
 ```
-/plugin update kanetik-skills@kanetik
+/plugin marketplace update kanetik
 ```
+
+Then `/plugin manage`, pick `kanetik-skills`, and choose **Update now**. ("Mark for
+update" won't work here — it refuses any plugin whose marketplace entry has a local
+`source`, which this one does.)
 
 ### Option B — clone + symlink
 

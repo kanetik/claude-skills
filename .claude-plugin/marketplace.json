@@ -1,10 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "kanetik",
-  "description": "Claude Code skills for Android release work, PR review, and repo hygiene.",
   "owner": {
     "name": "Jeremy Kane",
     "url": "https://github.com/kanetik"
+  },
+  "metadata": {
+    "description": "Claude Code skills worth sharing, whatever the domain."
   },
   "plugins": [
     {
