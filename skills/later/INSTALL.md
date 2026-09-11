@@ -9,11 +9,16 @@ session. Without it the store is write-only.
 Nothing to do. The hook is declared in `.claude-plugin/plugin.json` and
 `${CLAUDE_PLUGIN_ROOT}` resolves to the installed plugin.
 
-If the digest never appears anyway — the bare `sh` not resolving on this
-machine, the hook disabled, the timeout hit — install by symlink or copy
-instead and wire the hook by hand, as below. **Do not edit the hook in the
-plugin's own cache directory**: that path is version-stamped, so the edit works
-until the next plugin update and then stops, silently and for good.
+If the digest never appears anyway, install by symlink or copy instead and wire
+the hook by hand, as below. **Do not edit the hook in the plugin's own cache
+directory**: that path is version-stamped, so the edit works until the next
+plugin update and then stops, silently and for good.
+
+What the manual install buys is that the command becomes yours to change, so
+change it — pasting the block below unaltered reproduces the plugin's own hook
+verbatim, including the two things most likely to have been the problem. Give
+`sh` its full path (`/usr/bin/sh`, or your `sh.exe` — see Windows below), and
+raise `timeout` past 5 seconds.
 
 ## By symlink or copy into `~/.claude/skills/`
 

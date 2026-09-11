@@ -63,10 +63,10 @@ check "worktree resolves to the same store" "$wt_store" "$store"
 
 # --- add / list -------------------------------------------------------------
 
-# The other half of the count contract: the second park must report 2, so the
-# warning above 1 can fire at all. (The first-park-reports-1 half, which is the
-# one that stops the skill telling every new user their hook is broken, is
-# asserted at the top of this file where that first park happens.)
+# The other half of the count contract: the count is taken after the append, so
+# the second park reports 2. SKILL.md quotes `Parked (repo store, N open)` as
+# the only cue that `add` took the scope the caller meant, so the number has to
+# be right for the flag-order rule to be checkable at all.
 first=$(cd "$repo" && sh "$LATER" add "count contract" 2>&1)
 case "$first" in
   *"2 open"*) ok "add reports the count including the item just parked" ;;
