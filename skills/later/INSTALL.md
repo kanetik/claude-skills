@@ -9,6 +9,12 @@ session. Without it the store is write-only.
 Nothing to do. The hook is declared in `.claude-plugin/plugin.json` and
 `${CLAUDE_PLUGIN_ROOT}` resolves to the installed plugin.
 
+If the digest never appears anyway — the bare `sh` not resolving on this
+machine, the hook disabled, the timeout hit — install by symlink or copy
+instead and wire the hook by hand, as below. **Do not edit the hook in the
+plugin's own cache directory**: that path is version-stamped, so the edit works
+until the next plugin update and then stops, silently and for good.
+
 ## By symlink or copy into `~/.claude/skills/`
 
 Add the hook by hand, to **`<claude-config>/settings.json`** — the user-level
