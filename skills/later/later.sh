@@ -11,7 +11,7 @@
 #   later.sh list [--user|--all]          numbered open items
 #   later.sh done [--user] <n>            mark item n handled
 #   later.sh maybe [--user] <n> <why>     mark item n possibly handled
-#   later.sh show                         hook mode: digest, or nothing at all
+#   later.sh show                         hook mode: the digest
 #   later.sh path [--user]                print the store path
 #
 # -- ends the flags, for text or a reason that starts with one.
@@ -81,14 +81,27 @@ repo_root() {
 # Deliberately not wrapped in a resolve_store() helper: `die` inside a command
 # substitution exits only the subshell, so the caller sails on with an empty
 # path and writes nowhere. The check belongs at the call site.
-NO_REPO="not inside a git repository -- use --user to park this at user level"
+NO_REPO="not inside a git repository -- use --user instead"
 
 # Why store_path failed, so the message names the actual problem. Being inside
 # a repository and getting "not inside a git repository" sends the reader
 # looking in the wrong place entirely.
 no_repo_reason() {
+  # Checked before git is run, because the shell's not-found error carries this
+  # script's path and line number, and every caller puts this string in front
+  # of the user -- the digest into every session. It is not NO_REPO either: a
+  # store written while git was on PATH still exists, and its key cannot be
+  # resolved without git.
+  #
+  # Every string here reaches six callers, only one of which is parking a
+  # thought, so they name the flag rather than telling the reader what to do
+  # with it.
+  if ! command -v git > /dev/null 2>&1; then
+    printf '%s' "git is not installed, and a repository-scoped store needs it -- use --user instead"
+    return 0
+  fi
   if err=$(git rev-parse --git-dir 2>&1); then
-    printf '%s' "git 2.31 or newer is required for a repository-scoped store (it needs --path-format) -- park this with --user, or upgrade git"
+    printf '%s' "git 2.31 or newer is required for a repository-scoped store (it needs --path-format) -- upgrade git, or use --user"
     return 0
   fi
   case "$err" in
@@ -195,7 +208,14 @@ cmd_list() {
   found=0
   if [ "$scope" != user ]; then
     store=$(store_path repo 2>/dev/null) || store=""
-    if [ -n "$store" ]; then
+    if [ -n "$store" ] && [ -e "$store" ] && { [ ! -f "$store" ] || [ ! -r "$store" ]; }; then
+      # Anything present that is not a readable regular file counts as empty
+      # otherwise, for the same reason the else branch exists: entries()
+      # swallows the grep failure, and -f alone passes a directory through to
+      # it. Both arrive as "nothing parked" over a store that was never read.
+      printf 'later: repository store unreachable -- %s cannot be read\n' "$store" >&2
+      found=1
+    elif [ -n "$store" ]; then
       print_list "$store" "Parked in $(repo_name)"
       [ "$(count_entries "$store")" -gt 0 ] && found=1
     else
@@ -209,14 +229,22 @@ cmd_list() {
   fi
   if [ "$scope" = user ] || [ "$scope" = all ]; then
     ustore=$(store_path user)
-    if [ "$scope" = all ]; then
-      print_list "$ustore" "Parked (user)" "u"
-      [ "$(count_entries "$ustore")" -gt 0 ] &&
-        printf 'Mark a u-prefixed item with --user: later.sh done --user <n>\n\n'
+    if [ -e "$ustore" ] && { [ ! -f "$ustore" ] || [ ! -r "$ustore" ]; }; then
+      # Named rather than listed as empty, and nothing is listed after it: an
+      # empty "Parked (user)" heading under this notice says the store was
+      # read and held nothing.
+      printf 'later: user store unreachable -- %s cannot be read\n' "$ustore" >&2
+      found=1
     else
-      print_list "$ustore" "Parked (user)"
+      if [ "$scope" = all ]; then
+        print_list "$ustore" "Parked (user)" "u"
+        [ "$(count_entries "$ustore")" -gt 0 ] &&
+          printf 'Mark a u-prefixed item with --user: later.sh done --user <n>\n\n'
+      else
+        print_list "$ustore" "Parked (user)"
+      fi
+      [ "$(count_entries "$ustore")" -gt 0 ] && found=1
     fi
-    [ "$(count_entries "$ustore")" -gt 0 ] && found=1
   fi
   [ "$found" -eq 1 ] || printf 'Nothing parked.\n'
 }
@@ -285,13 +313,30 @@ cmd_mark() {
   sed -n "${lineno}p" "$store"
 }
 
-# Hook mode. Prints nothing when nothing is parked -- a digest that appears
-# every session whether or not it has news is one you stop reading.
+# Hook mode. Always prints: a line naming an empty store is what tells a reader
+# the hook ran at all, and silence is indistinguishable from a hook that is not
+# wired. A store whose key cannot be RESOLVED is named rather than counted as
+# empty, for the reason cmd_list gives -- and it matters more here, because this
+# is the line the skill tells the reader to trust. A store present but not
+# readable is named too -- entries() swallows a grep failure, so without the
+# check it would count as empty, which is the same silent failure one layer
+# down.
 cmd_show() {
   out=""
+  note=""
 
   store=$(store_path repo 2>/dev/null) || store=""
-  if [ -n "$store" ] && [ -f "$store" ]; then
+  if [ -z "$store" ]; then
+    # Outside a repository there is no repository store to reach and never
+    # will be -- the normal state of every non-git session, not something to
+    # report at the top of it. Anything else is a store that may hold items
+    # and cannot be read, which is news.
+    reason=$(no_repo_reason)
+    [ "$reason" = "$NO_REPO" ] ||
+      note="later: repository store unreachable -- $reason"
+  elif [ -e "$store" ] && { [ ! -f "$store" ] || [ ! -r "$store" ]; }; then
+    note="later: repository store unreachable -- $store cannot be read"
+  elif [ -f "$store" ]; then
     n=$(count_entries "$store")
     if [ "$n" -gt 0 ]; then
       out="$out
@@ -305,7 +350,10 @@ $(entries "$store" | head -n "$SHOW_REPO_MAX" | sed 's/^[0-9]*:/  /')"
   fi
 
   ustore=$(store_path user)
-  if [ -f "$ustore" ]; then
+  if [ -e "$ustore" ] && { [ ! -f "$ustore" ] || [ ! -r "$ustore" ]; }; then
+    note="${note:+$note
+}later: user store unreachable -- $ustore cannot be read"
+  elif [ -f "$ustore" ]; then
     un=$(count_entries "$ustore")
     if [ "$un" -gt 0 ]; then
       out="$out
@@ -318,7 +366,11 @@ $(entries "$ustore" | head -n "$SHOW_USER_MAX" | sed 's/^[0-9]*:/  /')"
     fi
   fi
 
-  [ -n "$out" ] || exit 0
+  [ -z "$note" ] || printf '%s\n' "$note"
+  if [ -z "$out" ]; then
+    [ -n "$note" ] || printf 'Nothing parked, via the /later skill.\n'
+    exit 0
+  fi
   printf 'Parked thoughts from earlier sessions, via the /later skill. Do not act on these now; see the skill for when to raise them.%s\n' "$out"
   exit 0
 }

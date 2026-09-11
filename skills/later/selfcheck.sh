@@ -8,6 +8,8 @@ set -u
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LATER="$here/later.sh"
+# Absolute, for the one case that runs with an empty PATH.
+REALSH=$(command -v sh)
 fails=0
 
 ok() { printf 'ok   %s\n' "$1"; }
@@ -37,9 +39,8 @@ opens() { run list | grep -c '^  [0-9]*\.' || true; }
 
 # --- store location ---------------------------------------------------------
 
-# The first park into an empty store must report exactly 1. SKILL.md warns
-# "nothing is replaying the store" only above 1, so a 2 here would fire that
-# warning on every user's first ever park -- on a correctly installed hook.
+# The count `add` reports includes the park it just made, so the first one into
+# an empty store is 1.
 firstpark=$(cd "$repo" && sh "$LATER" add "idea one" 2>&1)
 case "$firstpark" in
   *"1 open"*) ok "the first park into an empty store reports 1" ;;
@@ -62,10 +63,10 @@ check "worktree resolves to the same store" "$wt_store" "$store"
 
 # --- add / list -------------------------------------------------------------
 
-# The other half of the count contract: the second park must report 2, so the
-# warning above 1 can fire at all. (The first-park-reports-1 half, which is the
-# one that stops the skill telling every new user their hook is broken, is
-# asserted at the top of this file where that first park happens.)
+# The other half of the count contract: the count is taken after the append, so
+# the second park reports 2. SKILL.md quotes `Parked (repo store, N open)` as
+# the only cue that `add` took the scope the caller meant, so the number has to
+# be right for the flag-order rule to be checkable at all.
 first=$(cd "$repo" && sh "$LATER" add "count contract" 2>&1)
 case "$first" in
   *"2 open"*) ok "add reports the count including the item just parked" ;;
@@ -237,15 +238,15 @@ grep -q 'audit -- possibly handled by nobody, keep this tail -- possibly handled
 run show | grep -q 'Parked in myrepo' && ok "show reports the repo store" ||
   no "show reports the repo store" "$(run show)"
 
-# Silence when there is nothing to say -- the property that keeps the digest
-# worth reading.
+# An empty store still prints. A digest that is silent when it has no news is
+# indistinguishable from a hook that never ran.
 empty="$tmp/empty"
 mkdir -p "$empty"
 git -C "$empty" init -q
 out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show)
-check "show prints nothing when nothing is parked" "$out" ""
+check "show says so when nothing is parked" "$out" "Nothing parked, via the /later skill."
 
-out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show; echo "rc=$?")
+out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show >/dev/null; echo "rc=$?")
 check "show exits 0 with an empty store" "$out" "rc=0"
 
 # --- failure modes ----------------------------------------------------------
@@ -259,6 +260,73 @@ else
 fi
 (cd "$outside" && sh "$LATER" add --user "fine" > /dev/null 2>&1) &&
   ok "add --user works outside a repo" || no "add --user works outside a repo" "it failed"
+
+# A session outside a repository is the ordinary case, not a store that could
+# not be read: there is no repository store to reach, so the digest reports an
+# empty one rather than naming a failure.
+out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show 2>&1)
+check "show outside a repo reports an empty store" "$out" "Nothing parked, via the /later skill."
+
+# No git on PATH is NOT the case above. A repository store written while git
+# was on it still exists and is now unreadable, so reporting "nothing parked"
+# would be the very claim this design refuses to make -- and reporting it via
+# the shell's not-found error would put this script's path and line number in
+# front of the user on every call. An empty PATH is how git is removed, so the
+# config root has to be empty too: with a populated one the user store is read,
+# and count_entries needs wc and tr, which are gone with everything else. The
+# repository store cannot be resolved without git under any config, so there is
+# no fixture in which this path reads one.
+out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH= "$REALSH" "$LATER" show 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an empty store when git is not installed" "$out" ;;
+  *"git is not installed"*) ok "show does not claim an empty store when git is not installed" ;;
+  *) no "show does not claim an empty store when git is not installed" "$out" ;;
+esac
+case "$out" in
+  *"command not found"*|*"line "*|*later.sh:*)
+    no "the no-git message carries no shell error, path or line number" "$out" ;;
+  *) ok "the no-git message carries no shell error, path or line number" ;;
+esac
+
+# A path that exists but is not a readable regular file is the same false-empty
+# claim: -f alone passes a directory through to entries(), whose grep failure is
+# swallowed. Unlike the unreadable-mode case this is reachable on every
+# platform, so it is the one that pins the guard here.
+dirstore="$tmp/dirstore"
+mkdir -p "$dirstore"
+realstore=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" path)
+mkdir -p "$realstore"
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" show 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an empty store over a non-file store path" "$out" ;;
+  *"cannot be read"*) ok "show does not claim an empty store over a non-file store path" ;;
+  *) no "show does not claim an empty store over a non-file store path" "$out" ;;
+esac
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" list 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "list does not claim an empty store over a non-file store path" "$out" ;;
+  *"cannot be read"*) ok "list does not claim an empty store over a non-file store path" ;;
+  *) no "list does not claim an empty store over a non-file store path" "$out" ;;
+esac
+
+# The same two, for the USER store. Its guards are separate code and were
+# unpinned while the repository pair had a test: deleting both left the suite
+# green. It is the half that matters more, holding thoughts that belong to no
+# repository and have no copy anywhere.
+userdir="$tmp/userdir"
+mkdir -p "$userdir/later.md"
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$LATER" show 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an empty user store over a non-file store path" "$out" ;;
+  *"user store unreachable"*) ok "show does not claim an empty user store over a non-file store path" ;;
+  *) no "show does not claim an empty user store over a non-file store path" "$out" ;;
+esac
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$LATER" list --user 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "list --user does not claim an empty store over a non-file store path" "$out" ;;
+  *"user store unreachable"*) ok "list --user does not claim an empty store over a non-file store path" ;;
+  *) no "list --user does not claim an empty store over a non-file store path" "$out" ;;
+esac
 
 run done 99 > /dev/null 2>&1 && no "done on a bad index fails" "it succeeded" ||
   ok "done on a bad index fails"
@@ -296,12 +364,25 @@ out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" show 2>&1)
 rc=$?
 check "show exits 0 on pre-2.31 git" "$rc" "0"
 case "$out" in
-  *"Parked in myrepo"*) no "show drops the unreachable repo store on pre-2.31 git" "$out" ;;
-  *) ok "show drops the unreachable repo store on pre-2.31 git" ;;
+  *"Parked in myrepo"*) no "show lists no items from an unreachable repo store" "$out" ;;
+  *) ok "show lists no items from an unreachable repo store" ;;
 esac
 case "$out" in
   *error*|*fatal*) no "show emits no git error on pre-2.31 git" "$out" ;;
   *) ok "show emits no git error on pre-2.31 git" ;;
+esac
+
+# The digest is the line the skill tells the reader to trust, so it must not
+# claim an empty store over one it could not read. Only reachable with the USER
+# store empty too: with items in it the digest is non-empty and the
+# nothing-parked branch is never taken, which is why the case above misses this.
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH="$shim:$PATH" sh "$LATER" show 2>&1)
+rc=$?
+check "show exits 0 on an unreachable repo store with an empty user store" "$rc" "0"
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an unreachable store is empty" "$out" ;;
+  *2.31*) ok "show does not claim an unreachable store is empty" ;;
+  *) no "show does not claim an unreachable store is empty" "$out" ;;
 esac
 
 # Refusing to WRITE on old git was only half of it. `list` reporting an empty
