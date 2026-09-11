@@ -87,8 +87,21 @@ NO_REPO="not inside a git repository -- use --user to park this at user level"
 # a repository and getting "not inside a git repository" sends the reader
 # looking in the wrong place entirely.
 no_repo_reason() {
+  # Checked before git is run, because the shell's not-found error carries this
+  # script's path and line number, and every caller puts this string in front
+  # of the user -- the digest into every session. It is not NO_REPO either: a
+  # store written while git was on PATH still exists, and its key cannot be
+  # resolved without git.
+  #
+  # Every string here reaches six callers, only one of which is parking a
+  # thought, so they name the flag rather than telling the reader what to do
+  # with it.
+  if ! command -v git > /dev/null 2>&1; then
+    printf '%s' "git is not installed, and a repository-scoped store needs it -- use --user instead"
+    return 0
+  fi
   if err=$(git rev-parse --git-dir 2>&1); then
-    printf '%s' "git 2.31 or newer is required for a repository-scoped store (it needs --path-format) -- park this with --user, or upgrade git"
+    printf '%s' "git 2.31 or newer is required for a repository-scoped store (it needs --path-format) -- upgrade git, or use --user"
     return 0
   fi
   case "$err" in
@@ -287,9 +300,11 @@ cmd_mark() {
 
 # Hook mode. Always prints: a line naming an empty store is what tells a reader
 # the hook ran at all, and silence is indistinguishable from a hook that is not
-# wired. A store that could not be READ is named rather than counted as empty,
-# for the reason cmd_list gives -- and it matters more here, because this is the
-# line the skill tells the reader to trust.
+# wired. A store whose key cannot be RESOLVED is named rather than counted as
+# empty, for the reason cmd_list gives -- and it matters more here, because this
+# is the line the skill tells the reader to trust. A resolved store that cannot
+# be read still counts as empty: entries() swallows a grep failure, which is the
+# same silent failure one layer down.
 cmd_show() {
   out=""
   note=""
@@ -298,7 +313,8 @@ cmd_show() {
   if [ -z "$store" ]; then
     # Outside a repository there is no repository store to reach and never
     # will be -- the normal state of every non-git session, not something to
-    # report at the top of it. Only a repository this cannot resolve is news.
+    # report at the top of it. Anything else is a store that may hold items
+    # and cannot be read, which is news.
     reason=$(no_repo_reason)
     [ "$reason" = "$NO_REPO" ] ||
       note="later: repository store unreachable -- $reason"

@@ -2,7 +2,7 @@
 
 This repo is a **collection of Claude Code skills** I find useful and worth sharing, published for others to use. It's not themed around one domain — whatever makes a good, self-contained skill can live here. It's not an application: there's no build and no runtime, and for most skills the deliverable is the prose inside each `SKILL.md`.
 
-**But a skill may bundle executable support files, and one does.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `skills/later/selfcheck.sh` (65 assertions, `sh skills/later/selfcheck.sh`, touches nothing outside its own temp directory). Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
+**But a skill may bundle executable support files, and one does.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `skills/later/selfcheck.sh` (68 assertions, `sh skills/later/selfcheck.sh`, touches nothing outside its own temp directory). Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
 
 ## What goes here
 

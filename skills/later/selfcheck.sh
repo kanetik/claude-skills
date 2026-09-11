@@ -8,6 +8,8 @@ set -u
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 LATER="$here/later.sh"
+# Absolute, for the one case that runs with an empty PATH.
+REALSH=$(command -v sh)
 fails=0
 
 ok() { printf 'ok   %s\n' "$1"; }
@@ -261,10 +263,27 @@ fi
 
 # A session outside a repository is the ordinary case, not a store that could
 # not be read: there is no repository store to reach, so the digest reports an
-# empty one rather than naming a failure -- and never repeats `add`'s advice to
-# park "this" at user level, there being no thought in hand at session start.
+# empty one rather than naming a failure.
 out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show 2>&1)
 check "show outside a repo reports an empty store" "$out" "Nothing parked, via the /later skill."
+
+# No git on PATH is NOT the case above. A repository store written while git
+# was on it still exists and is now unreadable, so reporting "nothing parked"
+# would be the very claim this design refuses to make -- and reporting it via
+# the shell's not-found error would put this script's path and line number in
+# front of the user on every call. An empty PATH reaches the branch; nothing on
+# it is read, so no external tool is needed to get there.
+out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH= "$REALSH" "$LATER" show 2>&1)
+case "$out" in
+  *"Nothing parked"*) no "show does not claim an empty store when git is not installed" "$out" ;;
+  *"git is not installed"*) ok "show does not claim an empty store when git is not installed" ;;
+  *) no "show does not claim an empty store when git is not installed" "$out" ;;
+esac
+case "$out" in
+  *"command not found"*|*"line "*|*later.sh:*)
+    no "the no-git message carries no shell error, path or line number" "$out" ;;
+  *) ok "the no-git message carries no shell error, path or line number" ;;
+esac
 
 run done 99 > /dev/null 2>&1 && no "done on a bad index fails" "it succeeded" ||
   ok "done on a bad index fails"
