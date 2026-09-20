@@ -14,8 +14,8 @@ The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `
 
 A session whose working directory is a linked worktree may be isolated to it, refusing any git command it cannot prove targets that worktree. This is the recommended setup for background and parallel work — and some hosts refuse edits in the shared checkout until a session isolates — so a run started that way meets the refusal at its first staging call, while holding a lock it has just written.
 
-- **`$REPO` is the session's own worktree.** A linked worktree shares the object store and the ref namespace with the main checkout, so `fetch`, `merge-base`, `worktree add`, `update-ref -d` and teardown behave the same against either. Run them from the worktree and the guard is satisfied.
-- **Do not substitute the main checkout's path as a literal to get past a refusal.** That stages the review worktree and `refs/prskeptic/*` in one repository while teardown later runs against another — the leak the `$REPO` note above describes, reached by the one route that looks like a fix.
+- **On a same-repo PR, `$REPO` is the session's own worktree** rather than the main checkout. A linked worktree shares the object store and the ref namespace, so `fetch`, `merge-base`, `worktree add`, `update-ref -d` and teardown behave the same against either, and `refs/prskeptic/*` and the `worktree add` registration land in the same place either way. Run them from the worktree and the guard is satisfied. **On a cross-repo PR `$REPO` is still the clone**, which is a separate repository and so outside what this section can make safe.
+- **Run the scoping diffs against `$REPO` too.** They are written `-C` at the staged review worktree, and they give identical output from `$REPO`, which needs no worktree to be reachable.
 - **Keep each command plain and separate, and substitute `<tmp>` as a literal.** A compound line that mixes `cd`, `&&`, a pipeline and redirection is refused as a whole even when every part of it targets the worktree. Resolve `<tmp>` once and write the resolved path into each command, rather than leaving the `$TMPDIR` expansion for the guard to evaluate. The value does not change: it is still the deterministic per-PR path outside any repository that the rule at the top of this page requires. Only its spelling at the call site does.
 
 ## Resolve the PR
@@ -125,11 +125,12 @@ mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # sits here too, and holds review t
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
 
-# $REPO is the checkout every git call below runs against: the current repo for a PR in it,
-# else the clone above. Teardown happens many turns later, in another shell -- point it at
-# the wrong repo and the fetch plants refs/prskeptic/* and a worktree registration in the
-# user's own repository, where nothing ever reclaims them.
-REPO=<repo-root-or-tmp-clone>
+# $REPO is the checkout every git call below runs against: the current checkout for a PR in
+# its repo -- the session's own worktree where that is a linked one, see "Running from inside
+# a git worktree" -- else the clone above. Teardown happens many turns later, in another
+# shell -- point it at the wrong repo and the fetch plants refs/prskeptic/* and a worktree
+# registration in the user's own repository, where nothing ever reclaims them.
+REPO=<current-checkout-or-tmp-clone>
 
 # Fetch from an existing remote pointing at the base repo where there is one; $BASEREPO is
 # the fallback for the fork/cross-repo case. `git fetch https://...` on a repo whose remote
@@ -192,7 +193,7 @@ git -C "$REPO" update-ref -d "refs/prskeptic/<num>-new" 2>/dev/null   # only if 
 rm -rf "<tmp>"                             # the whole per-PR directory, clone and payload files included
 ```
 
-`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here.
+`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to `$REPO`'s working tree, never here. It has to be the same checkout [`configuration.md`](configuration.md) reads its uncommitted fallback from, and an uncommitted file is not shared between worktrees, so writing it to a different one leaves that fallback unable to see it and the user re-interviewed every run.
 
 Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
