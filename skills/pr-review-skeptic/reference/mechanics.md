@@ -15,7 +15,6 @@ The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `
 A session whose working directory is a linked worktree may be isolated to it, refusing any git command it cannot prove targets that worktree. This is the recommended setup for background and parallel work — and some hosts refuse edits in the shared checkout until a session isolates — so a run started that way meets the refusal at its first staging call, while holding a lock it has just written.
 
 - **On a same-repo PR, `$REPO` is the session's own worktree** rather than the main checkout. A linked worktree shares the object store and the ref namespace, so `fetch`, `merge-base`, `worktree add`, `update-ref -d` and teardown behave the same against either, and `refs/prskeptic/*` and the `worktree add` registration land in the same place either way. Run them from the worktree and the guard is satisfied. **On a cross-repo PR `$REPO` is still the clone**, which is a separate repository and so outside what this section can make safe.
-- **Run the scoping diffs against `$REPO` too.** They are written `-C` at the staged review worktree, and they give identical output from `$REPO`, which needs no worktree to be reachable.
 - **Keep each command plain and separate, and substitute `<tmp>` as a literal.** A compound line that mixes `cd`, `&&`, a pipeline and redirection is refused as a whole even when every part of it targets the worktree. Resolve `<tmp>` once and write the resolved path into each command, rather than leaving the `$TMPDIR` expansion for the guard to evaluate. The value does not change: it is still the deterministic per-PR path outside any repository that the rule at the top of this page requires. Only its spelling at the call site does.
 
 ## Resolve the PR
@@ -193,25 +192,25 @@ git -C "$REPO" update-ref -d "refs/prskeptic/<num>-new" 2>/dev/null   # only if 
 rm -rf "<tmp>"                             # the whole per-PR directory, clone and payload files included
 ```
 
-`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to `$REPO`'s working tree, never here. It has to be the same checkout [`configuration.md`](configuration.md) reads its uncommitted fallback from, and an uncommitted file is not shared between worktrees, so writing it to a different one leaves that fallback unable to see it and the user re-interviewed every run.
+`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file is written to a lasting checkout rather than here, and [`SKILL.md`](../SKILL.md) stage 2 says which one, including the cross-repo case where there is none.
 
 Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
 ## Scope the change
 
-From inside the staged worktree:
+These are commit-to-commit diffs and read no working tree, so they run against `$REPO` like every other call on this page — the staged worktree is for the reviewers to read files in, not for computing the file list:
 
 ```bash
-git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+git -C "$REPO" -c core.quotePath=false \
     diff --name-status --no-renames "$BASE...$REVIEWED"      # the file list
 ```
 
 **Two file lists, and they feed different reviewers** ([`SKILL.md`](../SKILL.md) stage 3). The command above is the whole change — the **composition** reviewer's list wherever one is dispatched, and every reviewer's list on a first run. The **content** reviewers' list, on a later run, is the delta since the last review, intersected with it. A given later run **hands out** one list or the other, never both: an empty delta means a composition reviewer and no content reviewers, and a non-empty one means the reverse. It still **computes** the whole-change list either way, because the content list is derived from it — that is what the intersection below is.
 
 ```bash
-git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+git -C "$REPO" -c core.quotePath=false \
     diff --name-status --no-renames "$LASTREVIEWED..$REVIEWED" > "<tmp>/delta.txt"
-git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+git -C "$REPO" -c core.quotePath=false \
     diff --name-only --no-renames "$BASE...$REVIEWED" | sort > "<tmp>/prfiles.txt"
 awk -F'\t' 'NR==FNR{p[$0];next} ($2 in p)' "<tmp>/prfiles.txt" "<tmp>/delta.txt"   # content units
 ```
