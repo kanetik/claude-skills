@@ -44,3 +44,17 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 - Markdown tables for option/parameter lists.
 - Bullet points sparingly; prose is usually clearer.
 - Frontmatter `description` leads with **what the skill does**. Where a skill is meant to auto-invoke, it may also fold in the trigger conditions ("use when…"), since the description is the only signal Claude Code has before selecting the skill. Keep the heavy procedural detail in the body — the description is a routing signal, not the manual.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on this repo, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
