@@ -192,7 +192,7 @@ git -C "$REPO" update-ref -d "refs/prskeptic/<num>-new" 2>/dev/null   # only if 
 rm -rf "<tmp>"                             # the whole per-PR directory, clone and payload files included
 ```
 
-`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file is written to a lasting checkout rather than here, and [`SKILL.md`](../SKILL.md) stage 2 says which one, including the cross-repo case where there is none.
+`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file is written to a lasting checkout rather than here, and [`SKILL.md`](../SKILL.md) stage 2 says which one, including the two cases where `$REPO` is not one.
 
 Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
