@@ -249,6 +249,45 @@ check "show says so when nothing is parked" "$out" "Nothing parked, via the /lat
 out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show >/dev/null; echo "rc=$?")
 check "show exits 0 with an empty store" "$out" "rc=0"
 
+# --- hook (SessionStart JSON) ------------------------------------------------
+
+out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" hook)
+check "hook puts the empty digest on screen and in context" "$out" \
+  '{"systemMessage":"Nothing parked, via the /later skill.","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Nothing parked, via the /later skill."}}'
+
+# Parked text is free-form, and one unescaped byte invalidates the whole object,
+# which Claude Code then drops without a word.
+hookrepo="$tmp/hookrepo"
+mkdir -p "$hookrepo"
+git -C "$hookrepo" init -q
+tab=$(printf '\t')
+bell=$(printf '\007')
+(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" add "q\" b\\ t${tab}x bell${bell}end") >/dev/null
+out=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" hook)
+case "$out" in
+  *'q\" b\\ t x bellend'*) ok "hook escapes quotes and backslashes, and drops control bytes" ;;
+  *) no "hook escapes quotes and backslashes, and drops control bytes" "$out" ;;
+esac
+case "$out" in
+  *"$tab"*|*"$bell"*) no "hook output holds no raw control byte" "$out" ;;
+  *) ok "hook output holds no raw control byte" ;;
+esac
+check "hook output is one line" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "1"
+case "$out" in
+  *'Parked in hookrepo (1 open):\n  '*) ok "hook joins digest lines with an escaped newline" ;;
+  *) no "hook joins digest lines with an escaped newline" "$out" ;;
+esac
+
+# `add` turns a tab into a space, so only a hand-edited store carries a raw tab
+# or CR to the encoder.
+hookstore=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" path)
+printf -- '- [ ] 2026-01-01 hand%sedit\rmore\n' "$tab" >> "$hookstore"
+out=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" hook)
+case "$out" in
+  *'hand\tedit\rmore'*) ok "hook escapes a raw tab and CR from a hand-edited store" ;;
+  *) no "hook escapes a raw tab and CR from a hand-edited store" "$out" ;;
+esac
+
 # --- failure modes ----------------------------------------------------------
 
 outside="$tmp/notarepo"

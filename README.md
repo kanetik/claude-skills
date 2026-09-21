@@ -270,7 +270,7 @@ half that makes the skill worth having — unless the hook is wired up:
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$HOME/.claude/skills/later/later.sh\" show",
+            "command": "sh \"$HOME/.claude/skills/later/later.sh\" hook",
             "timeout": 5
           }
         ]
