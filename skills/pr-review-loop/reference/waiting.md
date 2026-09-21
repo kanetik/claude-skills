@@ -1,6 +1,6 @@
 # Waiting for reviewer activity (SKILL.md step 3 detail)
 
-**All of this concerns bots only.** The `skeptic` reviewer runs synchronously and its review is on the PR by the time it returns, so it is never pending, never polled, and never waited on. Where `reviewers` contains no bot, the loop has no wait step at all — step 2 comes back with the round's findings in hand and goes straight to step 4 — and the re-entrancy machinery below matters only in that a run can still be interrupted between rounds.
+**All of this concerns bots only.** The `skeptic` reviewer runs synchronously and step 2 confirms its review is on the PR the moment it returns, so it is never pending, never polled, and never waited on. Where `reviewers` contains no bot, the loop has no wait step at all — step 2 comes back with the round's findings in hand and goes straight to step 4 — and the re-entrancy machinery below matters only in that a run can still be interrupted between rounds.
 
 ## Poll on a timer — no events reach a local terminal to wait on
 
@@ -78,7 +78,7 @@ Wait until every bot **engaged for the current commit** has either delivered a v
 
 Excused is the exit that is easy to omit, and omitting it hangs the loop: the excusal is offered from inside this very step (the timeout, below), so a condition listing only "delivered or happy" is still unmet the moment the user grants it — the poll re-arms and the wait never ends, never reaching the step-4 handling that was supposed to unblock it. **Recompute the engaged set from `active` when a reviewer is excused, and let control pass to step 4 immediately.** "Engaged for the current commit" is a historical fact that the excusal does not undo, so it cannot be the thing you test. Convergence is gauged on `reviewers`; a reviewer that turned up on its own is triaged but never blocks the loop.
 
-**Skeptic is never waited on.** It isn't requested, so nothing is pending; it runs synchronously and its review is already posted before the round's wait would begin. Where `reviewers` mixes both kinds, run skeptic first and let its findings join the same batch as the bot's — one combined evaluation per round, for the reason below. A list with no bot in it has no wait at all, and a wait armed for one would never end.
+**Skeptic is never waited on.** It isn't requested, so nothing is pending; it runs synchronously, and step 2 confirms its review is posted before the round's wait would begin. Where `reviewers` mixes both kinds, run skeptic first and let its findings join the same batch as the bot's — one combined evaluation per round, for the reason below. A list with no bot in it has no wait at all, and a wait armed for one would never end.
 
 **Batch-evaluate the round's combined feedback in one pass** — don't react to bot A, push a fix, then let bot B review the new state. That compounds iterations and misses contradictions (one says X, another ¬X) and overlap you'd catch seeing both side by side.
 
