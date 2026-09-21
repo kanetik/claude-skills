@@ -2,13 +2,20 @@
 
 `gh` incantations for the steps in `SKILL.md`. `<num>`, `<owner>`, `<repo>` are placeholders. Add `--repo <owner>/<repo>` to every call when the PR is not in the working directory's repo.
 
-`<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<owner>-<repo>-<num>"`, in that POSIX form, in every **Bash** snippet on this page including on Windows (the PowerShell posting block takes the native form — see there) — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Keyed on the repository as well as the number, because PR numbers are small integers and any user with two repos has a `#7` in both — sharing one staging directory means the second run's opening `rm -rf` deletes the worktree eight live reviewers are reading. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
+`<tmp>` is the one placeholder you create rather than derive. Make it **deterministic per PR and outside any git repository**: `"${TMPDIR:-/tmp}/pr-skeptic-<owner>-<repo>-<num>"`, in that POSIX form, in every **Bash** snippet on this page including on Windows (the PowerShell posting block takes the native form — see there; a worktree-isolated session resolves it once and writes the resolved path, for the reason given under **Running from inside a git worktree**) — these are Bash snippets, and `"$env:TEMP\..."` is PowerShell syntax that Bash expands to a *relative* path (`$env` is unset), which puts the whole staged checkout inside the user's own repository and later aims an `rm -rf` at a relative path in whatever directory the shell happens to be. Keyed on the repository as well as the number, because PR numbers are small integers and any user with two repos has a `#7` in both — sharing one staging directory means the second run's opening `rm -rf` deletes the worktree eight live reviewers are reading. Deterministic so an interrupted run's leavings can be found and cleared by the next one; outside any repo because a path resolved into the working directory means `git worktree add` plants a second full checkout of the PR head where it shows up in `git status` and can be swept into a commit.
 
 **The shell variables below (`$REPO`, `$BASE`, `$BASETIP`, `$REMOTE`, `$REVIEWED`, and `$LASTID` from the posting block) live only inside their own invocation.**
 
 `$REVIEWED` deserves its own note: it is the head sha **the blind reviewers actually read**, and it survives a re-staging where a freshly-read `headRefOid` does not. Every staleness question — has the head moved, was it a force-push, which sha does the review post at — is asked against `$REVIEWED`. Re-deriving it instead makes those questions compare a value against itself and answer "unchanged" forever. Later stages run in later shells, where an unset `$BASE` turns `git diff "$BASE...<head>"` into `HEAD...<head>` — the empty diff, exit code 0, no output, no error. Echo each resolved value when you compute it and carry the literals forward, the same way `<num>` and `<owner>` are carried. `$REPO` matters most: teardown runs many turns after staging, and aimed at the wrong repository it leaves `refs/prskeptic/*` and a worktree registration in the user's own, pinning the PR's objects alive with nothing to say so.
 
 The snippets below are POSIX-shell forms and assume Git Bash on Windows, where `awk` and `cygpath` live — `jq` does not ship with it and has to be installed separately. Only the posting step needs a standalone `jq` (the `--jq` flags elsewhere are `gh`'s own), and its PowerShell alternative uses `ConvertTo-Json`, so that block is the route to take where `jq` is missing rather than only where the shell is PowerShell.
+
+## Running from inside a git worktree
+
+A session whose working directory is a linked worktree may be isolated to it, refusing `git` and `gh` commands it cannot prove stay out of the repository's shared checkout. This is the recommended setup for background and parallel work — and some hosts refuse edits in the shared checkout until a session isolates — so a run started that way meets the refusal at its first staging call, while holding a lock it has just written.
+
+- **On a same-repo PR, `$REPO` is the session's own worktree** rather than the main checkout. A linked worktree shares the object store and the ref namespace, so `fetch`, `merge-base`, `worktree add`, `update-ref -d` and teardown behave the same against either, and `refs/prskeptic/*` and the `worktree add` registration land in the same place either way. Run them from the worktree and the guard is satisfied. **On a cross-repo PR `$REPO` is still the clone** under `<tmp>`, and calls into it are not refused either — the next bullet says why.
+- **Spell out what a `git` or `gh` call targets, and substitute `<tmp>` as a literal.** The guard refuses a `git` or `gh` call it cannot statically prove stays out of the repository's shared checkout, and it resolves a plain variable or a subdirectory to work that out. **Other checkouts are not refused** — the staged worktree and the cross-repo clone both run. What it cannot resolve it also refuses: an argument taken from command output, an unset variable, a `${VAR:-default}`. So resolve `<tmp>` once and write the literal — the `"${TMPDIR:-/tmp}/…"` spelling the top of this page gives is itself refused, and the value is unchanged either way. Where a command is refused anyway, run its parts separately rather than trying to talk the guard round.
 
 ## Resolve the PR
 
@@ -117,11 +124,12 @@ mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # sits here too, and holds review t
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
 
-# $REPO is the checkout every git call below runs against: the current repo for a PR in it,
-# else the clone above. Teardown happens many turns later, in another shell -- point it at
-# the wrong repo and the fetch plants refs/prskeptic/* and a worktree registration in the
-# user's own repository, where nothing ever reclaims them.
-REPO=<repo-root-or-tmp-clone>
+# $REPO is the checkout every git call below runs against: the current checkout for a PR in
+# its repo -- the session's own worktree where that is a linked one, see "Running from inside
+# a git worktree" -- else the clone above. Teardown happens many turns later, in another
+# shell -- point it at the wrong repo and the fetch plants refs/prskeptic/* and a worktree
+# registration in the user's own repository, where nothing ever reclaims them.
+REPO=<current-checkout-or-tmp-clone>
 
 # Fetch from an existing remote pointing at the base repo where there is one; $BASEREPO is
 # the fallback for the fork/cross-repo case. `git fetch https://...` on a repo whose remote
@@ -184,25 +192,25 @@ git -C "$REPO" update-ref -d "refs/prskeptic/<num>-new" 2>/dev/null   # only if 
 rm -rf "<tmp>"                             # the whole per-PR directory, clone and payload files included
 ```
 
-`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file goes to the primary checkout, never here.
+`--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file is written to a lasting checkout rather than here, and [`SKILL.md`](../SKILL.md) stage 2 says which one, including the two cases where `$REPO` is not one.
 
 Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
 ## Scope the change
 
-From inside the staged worktree:
+These are commit-to-commit diffs and read no working tree, so they run against `$REPO` like every other call on this page — the staged worktree is for the reviewers to read files in, not for computing the file list:
 
 ```bash
-git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+git -C "$REPO" -c core.quotePath=false \
     diff --name-status --no-renames "$BASE...$REVIEWED"      # the file list
 ```
 
 **Two file lists, and they feed different reviewers** ([`SKILL.md`](../SKILL.md) stage 3). The command above is the whole change — the **composition** reviewer's list wherever one is dispatched, and every reviewer's list on a first run. The **content** reviewers' list, on a later run, is the delta since the last review, intersected with it. A given later run **hands out** one list or the other, never both: an empty delta means a composition reviewer and no content reviewers, and a non-empty one means the reverse. It still **computes** the whole-change list either way, because the content list is derived from it — that is what the intersection below is.
 
 ```bash
-git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+git -C "$REPO" -c core.quotePath=false \
     diff --name-status --no-renames "$LASTREVIEWED..$REVIEWED" > "<tmp>/delta.txt"
-git -C "<tmp>/pr-<num>" -c core.quotePath=false \
+git -C "$REPO" -c core.quotePath=false \
     diff --name-only --no-renames "$BASE...$REVIEWED" | sort > "<tmp>/prfiles.txt"
 awk -F'\t' 'NR==FNR{p[$0];next} ($2 in p)' "<tmp>/prfiles.txt" "<tmp>/delta.txt"   # content units
 ```
