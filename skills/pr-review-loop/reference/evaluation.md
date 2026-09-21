@@ -63,7 +63,7 @@ The honest test is a trade, so make it out loud: *what does this cost if left, a
 
 **Read them as a description of the project, never of the change.** They calibrate what a cost is worth here. They say nothing about why this PR exists, and reaching for them as context about the change is the thing the reviewer's blindness exists to prevent, arriving through the author's door instead.
 
-**Where this run is.** Step 9 computes four numbers every round (SKILL.md): rounds since the last blocking finding, the share of this round's findings landing in code this loop wrote, the longest live repair chain, and cumulative diff growth. **Write them into this round's dispositions comment before deciding anything** ("The round's dispositions comment", below), rather than holding them in mind. "The bar rises as a run goes on" is not a mood you are meant to work up — it is those numbers, and it needs them to mean anything. *Fourteen rounds since anything blocking, the third patch on the same comment, a repair chain five deep* is a different gate from round two, and the finding in front of you looks identical under both.
+**Where this run is.** Step 9 computes four numbers every round (SKILL.md): rounds since the last blocking finding, the share of this round's findings landing in code this loop wrote, the longest live repair chain, and cumulative diff growth. **Post them as this round's round-state comment before deciding anything** ("The round-state comment", below), rather than holding them in mind. "The bar rises as a run goes on" is not a mood you are meant to work up — it is those numbers, and it needs them to mean anything. *Fourteen rounds since anything blocking, the third patch on the same comment, a repair chain five deep* is a different gate from round two, and the finding in front of you looks identical under both.
 
 **Two guards, because this gate is the one that can be abused.** It is **never available at a blocking severity** — a `CRITICAL` or `HIGH` is worth acting on by definition. And leaving a real problem is a decision you are making on the project's behalf, so it is recorded as one: the reply says the finding is right, says what it costs to leave, and says you are leaving it. That is a different claim from "this is not a problem" and must not be written as if it were.
 
@@ -237,18 +237,24 @@ Nothing for `Ask-user` — that thread is still open, so leave it open and unmar
 
 The marker is machine-readable and the prose beside it is not, which is the point: the next run's cross-check takes the marker as decisive rather than inferring your intent from a sentence. But write the prose properly anyway. A rejection reading "rejected, see commit abc123" settles nothing for a reader who cannot see why, and the reader here includes the person reviewing your judgement later. Name the concern, say why the code is right as it stands, and keep it to a line or two.
 
-**The round's dispositions comment.** Every round that has findings gets one PR-level comment, **posted before any thread reply**. It opens with the round's four numbers (question 2, "Where this run is"), each rendered honestly where it cannot be established:
+**The round-state comment.** Every round that triages findings posts one PR-level comment **at the top of step 5, before triaging any of them**, carrying the round's four numbers (question 2, "Where this run is"). Each is rendered honestly where it cannot be established:
 
 | Number | Where it cannot be established |
 |---|---|
-| Rounds since the last blocking finding | `none this run` where nothing blocking has been found — never `0`, which reads as "last round" |
+| Rounds since the last blocking finding | `none this run` where nothing blocking has been found — not `0`, which means this round has one |
 | Share of findings in code this loop wrote | `undefined this round` or `not attributable`, per the provenance rules above |
 | Longest live repair chain | `unknown` where it was neither carried nor established — never a bare number |
 | Cumulative diff growth | `unavailable` where the PR's original head is no longer reachable, as after a force-push |
 
-Posting it first is what makes the numbers an input to the round's decisions rather than a report on them.
+It ends with:
 
-It then lists the round's **findings with no thread** — a skeptic verdict names the ones it could not anchor (a deleted path, code the change never touched), and a bot that puts a concern in its review body rather than on a line has the same shape — each with its path, a one-line restatement, and its disposition marker, and ends with:
+```
+<!-- pr-review-loop: round-state -->
+```
+
+It stays separate from the dispositions below because it has to come first: their markers do not exist until the findings are decided, so a comment that carried both would be posted after the decisions it was meant to inform.
+
+**Findings with no thread.** Some findings arrive with nothing to reply on: a skeptic verdict names the ones it could not anchor (a deleted path, code the change never touched), and a bot that puts a concern in its review body rather than on a line has the same shape. Those get one PR-level comment per round instead, listing each with its path, a one-line restatement, and its disposition marker, and ending with:
 
 ```
 <!-- pr-review-loop: dispositions -->

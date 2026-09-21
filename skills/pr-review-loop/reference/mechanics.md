@@ -204,7 +204,7 @@ Two channels, and use both. The skill **returns** a verdict, the findings with s
 
 Both of the things you most need from the returned copy are also **recoverable from the PR**, and it matters that you know that, because a context-less wake has only the PR: the posted summary body carries the coverage line and the findings that got no thread, under their own heading. So a wake can reconstruct the whole round without the return value — read the marker-carrying review body.
 
-Findings placed in that body rather than on a thread (a deleted path, code the change never touched) are yours to disposition in the PR-level comment described in `reference/evaluation.md`. Nothing else records them, and a finding with no record comes back every round.
+Findings placed in that body rather than on a thread (a deleted path, code the change never touched) are yours to disposition in the dispositions comment described in `reference/evaluation.md`. Nothing else records them, and a finding with no record comes back every round.
 
 Failure modes, and what each means:
 
