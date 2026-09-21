@@ -244,7 +244,7 @@ The marker is machine-readable and the prose beside it is not, which is the poin
 | Rounds since the last blocking finding | `none this run` where nothing blocking has been found — not `0`, which means this round has one |
 | Share of findings in code this loop wrote | `undefined this round` or `not attributable`, per the provenance rules above |
 | Longest live repair chain | `unknown` where it was neither carried nor established — never a bare number |
-| Cumulative diff growth | always computable — but against the PR's *current* first commit, which a force-push or rebase can change |
+| Cumulative diff growth | `none yet` before the loop's first repair commit, since there is no original to measure against until then |
 
 It ends with:
 
