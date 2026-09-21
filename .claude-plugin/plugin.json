@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/later/later.sh\" show",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/later/later.sh\" hook",
             "timeout": 5
           }
         ]

@@ -2,7 +2,7 @@
 # later.sh -- the parked-thought store behind the /later skill.
 #
 # One implementation of the store, two callers: the skill (add/list/done/maybe)
-# and the SessionStart hook (show). The path resolution lives here for a
+# and the SessionStart hook (hook, which wraps show). The path resolution lives here for a
 # reason -- two implementations of the mangling rule would drift, and a drifted
 # path does not error, it silently starts a second invisible store.
 #
@@ -11,7 +11,8 @@
 #   later.sh list [--user|--all]          numbered open items
 #   later.sh done [--user] <n>            mark item n handled
 #   later.sh maybe [--user] <n> <why>     mark item n possibly handled
-#   later.sh show                         hook mode: the digest
+#   later.sh show                         the digest, as plain text
+#   later.sh hook                         the digest as SessionStart hook JSON
 #   later.sh path [--user]                print the store path
 #
 # -- ends the flags, for text or a reason that starts with one.
@@ -375,9 +376,29 @@ $(entries "$ustore" | head -n "$SHOW_USER_MAX" | sed 's/^[0-9]*:/  /')"
   exit 0
 }
 
+# One JSON string body from stdin: escapes, lines joined with \n, and every
+# other control character dropped, since one stray byte makes the hook's whole
+# output invalid JSON and the digest silently disappears.
+json_str() {
+  tab=$(printf '\t')
+  cr=$(printf '\r')
+  tr -d '\000-\010\013\014\016-\037' |
+    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$tab/\\\\t/g" -e "s/$cr/\\\\r/g" |
+    awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }'
+}
+
+# systemMessage is what the user sees on screen; additionalContext is what the
+# model gets. Plain stdout reaches only the model, which a session opened with a
+# prompt already typed goes straight past.
+cmd_hook() {
+  body=$(cmd_show | json_str)
+  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$body" "$body"
+  exit 0
+}
+
 # --- arguments --------------------------------------------------------------
 
-[ $# -gt 0 ] || die "usage: later.sh add|list|done|maybe|show|path [--user] [args]"
+[ $# -gt 0 ] || die "usage: later.sh add|list|done|maybe|show|hook|path [--user] [args]"
 cmd=$1
 shift
 
@@ -451,6 +472,7 @@ case "$cmd" in
     cmd_mark "$scope" "$n" '~' "$*"
     ;;
   show) cmd_show ;;
+  hook) cmd_hook ;;
   path)
     p=$(store_path "$scope") || die "$(no_repo_reason)"
     [ -n "$p" ] || die "$(no_repo_reason)"

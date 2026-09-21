@@ -1,8 +1,8 @@
 # Installing the `later` hook
 
 The skill captures thoughts on its own. Resurfacing them needs a `SessionStart`
-hook that runs `later.sh show` and injects the digest at the top of each
-session. Without it the store is write-only.
+hook that runs `later.sh hook`, which shows the digest on screen at the top of
+each session and gives the model the same text. Without it the store is write-only.
 
 ## As part of the plugin
 
@@ -38,7 +38,7 @@ and the path inside the command, which is literal and expands nothing but
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$HOME/.claude/skills/later/later.sh\" show",
+            "command": "sh \"$HOME/.claude/skills/later/later.sh\" hook",
             "timeout": 5
           }
         ]
@@ -97,4 +97,4 @@ nothing else does: no digest at the top of a session, and with it none of the
 behaviour that depends on parked items sitting in context — raising an item the
 current work runs into, and reconciling what got handled when work finishes.
 Porting that half means writing an OpenCode plugin that shells out to
-`later.sh show`.
+`later.sh show`, which prints the same digest as plain text.

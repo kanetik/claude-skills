@@ -71,7 +71,7 @@ the working directory at run time is the project root, not this folder.
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" done --user <n>` | Mark user item *n* handled |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" maybe <n> <why>` | Mark repository item *n* *possibly* handled, recording what suggests it |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" maybe --user <n> <why>` | The same, in the user store |
-| `sh "${CLAUDE_SKILL_DIR}/later.sh" show` | The digest the SessionStart hook prints |
+| `sh "${CLAUDE_SKILL_DIR}/later.sh" show` | The digest the SessionStart hook shows |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" path` | Where this repository's store lives |
 
 **`${CLAUDE_SKILL_DIR}` is a Claude Code substitution.** A host that does not
@@ -129,8 +129,8 @@ the digest.
 Capture is worth nothing without this half. A store nothing ever reads is a
 hole thoughts go into.
 
-The mechanism is a `SessionStart` hook that runs `later.sh show`, whose output
-is injected as context at the top of each session. **The digest always prints**
+The mechanism is a `SessionStart` hook that runs `later.sh hook`, which puts the
+digest on the user's screen at the top of each session and in this context. **The digest always prints**
 — `Nothing parked, via the /later skill.` when both stores are empty, and a line
 naming the reason where the repository store cannot be read — so its presence is
 what says the hook ran.
