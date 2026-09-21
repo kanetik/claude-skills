@@ -202,6 +202,8 @@ Collect the blocks. Two findings are the same when they name the same defect in 
 
 Keep the `SOUND` blocks. They feed the terminal report at stage 8 — what the reviewers actually verified, which is the difference between a clean result and a quiet one. They do not go in the posted body; a PR review is for what needs attention.
 
+**A `SOUND` block that another reviewer's `FINDING` contradicts is dropped, not merged.** The finding goes forward and is settled on the PR like any other, and the `SOUND` is not reported as verified. Where one reviewer finds a thing another says does not exist, the absence is the claim to doubt: it can only be established by a search, and that search may have used a spelling the thing does not.
+
 **Keep the `NOTED` blocks too, deduped the same way** — same note in the same place, keep the clearest — and pass them straight to stage 7 for the body. They acquire nothing here: no severity, no bucket, no promotion to a finding. This stage sits between the reviewers and the posting gate, and both ends enumerate all three block types, so a merge that survived only two would drop notes the gate expects to see and the body is supposed to carry.
 
 ## 6. Cross-check against history
