@@ -280,6 +280,9 @@ half that makes the skill worth having — unless the hook is wired up:
 }
 ```
 
+Wired this by hand before, ending in `show`? Change it to `hook`: `show` still
+works, but its digest reaches only the model and never your screen.
+
 Use a **literal path** to wherever you installed the skill. The block above
 spells out the default `~/.claude`; if you have set `CLAUDE_CONFIG_DIR`,
 substitute it yourself in both the settings file you edit and the path inside

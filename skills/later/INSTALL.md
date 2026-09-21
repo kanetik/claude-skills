@@ -48,6 +48,10 @@ and the path inside the command, which is literal and expands nothing but
 }
 ```
 
+**Wired this by hand before, with `later.sh" show` at the end?** Change `show` to
+`hook`. `show` still works, but its digest reaches only the model and never
+your screen.
+
 A project's own `.claude/settings.json` takes the same block and works, but the
 digest then appears only in that project — including the user store, which is
 the half meant to follow you between projects. That file is also committed, so
