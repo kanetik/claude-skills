@@ -278,6 +278,16 @@ case "$out" in
   *) no "hook joins digest lines with an escaped newline" "$out" ;;
 esac
 
+# `add` turns a tab into a space, so only a hand-edited store carries a raw tab
+# or CR to the encoder.
+hookstore=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" path)
+printf -- '- [ ] 2026-01-01 hand%sedit\rmore\n' "$tab" >> "$hookstore"
+out=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" hook)
+case "$out" in
+  *'hand\tedit\rmore'*) ok "hook escapes a raw tab and CR from a hand-edited store" ;;
+  *) no "hook escapes a raw tab and CR from a hand-edited store" "$out" ;;
+esac
+
 # --- failure modes ----------------------------------------------------------
 
 outside="$tmp/notarepo"
