@@ -43,7 +43,7 @@ When you adapt it: keep `headRefOid` so pushes register even in a repo with no C
 Under polling the loop is **re-entered across wakes**, not run as one process. Make each wake idempotent:
 
 1. Re-pull (`git fetch && git pull --ff-only`).
-2. Re-derive where you are from the PR (SKILL.md step 1 gathering): unresolved threads, review states with their `commit_id`s, bot issue comments, skeptic's coverage record, the current HEAD sha (and the latest push timestamp, for the sha-less fallback), tracked-bots set — **read all three surfaces against current HEAD** (SKILL.md "Reading reviewer state") before concluding any bot is still pending. The HEAD sha is the one that matters: staleness is "did this reviewer see this code", which a sha answers and a clock only approximates.
+2. Re-derive where you are from the PR (SKILL.md step 1 gathering): unresolved threads, review states with their `commit_id`s, bot issue comments, this loop's own dispositions comments (for any `asked` entry still outstanding), skeptic's coverage record, the current HEAD sha (and the latest push timestamp, for the sha-less fallback), tracked-bots set — **read all three surfaces against current HEAD** (SKILL.md "Reading reviewer state") before concluding any bot is still pending. The HEAD sha is the one that matters: staleness is "did this reviewer see this code", which a sha answers and a clock only approximates.
 3. Act (evaluate / request / wait).
 4. Re-schedule the poll, then yield.
 
