@@ -65,7 +65,7 @@ This skill is self-contained. The files below live in this skill's own directory
 
 ## Reporting style — terse
 
-Status during iterations and waits is one or two lines: "Iter 3 wait, Copilot still cooking, back in ~4 min." / "Iter 4: skeptic 2 HIGH, 5 MEDIUM — fixing 5, rejecting 2." / "All reviewers clean, terminating." Don't restate reviewer text the user can read on the PR. The final summary is short bullets, not paragraphs. A round's status ends with what happens next, never with a question.
+Status during iterations and waits is one or two lines: "Iter 3 wait, Copilot still cooking, back in ~4 min." / "Iter 4: skeptic 2 HIGH, 5 MEDIUM — fixing 5, rejecting 2." / "All reviewers clean, terminating." Don't restate reviewer text the user can read on the PR. The final summary is short bullets, not paragraphs.
 
 ## Configuration (summary)
 
@@ -229,7 +229,7 @@ Fail any and it is **not** convergence, and the reported outcome depends on whic
 4. **Nobody reviewed this HEAD** — the convergence invariant's first two conditions failed: the accountable set is empty, or a member of it is not happy on the terms the invariant states, staleness scoped to the active set. Name the last commit and what emptied or unreviewed the set.
 5. **The whole change could not be read at HEAD** — the invariant's *third* condition alone, after its one ask **and with the taper unmet**. Every content unit may have been read clean at this commit; what is missing is the whole-change pass. The taper narrows this state to what it was always meant to name — a whole-change read that could not be *obtained* — rather than one that ran, came back clean twice, and was merely some fix-rounds old. Name what was reviewed as well as what was not — and the commit the whole change was last read at only where there is one, per the bullet's own guard — and keep it distinct from state 4 — collapsing the two tells a reader their PR is unreviewed when it was reviewed and found clean.
 
-**Short of the cap, how long the run has gone on is not a reason to ask whether to continue.** Nor is the cap a quota. A round that changes no code ends the run whenever it arrives, and a run that converges in one or two rounds is a correct one.
+**Outside step 9's cap report and its uncapped re-ask, how long the run has gone on is not a reason to ask whether to continue.** Nor is the cap a quota. A round that changes no code ends the run whenever it arrives, and a run that converges in one or two rounds is a correct one.
 
 **The terminating round still dispositions its own findings.** Terminal state 1 goes to the summary without passing through step 5, so the findings in the verdict that *ended* the loop — a clean pass carrying three `MEDIUM` nits, typically — would never get a reply or a resolved thread. That is the commonest terminating round there is, and leaving it undispositioned breaks the rule this skill leads with: every finding gets a decision. So before the summary, run step 5's recording half over them — reply, disposition marker, resolve.
 
