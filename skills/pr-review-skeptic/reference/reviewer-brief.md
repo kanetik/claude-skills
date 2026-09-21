@@ -22,6 +22,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{PRIOR_REVIEW}}` | on a later run, with `$LASTREVIEWED` substituted: the **Already reviewed** block below for a content reviewer, the **composition** variant at the end of this file for the composition reviewer — they say different things about the range and are not interchangeable. **Empty on a first run** | see below |
 | `{{SETTLED}}` | on a later run with settled decisions, the **Already decided** block below. **Empty on a first run**, and empty on a later run with nothing settled | see below |
 | `{{SETTLED_LIST}}` | the decision lines inside that block — one per accepted consequence, no rationale. **`deferred` only, and only below the blocking severities** (SKILL.md stage 3 says why a rejected, acknowledged or blocking one must stay re-findable) | "Accepted: a trimmed cache directory fails the refresh rather than degrading (thread #12)" |
+| `{{DELIVERY}}` | the **returning** wording below, until a dispatch in this run hands back an acknowledgement instead of a report; the **detached** wording from then on (SKILL.md stage 4) | see below |
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
 Every slot carries a fact about the project, about the mechanics of reaching the code, or about what this review process has already covered and decided. **None carries what the change is for, why it was built this way, or what anyone argued about it** — that includes `{{SETTLED}}`, whose entries state a consequence the project accepted and stop there.
@@ -35,6 +36,18 @@ Substituted verbatim on a later run, `$LASTREVIEWED` filled in:
 > **This change has been reviewed before, at `$LASTREVIEWED`.** Your range starts there: the parts of *this change* written before it have been read by reviewers briefed as you are, and re-reading them is not what you are here for. Read as much of them as you need — new code cannot be judged without the code it sits in, and a caller that has not changed is often where the new callee's defect shows up. You are not checking anyone's earlier work, and nothing about what they concluded has been passed to you.
 >
 > **That covers the change, and only the change. Code the change never touched has been read by nobody** — not by an earlier reviewer, not by anyone on this run. So a defect *there* is still yours to report, with `line: none`, exactly as the reporting rules below say. "Report on what is in your range" governs which part of the change you re-read; it does not put untouched code out of bounds.
+
+### The `{{DELIVERY}}` wording
+
+A returning dispatch — the call handed back the agent's report:
+
+> Your final message is what reaches your dispatcher, so make it the blocks.
+
+A detached one — the call handed back an acknowledgement that the agent is running, whatever form was asked for:
+
+> Plain text you end with reaches nobody. Deliver the blocks by calling `<tool>` addressed to `<address>`, with the blocks as the message body.
+
+Fill `<tool>` and `<address>` with the actual call your harness offers for messaging the dispatcher. A description such as "whatever means the dispatch provides" is not a call a reviewer can make.
 
 ### The `{{SETTLED}}` block
 
@@ -172,7 +185,7 @@ verified: Cancellation propagates on every branch; backoff is bounded; the WorkM
 
 A slice with nothing wrong in it is a real and useful result. Report it as one. Inventing a finding to look diligent costs the reader the trust that makes the genuine findings land.
 
-Your whole result is `FINDING`, `NOTED` and `SOUND` blocks — nothing else, and no prose around them. Deliver them to whoever dispatched you, by whatever means that dispatch provides; blocks written as a closing statement that nobody receives are the same as no review at all.
+Your whole result is `FINDING`, `NOTED` and `SOUND` blocks — nothing else, and no prose around them. {{DELIVERY}} Blocks that nobody receives are the same as no review at all.
 
 ---
 
