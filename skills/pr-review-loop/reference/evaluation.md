@@ -233,7 +233,7 @@ On the finding's own thread: reply with what you decided and why, then resolve t
 <!-- pr-review-loop: disposition=deferred -->       Create-issue-and-close
 ```
 
-Nothing for `Ask-user` — that thread is still open, so leave it open and unmarked.
+Nothing for `Ask-user` — that thread is still open, so leave it open and unmarked. A finding with no thread has nothing to leave open, so its entry in the threadless comment below carries `<!-- pr-review-loop: disposition=asked -->` instead: a question sent to the user, not a decision.
 
 **`acknowledged` earns a real sentence, not a shrug, and it says which of the two claims it is.** For a finding that names no problem: "true; the phrasing is loose but nothing reads it to decide anything, so leaving it." For a real one you are choosing not to spend a round on: **say it is right, say what leaving it costs, and say that is the trade** — "right, and the report will omit this number until someone hits it; not worth a round and the review it owes." The reviewer was right either way and the reply is the only place that is recorded. A bare "acknowledged" reads as a brush-off to the person who has to judge whether you were being disciplined or lazy, and it gives the next round's cross-check nothing to settle the finding against.
 
@@ -261,6 +261,8 @@ It stays separate from the dispositions below because it has to come first: thei
 ```
 <!-- pr-review-loop: dispositions -->
 ```
+
+A finding whose latest entry is `asked` holds the loop open exactly as an open `Ask-user` thread does, until a later round's entry records the decision the user made.
 
 One comment per round, not one per finding. Its next run reads the PR's issue comments as part of the history payload and matches these entries on substance. Without it, exactly the findings that have no thread are the ones that come back every round forever — which is the same failure as skipping the replies, arriving through the one door replies can't cover.
 

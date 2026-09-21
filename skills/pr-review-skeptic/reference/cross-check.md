@@ -41,7 +41,10 @@ Where the pull request is being driven by an agent, the author's replies carry a
 <!-- pr-review-loop: disposition=rejected -->       the concern was understood and the code kept as-is, with a rationale
 <!-- pr-review-loop: disposition=acknowledged -->   the concern was agreed to be correct, and judged not a problem worth changing
 <!-- pr-review-loop: disposition=deferred -->       the concern was accepted as real and tracked elsewhere, out of scope here
+<!-- pr-review-loop: disposition=asked -->          the question was sent to the user; nothing has been decided
 ```
+
+`asked` is not a decision. Treat it as no record at all.
 
 They appear as a reply on the finding's own thread. For findings the earlier run could not give a thread to, they appear instead as entries in a PR-level issue comment ending `<!-- pr-review-loop: dispositions -->`, each entry naming the path and restating the finding — match those on the finding's substance, since there is no line to match on.
 
