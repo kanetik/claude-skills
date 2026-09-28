@@ -1,15 +1,15 @@
 # Installing the `later` hook
 
 The skill captures thoughts on its own. Resurfacing them needs a `SessionStart`
-hook that runs `later.sh hook`, which shows the digest on screen at the top of
-each session and gives the model the same text. Without it the store is write-only.
+hook that runs `later.sh hook`, which shows parked items on screen at the top of
+each session and gives the model the list. Without it the store is write-only.
 
 ## As part of the plugin
 
 Nothing to do. The hook is declared in `.claude-plugin/plugin.json` and
 `${CLAUDE_PLUGIN_ROOT}` resolves to the installed plugin.
 
-If the digest never appears anyway, install by symlink or copy instead and wire
+If parked items never appear anyway, install by symlink or copy instead and wire
 the hook by hand, as below. **Do not edit the hook in the plugin's own cache
 directory**: that path is version-stamped, so the edit works until the next
 plugin update and then stops, silently and for good.
@@ -68,11 +68,6 @@ empty, and the hook runs `sh "/skills/later/later.sh"` at every session start.
 **Assume any mistake here is silent**, and there are three: the wrong file, a
 wrong path, and `${CLAUDE_PLUGIN_ROOT}`. All three fail the same way — no error,
 no digest.
-
-The one check that settles it: the digest now prints on every session, whether
-or not anything is parked. If the top of a session shows nothing at all — no
-parked list, no `Nothing parked (/later)`, no unreachable-store
-line — the hook is not running.
 
 ### Windows
 
