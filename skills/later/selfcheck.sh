@@ -238,8 +238,6 @@ grep -q 'audit -- possibly handled by nobody, keep this tail -- possibly handled
 run show | grep -q 'Parked in myrepo' && ok "show reports the repo store" ||
   no "show reports the repo store" "$(run show)"
 
-# An empty store still prints. A digest that is silent when it has no news is
-# indistinguishable from a hook that never ran.
 empty="$tmp/empty"
 mkdir -p "$empty"
 git -C "$empty" init -q
@@ -252,8 +250,8 @@ check "show exits 0 with an empty store" "$out" "rc=0"
 # --- hook (SessionStart JSON) ------------------------------------------------
 
 out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" hook)
-check "hook puts the empty digest on screen and in context" "$out" \
-  '{"systemMessage":"Nothing parked, via the /later skill.","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Nothing parked, via the /later skill."}}'
+check "hook shows nothing on screen when nothing is parked" "$out" \
+  '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Nothing parked, via the /later skill."}}'
 
 # Parked text is free-form, and one unescaped byte invalidates the whole object,
 # which Claude Code then drops without a word.
@@ -271,6 +269,11 @@ esac
 case "$out" in
   *"$tab"*|*"$bell"*) no "hook output holds no raw control byte" "$out" ;;
   *) ok "hook output holds no raw control byte" ;;
+esac
+case "$out" in
+  '{"systemMessage":"Parked thoughts (/later):\nParked in hookrepo'*'"additionalContext":"Parked thoughts from earlier sessions, via the /later skill. Do not act on these now;'*)
+    ok "hook shows a short list on screen and the full instruction in context" ;;
+  *) no "hook shows a short list on screen and the full instruction in context" "$out" ;;
 esac
 check "hook output is one line" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "1"
 case "$out" in

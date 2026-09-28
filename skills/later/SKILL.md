@@ -71,7 +71,7 @@ the working directory at run time is the project root, not this folder.
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" done --user <n>` | Mark user item *n* handled |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" maybe <n> <why>` | Mark repository item *n* *possibly* handled, recording what suggests it |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" maybe --user <n> <why>` | The same, in the user store |
-| `sh "${CLAUDE_SKILL_DIR}/later.sh" show` | The digest the SessionStart hook shows |
+| `sh "${CLAUDE_SKILL_DIR}/later.sh" show` | The digest the SessionStart hook gives the model |
 | `sh "${CLAUDE_SKILL_DIR}/later.sh" path` | Where this repository's store lives |
 
 **`${CLAUDE_SKILL_DIR}` is a Claude Code substitution.** A host that does not
@@ -130,16 +130,17 @@ Capture is worth nothing without this half. A store nothing ever reads is a
 hole thoughts go into.
 
 The mechanism is a `SessionStart` hook that runs `later.sh hook`, which puts the
-digest on the user's screen at the top of each session and in this context. **The digest always prints**
-— `Nothing parked, via the /later skill.` when both stores are empty, and a line
-naming the reason where the repository store cannot be read — so its presence is
+digest in this context at the top of each session, and on the user's screen
+when something is parked or a store cannot be read. **The context copy always
+prints** — `Nothing parked, via the /later skill.` when both stores are empty,
+and a line naming the reason where a store cannot be read — so its presence is
 what says the hook ran.
 
 Installed as part of the plugin, the hook is already declared and there is
 nothing to set up. Installed by symlink or copy into `~/.claude/skills/`, it
 has to be added by hand: `INSTALL.md` beside this file has both shapes.
 
-**If nothing at all appeared at the top of this session — no parked list, no
+**If nothing at all appeared in this context — no parked list, no
 `Nothing parked`, no unreachable-store line — nothing is replaying the store.**
 Say so once, in one line, the first time a thought is parked, and point at
 `INSTALL.md`.

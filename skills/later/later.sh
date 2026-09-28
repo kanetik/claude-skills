@@ -314,15 +314,12 @@ cmd_mark() {
   sed -n "${lineno}p" "$store"
 }
 
-# Hook mode. Always prints: a line naming an empty store is what tells a reader
-# the hook ran at all, and silence is indistinguishable from a hook that is not
-# wired. A store whose key cannot be RESOLVED is named rather than counted as
-# empty, for the reason cmd_list gives -- and it matters more here, because this
-# is the line the skill tells the reader to trust. A store present but not
-# readable is named too -- entries() swallows a grep failure, so without the
-# check it would count as empty, which is the same silent failure one layer
-# down.
+# A store whose key cannot be RESOLVED is named rather than counted as empty,
+# for the reason cmd_list gives. A store present but not readable is named too --
+# entries() swallows a grep failure, so without the check it would count as
+# empty, which is the same silent failure one layer down.
 cmd_show() {
+  brief=${1:-}
   out=""
   note=""
 
@@ -369,9 +366,10 @@ $(entries "$ustore" | head -n "$SHOW_USER_MAX" | sed 's/^[0-9]*:/  /')"
 
   [ -z "$note" ] || printf '%s\n' "$note"
   if [ -z "$out" ]; then
-    [ -n "$note" ] || printf 'Nothing parked, via the /later skill.\n'
+    [ -n "$note" ] || [ -n "$brief" ] || printf 'Nothing parked, via the /later skill.\n'
     exit 0
   fi
+  [ -z "$brief" ] || { printf 'Parked thoughts (/later):%s\n' "$out"; exit 0; }
   printf 'Parked thoughts from earlier sessions, via the /later skill. Do not act on these now; see the skill for when to raise them.%s\n' "$out"
   exit 0
 }
@@ -389,10 +387,14 @@ json_str() {
 
 # systemMessage is what the user sees on screen; additionalContext is what the
 # model gets. Plain stdout reaches only the model, which a session opened with a
-# prompt already typed goes straight past.
+# prompt already typed goes straight past. Claude Code prefixes systemMessage
+# with the hook's event name, so the on-screen copy stays short.
 cmd_hook() {
+  screen=$(cmd_show brief | json_str)
   body=$(cmd_show | json_str)
-  printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$body" "$body"
+  msg=""
+  [ -z "$screen" ] || msg="\"systemMessage\":\"$screen\","
+  printf '{%s"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg" "$body"
   exit 0
 }
 
