@@ -71,7 +71,7 @@ no digest.
 
 The one check that settles it: the digest now prints on every session, whether
 or not anything is parked. If the top of a session shows nothing at all — no
-parked list, no `Nothing parked, via the /later skill.`, no unreachable-store
+parked list, no `Nothing parked (/later)`, no unreachable-store
 line — the hook is not running.
 
 ### Windows

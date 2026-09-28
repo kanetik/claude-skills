@@ -300,8 +300,8 @@ silently runs `sh "/skills/later/later.sh"` forever.
 **Assume any mistake here is silent** — the wrong file, a wrong literal path,
 and `${CLAUDE_PLUGIN_ROOT}` all fail with no error. The one check that settles
 it: the digest prints on every session whether or not anything is parked, so if
-the top of a session shows nothing at all — no parked list, no `Nothing parked,
-via the /later skill.`, no unreachable-store line — the hook isn't running. That's also why the skill won't go
+the top of a session shows nothing at all — no parked list, no `Nothing parked
+(/later)`, no unreachable-store line — the hook isn't running. That's also why the skill won't go
 hunting for your hook or offer to write one: whether one exists can't be settled
 by reading files (hooks are valid in several settings files, a plugin manifest,
 or a plugin's `hooks/hooks.json`), and a hook written into a plugin's

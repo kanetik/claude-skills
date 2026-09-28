@@ -131,7 +131,7 @@ hole thoughts go into.
 
 The mechanism is a `SessionStart` hook that runs `later.sh hook`, which puts the
 digest on the user's screen at the top of each session and in this context. **The digest always prints**
-— `Nothing parked, via the /later skill.` when both stores are empty, and a line
+— `Nothing parked (/later)` on screen when both stores are empty, and a line
 naming the reason where the repository store cannot be read — so its presence is
 what says the hook ran.
 
