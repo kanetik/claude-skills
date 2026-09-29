@@ -107,8 +107,9 @@ fix_bar: >-
 #
 #   reviewers: [skeptic]          # or [copilot, skeptic]
 #
-# Blind subagents read the diff knowing the project but nothing about why the change
-# exists, so they judge the code rather than the argument for it -- and because they are
+# Blind subagents read the diff knowing the project and what the change was asked to do,
+# but nothing of the author's account, so they judge the code rather than the argument
+# for it -- and because they are
 # re-invoked on every fix push, they also read the code the fix rounds produced, which is
 # the code with the least review behind it. It needs some setup in the reviewed repo, all of it
 # checked at kickoff -- reference/mechanics.md is the authority on the checks, and there are more

@@ -50,8 +50,8 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # that, the lock is a crashed run's leaving: sweep it.
 #
 # ONE WRITE FORM, and the rule for where is short: `: > "<tmp>/run.lock"` at every stage boundary
-# AND immediately before every blocking wait. Three waits block -- the stage-2 config interview,
-# the blind pass (stage 4) and the cross-check (stage 6) -- and NONE of them can be heartbeaten:
+# AND immediately before every blocking wait. Four waits block -- the stage-2 config interview,
+# the task distiller (stage 3), the blind pass (stage 4) and the cross-check (stage 6) -- and NONE of them can be heartbeaten:
 # SKILL.md stage 4 wants a dispatch whose output returns to the caller, which blocks the caller
 # until the last subagent is back, and a turn ends just as completely when it asks a human. There
 # is no turn in which to re-touch. That is why the window is 90 minutes rather than 30: the touch
@@ -239,6 +239,26 @@ gh pr view <num> --json statusCheckRollup                   # structured
 ```
 
 Fills `{{CI}}`: the failing check names and what they report, or that everything passes. No checks configured → "no CI configured", and the reviewer judges tests by reading alone.
+
+## Task statement sources (stage 3)
+
+Which of these to use, and in what order: [`task.md`](task.md).
+
+```bash
+# Linked issues -- title and opening body only, never the issue's comments.
+gh pr view <num> --json closingIssuesReferences --jq '.closingIssuesReferences[].url'
+gh issue view <issue-url> --json title,body --jq '"# " + .title + "\n\n" + .body'   # once per url
+
+# Stated intent -- the newest marker comment by the authenticated account. $ME as in the
+# coverage-record read below; an empty $ME skips this source rather than matching nothing.
+# --jq runs per page, so reduce with tail rather than `last` inside the filter.
+ID=$(gh api --paginate "repos/<owner>/<repo>/issues/<num>/comments" \
+  --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-loop: intent -->\")) | .id" | tail -n 1)
+[ -n "$ID" ] && gh api "repos/<owner>/<repo>/issues/comments/$ID" --jq .body
+
+# Distiller input, only where neither of the above yields anything.
+gh pr view <num> --json title,body --jq '"# " + .title + "\n\n" + .body'
+```
 
 ## Prior review history
 
