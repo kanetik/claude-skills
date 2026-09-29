@@ -15,7 +15,7 @@ Split what is withheld in two:
 - **Given to reviewers:** what the change was asked to do — linked issues' title and opening body, and a user-stated intent comment, verbatim; failing both, a requirement distilled from the PR description by a separate subagent that strips implementation, design rationale and claims of correctness.
 - **Still withheld:** the author's account — how it was meant to work, why it was built this way, commit messages, threads, and the rest of the PR description.
 
-`pr-review-loop` checks at kickoff that the task is on the PR and, where it is not, stops and asks the user, posting the answer as a marked comment. The task never travels through the invocation, because under the loop the caller is the author.
+Where skeptic is a reviewer, `pr-review-loop` checks at kickoff that the task is on the PR and, where it is not, stops and asks the user, posting the answer as a marked comment. Only skeptic needs this: a review bot reads the PR description and linked issues on its own, while skeptic's reviewers see only the brief. The task never travels through the invocation, because under the loop the caller is the author.
 
 ## Consequences
 
