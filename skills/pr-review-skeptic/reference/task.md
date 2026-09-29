@@ -50,7 +50,3 @@ Where a task statement was found, substitute this, with one `{{TASK_TEXT}}` entr
 Where none was found:
 
 > **What this change was asked to do is not available to you.** Judge the code on its own terms, and do not guess at a purpose: a finding that rests on a guessed requirement is a preference.
-</content>
-</invoke>
-<invoke name="Bash">
-<parameter name="command">cd C:/Users/jkane/Projects/claude-skills/.claude/worktrees/skeptic-task-aware && gh pr view 78 --json closingIssuesReferences 2>&1 | head -5; gh pr list --state merged --limit 30 --json number,closingIssuesReferences --jq '.[] | select(.closingIssuesReferences|length>0) | .closingIssuesReferences[0]' | head -3

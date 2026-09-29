@@ -22,5 +22,3 @@ Split what is withheld in two:
 - Reviewers can report a change that is correct line by line but misses the requirement.
 - A requirement distilled from the description is author-written text passed through a filter; the filter can leak. It is the fallback, labelled as author-sourced, and never preferred over a requester-sourced source.
 - Do not "restore" full blindness to purpose: that reintroduces the miss above. Do not widen `{{TASK}}` to carry the description wholesale: that reintroduces the author's account.
-</content>
-</invoke>
