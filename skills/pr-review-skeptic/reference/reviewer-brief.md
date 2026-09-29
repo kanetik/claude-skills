@@ -13,6 +13,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{ARCHITECTURE}}` | config `architecture` | "Compose UI, Room, WorkManager sync. Two modules." |
 | `{{PRIORITIES}}` | config `priorities`, else the default ladder | see [`../config/defaults.yml`](../config/defaults.yml) |
 | `{{REPO_PATH}}` | the staged worktree from stage 1 ([`mechanics.md`](mechanics.md) derives it), as a native absolute path | `…\Temp\pr-skeptic-acme-widget-42\pr-42` |
+| `{{TASK}}` | [`task.md`](task.md): the task block with its sources, or the no-task block | see [`task.md`](task.md) |
 | `{{UNIT}}` | this reviewer's slice of the partition, described in the terms stage 3 partitioned in — on a later run that is the new code, so say so | "the sync layer: `data/sync/**`, 9 files" · "changes since the last review in the sync layer: 4 files" |
 | `{{FILES}}` | newline list of paths in this unit, each with its `A`/`M`/`D` status | `M data/sync/Merge.kt` … |
 | `{{BASE}}` | merge-base of the PR, full 40-char oid from `git merge-base` | `a1b2c3d4e5f6…` |
@@ -25,7 +26,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{DELIVERY}}` | the **returning** wording below, until a dispatch in this run hands back an acknowledgement instead of a report; the **detached** wording from then on (SKILL.md stage 4) | see below |
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
-Every slot carries a fact about the project, about the mechanics of reaching the code, or about what this review process has already covered and decided. **None carries what the change is for, why it was built this way, or what anyone argued about it** — that includes `{{SETTLED}}`, whose entries state a consequence the project accepted and stop there.
+Every slot carries a fact about the project, about the mechanics of reaching the code, or about what this review process has already covered and decided. **None carries how the change works, why it was built this way, or what anyone argued about it** — `{{TASK}}` carries what it was asked to do, and [`task.md`](task.md) screens it for exactly those three; that includes `{{SETTLED}}`, whose entries state a consequence the project accepted and stop there.
 
 `{{DIFF_RANGE}}` differs by reviewer kind, but **never within one run**: a later run gets either content reviewers on the delta or a composition reviewer on the whole change, never both (SKILL.md stage 3), and on a first run everyone has the whole change. So every reviewer dispatched together shares a range. The composition reviewer is never narrowed to the delta whichever run it lands on, because cross-round interaction defects are visible from nowhere else.
 
@@ -77,6 +78,8 @@ You took no part in writing it. You have no stake in it being correct, and no ob
 
 **Everything else is a claim.** Code comments, KDoc/docstrings, and any design document in the repo are the author's account of the code — not the code. The code is your evidence. Where you rely on a claim, verify it against the code first. Claims of impossibility ("unreachable", "this can never happen", "always present in practice", "X prevents this") are the ones worth testing hardest: a confident comment beside subtly wrong code is the most dangerous thing in a diff, because it tells every later reader to stop looking. When the code and a claim about it disagree, report the code.
 
+{{TASK}}
+
 **Your slice.** {{UNIT}}
 
 Files, each marked with what the change did to it (`A` added, `M` modified, `D` deleted):
@@ -102,7 +105,7 @@ So for each claim the change alters — a fact about the product or a competitor
 
 {{PRIOR_REVIEW}}
 
-**Judge the tree as it stands, not the story of how it got here.** Your evidence is exactly two things: the working tree at {{HEAD}}, and `git diff {{DIFF_RANGE}}`. Everything written *about* this change — its commit log, its pull-request description, the threads and reviews on it — is out of scope for you, by every route: no `git log`, `git blame`, or `git show` of any commit in this pull request, and no `gh` command at all. That material is where the author's reasoning and the arguments over it live, and reading it is how a reviewer ends up checking the account rather than the code. If you want to know what the change is for, the code is the specification.
+**Judge the tree as it stands, not the story of how it got here.** Your evidence is exactly two things: the working tree at {{HEAD}}, and `git diff {{DIFF_RANGE}}`. Everything written *about* this change beyond the task statement above — its commit log, its pull-request description, the threads and reviews on it — is out of scope for you, by every route: no `git log`, `git blame`, or `git show` of any commit in this pull request, and no `gh` command at all. That material is where the author's reasoning and the arguments over it live, and reading it is how a reviewer ends up checking the account rather than the code. What the change is for is the task statement above, and there is no more of it to find; how it was meant to achieve it is yours to read in the code.
 
 Anything you have been told above about what was already reviewed or already decided is everything you get; there is no more of it to find, and going looking would only turn up the author's account of the change, which is the one thing that would compromise you. **A concern that was raised, answered convincingly, and left in place is one you are expected to find again** unless it appears in the decided list — and even there, only for the consequence that list names. You are the reader who has not been talked round.
 

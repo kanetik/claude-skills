@@ -191,7 +191,7 @@ Read the base ref, not the working tree and not the PR head: that is the ref the
 
 ### Invoking it
 
-Invoke the `pr-review-skeptic` skill with the PR reference and nothing more — `#<num>`, a URL, or `<owner>/<repo>#<num>` for a cross-repo PR. Then follow that skill's procedure as written, in particular its **Context discipline** section: the reviewer brief is filled by substitution from project config and the diff, and no summary of the change, its purpose, or its rationale goes into it or into any answer to a reviewer's question. You are the worst-placed caller for that rule — you may have written the code, and by round five you are also carrying every finding the earlier rounds settled — which is exactly why it's a hard guardrail there.
+Invoke the `pr-review-skeptic` skill with the PR reference and nothing more — `#<num>`, a URL, or `<owner>/<repo>#<num>` for a cross-repo PR. Then follow that skill's procedure as written, in particular its **Context discipline** section: the reviewer brief is filled by substitution from project config and the diff, and no summary of the change, its purpose, or its rationale goes into it or into any answer to a reviewer's question. The purpose reaches its reviewers from the PR record — a linked issue, the intent comment Preconditions posts, or the PR description — never from you. You are the worst-placed caller for that rule — you may have written the code, and by round five you are also carrying every finding the earlier rounds settled — which is exactly why it's a hard guardrail there.
 
 Two of that skill's rules matter to you as caller and are not yours to override:
 
