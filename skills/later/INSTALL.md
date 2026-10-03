@@ -77,6 +77,15 @@ Git for Windows install does not put it. So `where sh` finding nothing says
 nothing about the hook; running the command by hand to test it does need the
 full path to `sh.exe`.
 
+## The band and the pane
+
+The folder is also a Claude Code mod (`.claude-plugin/` and `hooks/` here): it
+lists what is parked in a band above the prompt (collapse it with its `[-]`), and
+`/later-pane` opens the list in a side pane. Installed by symlink or copy into
+`~/.claude/skills/`, Claude Code loads it from there; `claude --plugin-dir
+<this folder>` loads it for one session. The marketplace plugin does not load
+it, so a plugin install gets the digest without the band or the pane.
+
 ## OpenCode and other hosts
 
 OpenCode discovers this skill: it reads `~/.claude/skills/*/SKILL.md` and
