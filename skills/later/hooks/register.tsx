@@ -19,7 +19,7 @@ function parseRow(line: string): Row {
   return {
     id,
     isMaybe: mark === '~',
-    origin: origin === '' ? '' : `from ${origin}`,
+    origin: origin === '' || /^\[[^\]]+\]/.test(rest) ? '' : `from ${origin}`,
     body: cut < 0 ? rest : rest.slice(0, cut),
     reason: cut < 0 ? '' : rest.slice(cut + HANDLED.length),
   }
