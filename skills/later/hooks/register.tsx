@@ -31,7 +31,7 @@ async function refresh($: EngineInterface) {
 }
 
 export const register: Register = on => {
-  let openWhenDocked = false
+  let openedUnasked = false
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -39,22 +39,14 @@ export const register: Register = on => {
       description: 'Show parked /later thoughts in a pane',
     })
     await refresh($)
-    openWhenDocked = (await read($, listing)) !== NOTHING
-    $.ui.invalidate('ui.render')
-
-    return next(e)
-  })
-
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (openWhenDocked && e.viewport?.isFullscreen === true) {
-      openWhenDocked = false
-      void $.ui.open({ id: PANE, title: 'Later' })
-    }
+    openedUnasked = (await read($, listing)) !== NOTHING
+    if (openedUnasked) void $.ui.open({ id: PANE, title: 'Later' })
 
     return next(e)
   })
 
   on('command.run', { command: 'later-pane' }, async $ => {
+    openedUnasked = false
     await refresh($)
     await $.ui.open({ id: PANE, title: 'Later' })
 
@@ -70,6 +62,11 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
+    if (openedUnasked && e.props.placement === 'inline') {
+      openedUnasked = false
+      void $.ui.close({ id: PANE })
+      return <Box />
+    }
     const lines = (await read($, listing)).split('\n')
 
     return (
