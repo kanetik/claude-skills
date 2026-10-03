@@ -304,6 +304,10 @@ by reading files (hooks are valid in several settings files, a plugin manifest,
 or a plugin's `hooks/hooks.json`), and a hook written into a plugin's
 version-stamped cache path would break on the next update.
 
+Installed by symlink or copy, the skill folder also loads as a Claude Code mod
+that lists parked items in a **Later** pane; `/later-pane` opens it on demand.
+The plugin install doesn't get the pane.
+
 [`skills/later/INSTALL.md`](skills/later/INSTALL.md) has the same instructions
 alongside the skill, plus a Windows note and what does and doesn't carry over to
 OpenCode.

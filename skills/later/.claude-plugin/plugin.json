@@ -1,0 +1,10 @@
+{
+  "name": "later",
+  "version": "0.1.0",
+  "description": "Shows parked /later thoughts in a pane beside the transcript.",
+  "author": {
+    "name": "Jeremy Kane",
+    "url": "https://github.com/kanetik"
+  },
+  "types": "./types/index.d.ts"
+}

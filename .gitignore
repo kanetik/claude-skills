@@ -6,3 +6,7 @@ Thumbs.db
 
 # Claude Code local runtime state (not part of the deliverable)
 .claude/scheduled_tasks.lock
+
+# Type declarations Claude Code lays beside a mod each time it loads one
+skills/*/.claude-plugin/types/
+skills/*/tsconfig.json

@@ -77,6 +77,18 @@ Git for Windows install does not put it. So `where sh` finding nothing says
 nothing about the hook; running the command by hand to test it does need the
 full path to `sh.exe`.
 
+## The pane
+
+The folder is also a Claude Code mod (`.claude-plugin/` and `hooks/` here): it
+opens a **Later** pane listing what is parked, beside the transcript in
+fullscreen, and `/later-pane` opens it on demand. Installed by symlink or copy
+into `~/.claude/skills/`, Claude Code loads it from there; `claude --plugin-dir
+<this folder>` loads it for one session. The marketplace plugin does not load
+it, so a plugin install gets the digest without the pane.
+
+Unasked, a pane is seated only from 144 terminal columns; narrower, it waits
+until `/later-pane` or a wider terminal.
+
 ## OpenCode and other hosts
 
 OpenCode discovers this skill: it reads `~/.claude/skills/*/SKILL.md` and
