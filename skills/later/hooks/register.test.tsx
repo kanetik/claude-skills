@@ -79,15 +79,18 @@ test('rows drop the dash and date, show the origin repo and a glyph, and expand 
     on,
     () =>
       'Parked (user):\n' +
-      '  u1. - [~] 2026-10-01 (from wakey) [tag] a long thought -- possibly handled by PR #4\n' +
-      '  u2. - [ ] 2026-10-02 (from wakey) another thought\n\n' +
+      '  u1. - [~] 2026-10-01 (from alpha) [tag] a long thought -- possibly handled by PR #4\n' +
+      '  u2. - [ ] 2026-10-02 (from beta) another thought\n' +
+      '  u3. - [ ] 2026-10-03 (from gamma) [see notes] third thought\n\n' +
       'Mark a u-prefixed item with --user: later.sh done --user <n>\n',
   )
 
   await $.session.start(START)
   const band = await mountBand($)
   expect(await band.find({ type: 'Text', text: /2026-10-0|- \[|Mark a u-prefixed/ })).toBeUndefined()
-  expect(await band.findAll({ type: 'Text', text: 'from wakey' })).toHaveLength(1)
+  expect(await band.find({ type: 'Text', text: 'from alpha' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'from beta' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'from gamma' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: '◐' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: '○' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: '[tag] a long thought' })).toBeDefined()

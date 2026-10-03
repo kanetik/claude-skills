@@ -16,11 +16,12 @@ function parseRow(line: string): Row {
   if (!m) return { text: line.trim() }
   const [, id = '', mark, origin = '', rest = ''] = m
   const cut = mark === '~' ? rest.lastIndexOf(HANDLED) : -1
+  const body = cut < 0 ? rest : rest.slice(0, cut)
   return {
     id,
     isMaybe: mark === '~',
-    origin: origin === '' || /^\[[^\]]+\]/.test(rest) ? '' : `from ${origin}`,
-    body: cut < 0 ? rest : rest.slice(0, cut),
+    origin: origin === '' || /^\[[\w.-]+\]/.test(body) ? '' : `from ${origin}`,
+    body,
     reason: cut < 0 ? '' : rest.slice(cut + HANDLED.length),
   }
 }
