@@ -17,6 +17,7 @@ const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as cons
 function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] = []) {
   const opened: string[] = []
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('env.get', async () => ({ value: undefined }))
   on('session.repo', async () => ({
     value: inRepo ? REPO_INFO : null,
   }))
@@ -45,7 +46,7 @@ test('opens the pane at start and shows the listing on every surface', async ($,
   const opened = engine(on, () => 'Parked in repo:\n  1. 2026-10-03 first thought\n\n', true, argvs)
 
   await $.session.start(START)
-  expect(argvs.map(a => a.slice(2))).toEqual([['list', '--all']])
+  expect(argvs.map(a => [a[0], ...a.slice(2)])).toEqual([['/bin/sh', 'list', '--all']])
   expect(opened).toEqual(['later'])
 
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -77,7 +78,7 @@ test('lists only the user store outside a repository, and stays closed when it i
   expect(opened).toEqual([])
 })
 
-test('falls back to the sh.exe beside git, resolving git from the plugin folder', async ($, on) => {
+test('on Windows runs the sh.exe beside git, resolving git from the plugin folder', async ($, on) => {
   const ran: string[] = []
   let gitCwd: string | undefined
   let script: string | undefined
@@ -85,14 +86,12 @@ test('falls back to the sh.exe beside git, resolving git from the plugin folder'
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('session.repo', async () => ({ value: REPO_INFO }))
+  on('env.get', async (_$, e) => ({ value: e.name === 'OS' ? 'Windows_NT' : undefined }))
   on('process.run', async (_$, e) => {
     const exe = e.argv[0] ?? ''
     ran.push(exe)
-    if (exe === '/bin/sh') {
-      script = e.argv[1]
-      return { deny: 'not found' }
-    }
     if (exe === 'git') gitCwd = e.init?.cwd
+    else script = e.argv[1]
     const stdout =
       exe === 'git'
         ? 'C:/Program Files/Git/mingw64/libexec/git-core\n'
@@ -103,9 +102,37 @@ test('falls back to the sh.exe beside git, resolving git from the plugin folder'
   })
 
   await $.session.start(START)
-  expect(ran).toEqual(['/bin/sh', 'git', 'C:/Program Files/Git/bin/sh.exe'])
+  expect(ran).toEqual(['git', 'C:/Program Files/Git/bin/sh.exe'])
   expect(gitCwd).toBeDefined()
   expect(`${gitCwd}/later.sh`).toBe(script)
+})
+
+test('a shell that fails to run later.sh shows an error, not its output as the listing', async ($, on) => {
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', async (_$, e) => ({ value: { command: e.name } }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('session.repo', async () => ({ value: REPO_INFO }))
+  on('env.get', async () => ({ value: undefined }))
+  on('process.run', async () => ({
+    value: {
+      exitCode: 1,
+      stdout: '',
+      stderr: 'The system cannot find the path specified.',
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    },
+  }))
+
+  await $.session.start(START)
+  const ui = await $.ui.mount({
+    plugin: 'later',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'later',
+    props: PANE_PROPS,
+  })
+  expect(await ui.find({ type: 'Text', text: /^later: could not run later\.sh -- exit 1/ })).toBeDefined()
+  await ui.unmount()
 })
 
 test('strips terminal control sequences from parked text', async ($, on) => {

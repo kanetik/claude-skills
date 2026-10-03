@@ -5,26 +5,27 @@ const PANE = 'later'
 const NOTHING = 'Nothing parked.'
 const listing = atom({ plugin: 'later', key: 'listing' } as const, '')
 
+async function shell($: EngineInterface) {
+  if ((await $.env.get('OS')) !== 'Windows_NT') return '/bin/sh'
+  // Native Windows has no /bin/sh; Git for Windows ships one beside its exec path.
+  const git = await $.process.run(['git', '--exec-path'], { cwd: $.plugin.root })
+  return git.stdout.trim().replace(/\/[^/]+\/libexec\/git-core$/, '/bin/sh.exe')
+}
+
 async function runList($: EngineInterface) {
   const scope = (await $.session.repo().catch(() => true)) ? '--all' : '--user'
-  const args = [`${$.plugin.root}/later.sh`, 'list', scope]
-  try {
-    return await $.process.run(['/bin/sh', ...args])
-  } catch {
-    // Native Windows has no /bin/sh; Git for Windows ships one beside its exec path.
-    const git = await $.process.run(['git', '--exec-path'], { cwd: $.plugin.root })
-    const sh = git.stdout.trim().replace(/\/[^/]+\/libexec\/git-core$/, '/bin/sh.exe')
-    return $.process.run([sh, ...args])
-  }
+  return $.process.run([await shell($), `${$.plugin.root}/later.sh`, 'list', scope])
 }
 
 async function refresh($: EngineInterface) {
   let text: string
   try {
     const ran = await runList($)
+    if (ran.exitCode !== 0) throw new Error(`exit ${ran.exitCode} ${ran.stderr}`)
     text = (ran.stdout + ran.stderr).replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, '').trim()
   } catch (err) {
-    text = `later: could not run later.sh -- ${err instanceof Error ? err.message : String(err)}`
+    const why = err instanceof Error ? err.message : String(err)
+    text = `later: could not run later.sh -- ${why}`.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').trim()
   }
   await update($, listing, () => text)
 }
