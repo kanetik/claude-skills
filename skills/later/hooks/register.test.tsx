@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const PANE_PROPS = {
@@ -13,6 +14,24 @@ const PANE_PROPS = {
 const REPO_INFO = { root: '/repo', remote: null, internal: false, name: null, id: 'repo' }
 
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
+
+async function drawBand($: Engine, isFullscreen: boolean) {
+  const ui = await $.ui.mount({
+    plugin: 'later',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: {
+      hasSurvey: false,
+      isWorking: false,
+      maxRows: 10,
+      bodyColumns: 160,
+      scroll: { offset: 0, bodyRows: 10 },
+      view: {},
+    },
+    viewport: { columns: 160, rows: 50, isFullscreen },
+  })
+  await ui.unmount()
+}
 
 function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] = []) {
   const opened: string[] = []
@@ -38,15 +57,22 @@ function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] 
     opened.push(e.id)
     return { value: { isPlaced: true } }
   })
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return <Box />
+  })
   return opened
 }
 
-test('opens the pane at start and shows the listing on every surface', async ($, on) => {
+test('opens the pane unasked once the terminal docks it, and shows the listing on every surface', async ($, on) => {
   const argvs: string[][] = []
   const opened = engine(on, () => 'Parked in repo:\n  1. 2026-10-03 first thought\n\n', true, argvs)
 
   await $.session.start(START)
   expect(argvs.map(a => [a[0], ...a.slice(2)])).toEqual([['/bin/sh', 'list', '--all']])
+  expect(opened).toEqual([])
+  await drawBand($, true)
+  await drawBand($, true)
   expect(opened).toEqual(['later'])
 
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -62,10 +88,43 @@ test('opens the pane at start and shows the listing on every surface', async ($,
   }
 })
 
+test('opens when the band was drawn before session start finished', async ($, on) => {
+  const opened = engine(on, () => 'Parked in repo:\n  1. 2026-10-03 first thought\n')
+  const band = await $.ui.mount({
+    plugin: 'later',
+    surface: 'terminal',
+    component: 'AbovePrompt',
+    props: {
+      hasSurvey: false,
+      isWorking: false,
+      maxRows: 10,
+      bodyColumns: 160,
+      scroll: { offset: 0, bodyRows: 10 },
+      view: {},
+    },
+    viewport: { columns: 160, rows: 50, isFullscreen: true },
+  })
+  expect(opened).toEqual([])
+
+  await $.session.start(START)
+  await band.drawn()
+  expect(opened).toEqual(['later'])
+  await band.unmount()
+})
+
+test('does not open unasked on the main screen', async ($, on) => {
+  const opened = engine(on, () => 'Parked in repo:\n  1. 2026-10-03 first thought\n')
+
+  await $.session.start(START)
+  await drawBand($, false)
+  expect(opened).toEqual([])
+})
+
 test('stays closed at start when nothing is parked', async ($, on) => {
   const opened = engine(on, () => 'Nothing parked.\n')
 
   await $.session.start(START)
+  await drawBand($, true)
   expect(opened).toEqual([])
 })
 
@@ -74,6 +133,7 @@ test('lists only the user store outside a repository, and stays closed when it i
   const opened = engine(on, () => 'Nothing parked.\n', false, argvs)
 
   await $.session.start(START)
+  await drawBand($, true)
   expect(argvs.map(a => a.slice(2))).toEqual([['list', '--user']])
   expect(opened).toEqual([])
 })

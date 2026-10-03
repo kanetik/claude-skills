@@ -86,8 +86,8 @@ into `~/.claude/skills/`, Claude Code loads it from there; `claude --plugin-dir
 <this folder>` loads it for one session. The marketplace plugin does not load
 it, so a plugin install gets the digest without the pane.
 
-Unasked, a pane is seated only from 144 terminal columns; narrower, it waits
-until `/later-pane` or a wider terminal.
+Unasked, it opens only in the fullscreen layout on a wide terminal;
+`/later-pane` opens it anywhere.
 
 ## OpenCode and other hosts
 

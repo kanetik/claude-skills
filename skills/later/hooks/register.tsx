@@ -31,13 +31,25 @@ async function refresh($: EngineInterface) {
 }
 
 export const register: Register = on => {
+  let openWhenDocked = false
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'later-pane',
       description: 'Show parked /later thoughts in a pane',
     })
     await refresh($)
-    if ((await read($, listing)) !== NOTHING) void $.ui.open({ id: PANE, title: 'Later' })
+    openWhenDocked = (await read($, listing)) !== NOTHING
+    $.ui.invalidate('ui.render')
+
+    return next(e)
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (openWhenDocked && e.viewport?.isFullscreen === true) {
+      openWhenDocked = false
+      void $.ui.open({ id: PANE, title: 'Later' })
+    }
 
     return next(e)
   })
