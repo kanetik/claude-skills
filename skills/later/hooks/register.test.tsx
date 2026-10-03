@@ -58,15 +58,21 @@ test('stays closed at start when nothing is parked', async ($, on) => {
   expect(opened).toEqual([])
 })
 
-test('falls back to the sh.exe beside git when sh is not on PATH', async ($, on) => {
+test('falls back to the sh.exe beside git, resolving git from the plugin folder', async ($, on) => {
   const ran: string[] = []
+  let gitCwd: string | undefined
+  let script: string | undefined
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('process.run', async (_$, e) => {
     const exe = e.argv[0] ?? ''
     ran.push(exe)
-    if (exe === 'sh') return { deny: 'sh: not found' }
+    if (exe === '/bin/sh') {
+      script = e.argv[1]
+      return { deny: 'not found' }
+    }
+    if (exe === 'git') gitCwd = e.init?.cwd
     const stdout =
       exe === 'git'
         ? 'C:/Program Files/Git/mingw64/libexec/git-core\n'
@@ -77,7 +83,25 @@ test('falls back to the sh.exe beside git when sh is not on PATH', async ($, on)
   })
 
   await $.session.start(START)
-  expect(ran).toEqual(['sh', 'git', 'C:/Program Files/Git/bin/sh.exe'])
+  expect(ran).toEqual(['/bin/sh', 'git', 'C:/Program Files/Git/bin/sh.exe'])
+  expect(gitCwd).toBeDefined()
+  expect(`${gitCwd}/later.sh`).toBe(script)
+})
+
+test('strips terminal control sequences from parked text', async ($, on) => {
+  engine(on, () => 'Parked in repo:\n  1. 2026-10-03 \u001b]52;c;cGF5bG9hZA==\u0007evil \u001b[2Jthought\n')
+
+  await $.session.start(START)
+  const ui = await $.ui.mount({
+    plugin: 'later',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'later',
+    props: PANE_PROPS,
+  })
+  expect(await ui.find({ type: 'Text', text: /\u001b|\u0007/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'thought' })).toBeDefined()
+  await ui.unmount()
 })
 
 test('a Bash call running later.sh refreshes the listing', async ($, on) => {
