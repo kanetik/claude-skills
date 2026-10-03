@@ -1,7 +1,7 @@
 {
   "name": "later",
   "version": "0.1.0",
-  "description": "Shows parked /later thoughts in a pane beside the transcript.",
+  "description": "Shows parked /later thoughts in a band above the prompt, and in a pane on demand.",
   "author": {
     "name": "Jeremy Kane",
     "url": "https://github.com/kanetik"
