@@ -87,7 +87,7 @@ test('rows drop the dash and date, show the origin repo and a glyph, and expand 
   await $.session.start(START)
   const band = await mountBand($)
   expect(await band.find({ type: 'Text', text: /2026-10-0|- \[|Mark a u-prefixed/ })).toBeUndefined()
-  expect(await band.find({ type: 'Text', text: 'wakey' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'from wakey' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: '◐' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: '○' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: '[tag] a long thought' })).toBeDefined()
@@ -107,7 +107,7 @@ test('a collapsed row fits the band width, so it never wraps onto a second line'
   const band = await mountBand($)
   const body = await band.find({ type: 'Text', text: /x…$/ })
   expect(body).toBeDefined()
-  expect('u1. ○ wakey  '.length + (body?.text.length ?? 999)).toBeLessThanOrEqual(BAND_PROPS.bodyColumns)
+  expect('u1. ○ from wakey  '.length + (body?.text.length ?? 999)).toBeLessThanOrEqual(BAND_PROPS.bodyColumns)
   await band.unmount()
 })
 
@@ -138,7 +138,7 @@ test('shows no band when nothing is parked', async ($, on) => {
 
   await $.session.start(START)
   const band = await mountBand($)
-  expect(await band.find({ type: 'Button' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: /Parked|Nothing/ })).toBeUndefined()
   await band.unmount()
 })
 
