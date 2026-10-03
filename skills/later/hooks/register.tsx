@@ -6,7 +6,8 @@ const NOTHING = 'Nothing parked.'
 const listing = atom({ plugin: 'later', key: 'listing' } as const, '')
 
 async function runList($: EngineInterface) {
-  const args = [`${$.plugin.root}/later.sh`, 'list', '--all']
+  const scope = (await $.session.repo().catch(() => true)) ? '--all' : '--user'
+  const args = [`${$.plugin.root}/later.sh`, 'list', scope]
   try {
     return await $.process.run(['/bin/sh', ...args])
   } catch {

@@ -10,21 +10,29 @@ const PANE_PROPS = {
   view: {},
 } as const
 
+const REPO_INFO = { root: '/repo', remote: null, internal: false, name: null, id: 'repo' }
+
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 
-function engine(on: On, listing: () => string) {
+function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] = []) {
   const opened: string[] = []
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
-  on('command.register', async (_$, e) => ({ value: { command: e.name } }))
-  on('process.run', async () => ({
-    value: {
-      exitCode: 0,
-      stdout: listing(),
-      stderr: '',
-      isStdoutTruncated: false,
-      isStderrTruncated: false,
-    },
+  on('session.repo', async () => ({
+    value: inRepo ? REPO_INFO : null,
   }))
+  on('command.register', async (_$, e) => ({ value: { command: e.name } }))
+  on('process.run', async (_$, e) => {
+    argvs.push([...e.argv])
+    return {
+      value: {
+        exitCode: 0,
+        stdout: listing(),
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    }
+  })
   on('ui.open', async (_$, e) => {
     opened.push(e.id)
     return { value: { isPlaced: true } }
@@ -33,9 +41,11 @@ function engine(on: On, listing: () => string) {
 }
 
 test('opens the pane at start and shows the listing on every surface', async ($, on) => {
-  const opened = engine(on, () => 'Parked in repo:\n  1. 2026-10-03 first thought\n\n')
+  const argvs: string[][] = []
+  const opened = engine(on, () => 'Parked in repo:\n  1. 2026-10-03 first thought\n\n', true, argvs)
 
   await $.session.start(START)
+  expect(argvs.map(a => a.slice(2))).toEqual([['list', '--all']])
   expect(opened).toEqual(['later'])
 
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -58,6 +68,15 @@ test('stays closed at start when nothing is parked', async ($, on) => {
   expect(opened).toEqual([])
 })
 
+test('lists only the user store outside a repository, and stays closed when it is empty', async ($, on) => {
+  const argvs: string[][] = []
+  const opened = engine(on, () => 'Nothing parked.\n', false, argvs)
+
+  await $.session.start(START)
+  expect(argvs.map(a => a.slice(2))).toEqual([['list', '--user']])
+  expect(opened).toEqual([])
+})
+
 test('falls back to the sh.exe beside git, resolving git from the plugin folder', async ($, on) => {
   const ran: string[] = []
   let gitCwd: string | undefined
@@ -65,6 +84,7 @@ test('falls back to the sh.exe beside git, resolving git from the plugin folder'
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('session.repo', async () => ({ value: REPO_INFO }))
   on('process.run', async (_$, e) => {
     const exe = e.argv[0] ?? ''
     ran.push(exe)
