@@ -247,16 +247,15 @@ The one reading to avoid: a run that produced no review is not the same as a run
 
 ### Checking that a skeptic review was produced by the skill
 
-Step 5's posted-review gate finds the new review by marker, author, `databaseId` and coverage record. **It also checks every comment the run posted for its attribution line**, because a review assembled outside the skill — its stages run from memory instead of by invoking it — can carry a marker and a coverage record and still lack them:
+Step 5's posted-review gate finds the new review by marker, author, `databaseId` and coverage record. **It also checks every comment the run posted — selected by review id, not by marker — for its attribution line followed by the marker**, because a review assembled outside the skill — its stages run from memory instead of by invoking it — can carry a marker and a coverage record and still lack them:
 
 ```bash
 gh api --paginate "repos/<owner>/<repo>/pulls/<num>/comments" \
   --jq ".[] | select(.user.login == \"$ME\") | select(.pull_request_review_id >= <new review id>)
-       | select(.body | contains(\"<!-- pr-review-skeptic -->\"))
-       | select(.body | test(\"<!-- pr-review-skeptic: (scope=(whole|delta) )?unit=[0-9c][0-9c,]* -->\") | not) | .html_url"
+       | select(.body | test(\"<!-- pr-review-skeptic: (scope=(whole|delta) )?unit=[0-9c][0-9c,]* -->[[:space:]]*<!-- pr-review-skeptic -->[[:space:]]*$\") | not) | .html_url"
 ```
 
-Select by review id, not by time: a review's inline comments are not timestamped after its `submitted_at`, while every comment the run posts — inline, file-level or reply — carries a review id at or above the new review's. Any output fails the gate: skeptic was not run as the skill. Say so and name the comments. Their findings are still real, so triage them, and say in the round report that their attribution is missing, so step 9's share is computed without them. Invoke skeptic through the skill tool on the next round.
+Select by review id, not by time: a review's inline comments are not timestamped after its `submitted_at`, while every comment the run posts — inline, file-level or reply — carries a review id at or above the new review's. Run it as the skeptic invocation returns, before this round posts any reply of its own: by then every comment in that id range is skeptic's. Where the login cannot be read, drop the `.user.login` filter rather than matching an empty string, which would select nothing and pass. Any output fails the gate: skeptic was not run as the skill. Say so and name the comments. Their findings are still real, so triage them, and say in the round report that their attribution is missing, so step 9's share is computed without them. Invoke skeptic through the skill tool on the next round.
 
 ## The closure check (SKILL.md step 5)
 
