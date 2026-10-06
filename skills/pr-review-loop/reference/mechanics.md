@@ -218,7 +218,7 @@ Two of that skill's rules matter to you as caller and are not yours to override:
 
 ### Reading what comes back
 
-Two channels, and use both. The skill **returns** a verdict, the findings with severities — each `new`, matched to an earlier thread, or `unfixed` against a Copilot thread — a coverage line, and where each finding was placed. It also **posts** that review, so the findings are on the PR as threads. Evaluate from the threads — they are what you reply to and resolve — and use the returned copy as the convenient in-turn source for the rest.
+Two channels, and use both. The skill **returns** a verdict, the findings with severities — each `new`, matched to an earlier thread or dispositions entry, or `unfixed` against a Copilot thread — a coverage line, and where each finding was placed. It also **posts** that review, so the findings are on the PR as threads. Evaluate from the threads — they are what you reply to and resolve — and use the returned copy as the convenient in-turn source for the rest.
 
 Both of the things you most need from the returned copy are also **recoverable from the PR**, and it matters that you know that, because a context-less wake has only the PR: the posted summary body carries the coverage line and the findings that got no thread, under their own heading. So a wake can reconstruct the whole round without the return value — read the marker-carrying review body.
 
@@ -255,7 +255,7 @@ gh api --paginate "repos/<owner>/<repo>/pulls/<num>/comments" \
        | select(.body | test(\"<!-- pr-review-skeptic: (scope=(whole|delta) )?unit=[0-9c][0-9c,]* -->[[:space:]]*<!-- pr-review-skeptic -->[[:space:]]*$\") | not) | .html_url"
 ```
 
-Select by review id, not by time: a review's inline comments are not timestamped after its `submitted_at`, while every comment the run posts — inline, file-level or reply — carries a review id at or above the new review's. Run it as the skeptic invocation returns, before this round posts any reply of its own: by then every comment in that id range is skeptic's. Where the login cannot be read, drop the `.user.login` filter rather than matching an empty string, which would select nothing and pass. Any output fails the gate: skeptic was not run as the skill. Say so and name the comments. Their findings are still real, so triage them, and say in the round report that their attribution is missing, so step 9's share is computed without them. Invoke skeptic through the skill tool on the next round.
+Select by review id, not by time: a review's inline comments are not timestamped after its `submitted_at`, while every comment the run posts — inline, file-level or reply — carries a review id at or above the new review's. Run it as the skeptic invocation returns, before this round posts any reply of its own: by then every comment in that id range is skeptic's. Where the login cannot be read, drop the `.user.login` filter rather than matching an empty string, which would select nothing and pass. Any output fails the gate: skeptic was not run as the skill. Say so and name the comments. Their findings are still real, so triage them, and say in the round report that their attribution is missing, so step 9's share is computed without them. Never edit or re-post skeptic's comments to repair them; invoke skeptic through the skill tool on the next round.
 
 ## The closure check (SKILL.md step 5)
 

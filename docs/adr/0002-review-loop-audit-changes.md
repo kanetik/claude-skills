@@ -19,13 +19,13 @@ An audit of the review loop over 2026-09-21 to 2026-10-05 (12 repos, 219 PRs, 71
 - **The pre-push check is a gate.** Every fix carries a one-line invariant; a material catch is fixed or answered before the push.
 - **Copilot is a first-pass reviewer, requested once per PR on the converging commit**, never in `reviewers`. Its outcome — arrived, timed out, not available — is recorded on the PR. A record on the PR, not carried state, is what makes it once.
 - **A Copilot fix is closed only by a closure check**: a non-reviewer agent that compares the comment, the fix diff, the file and every call site. Skeptic re-reads its own fixes; Copilot never does, so this is the only re-test those fixes get, and it runs outside the skeptic so its reviewers stay blind.
-- **The cross-check stage is gone.** Skeptic matches findings to its own earlier threads (for placement) and to Copilot's (tagged `unfixed`, one severity higher, where the loop marked that thread fixed), inline.
-- **The task statement is built once and frozen** in the first review, including owner scope decisions from issue comments, and amended only by a `scope-decision` comment carrying the user's words.
+- **The cross-check stage is gone.** Skeptic matches findings to its own earlier threads (for placement), to the loop's dispositions entries (for threadless findings), and to Copilot's (tagged `unfixed`, one severity higher, where the loop marked that thread fixed), inline.
+- **The task statement is built once and frozen** in the first review, including owner scope decisions from issue comments, and amended only by a `scope-decision` comment carrying the user's words; a frozen statement with no requirement in it is rebuilt once a linked issue or stated intent appears.
 - **Attribution is checked mechanically** before skeptic posts, and again by the loop after.
 
 ## Consequences
 
 - A run converges with known minor defects applied in one commit rather than one round each; a run with none has no closing round.
 - A Copilot review that never arrives costs at most `first_pass_wait_seconds`, and a not-available one costs nothing.
-- A blocking finding re-found against an earlier rejection no longer arrives pre-sorted as `settled`; the author answers it again on its new thread, and the taper treats it as the old decision.
+- A blocking finding re-found against an earlier rejection no longer arrives pre-sorted as `settled`; the author answers it again — on its new thread, or in the dispositions comment for a threadless one — and the taper treats it as the old decision.
 - Amends 0001: owner scope decisions are now part of what reviewers are given, distilled by their own filter.

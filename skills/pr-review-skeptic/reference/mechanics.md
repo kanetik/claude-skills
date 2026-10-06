@@ -372,7 +372,7 @@ Testing the record's sha rather than `commit_id` is what makes the guard meaning
 
 ### Review threads (stages 3 and 6)
 
-Stage 3's settled list also reads the PR's issue comments, for the dispositions comments that record findings which never had a thread (`<!-- pr-review-loop: dispositions -->`): `gh api --paginate "repos/<owner>/<repo>/issues/<num>/comments"`.
+Stage 3's settled list and stage 6's matching also read the PR's issue comments, for the dispositions comments that record findings which never had a thread (`<!-- pr-review-loop: dispositions -->`): `gh api --paginate "repos/<owner>/<repo>/issues/<num>/comments"`.
 
 Threads, with resolution state and each comment's author, need GraphQL:
 

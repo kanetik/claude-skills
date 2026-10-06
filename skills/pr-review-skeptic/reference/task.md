@@ -10,6 +10,8 @@ The statement is built on the first run over a PR and **frozen**: stage 7 writes
 
 **The one amendment.** Where a comment carrying `<!-- pr-review-loop: scope-decision -->`, by the authenticated account, has been posted on the PR or on a linked issue since the review the frozen text came from, append each such comment's body to the frozen statement as its own entry headed `Owner scope decision`, verbatim, oldest first. `pr-review-loop` posts these only with the user's own words in them, so they are requester text and are not distilled. Nothing else changes a frozen statement: an edited issue body or PR description does not. The amended statement is what this run freezes.
 
+**A frozen statement with no requirement in it is the exception** — one with no `Issue`, `Stated intent` or `Distilled` entry: `NONE`, alone or with owner-decision entries. It records that no task was found, not a task. So whenever tier 1 now yields anything, build the statement as on a first run and freeze what that build returns. No timing test is needed: if tier 1 yields now and the frozen statement holds no requirement, the source appeared since.
+
 ## Building it — sources, in order
 
 Commands: [`mechanics.md`](mechanics.md).
@@ -94,4 +96,4 @@ The `{{TASK_TEXT}}` entries exactly as substituted, or the line `NONE`, between 
 </details>
 ```
 
-`NONE` is frozen too: a PR with no statement of its task keeps none until a `scope-decision` comment amends it, rather than re-running the distiller every round in the hope of a different answer.
+`NONE` is frozen too: a PR with no statement of its task does not re-run the distiller every round in the hope of a different answer. It keeps none until tier 1 yields (above), and a `scope-decision` comment may still be appended meanwhile.
