@@ -11,16 +11,30 @@
 
 # The reviewers the loop drives. ONE list, one role: engaged when the PR opens, re-engaged
 # after every fix push, and the set convergence is gauged on. Each entry is either a review
-# BOT (copilot, codex, ...) or `skeptic`, the sibling pr-review-skeptic skill -- invoked
-# locally rather than requested on the PR, but posting its findings there like any other
-# reviewer. Mix freely: [copilot, skeptic] is a reasonable shape.
+# BOT (codex, ...) or `skeptic`, the sibling pr-review-skeptic skill -- invoked locally
+# rather than requested on the PR, but posting its findings there like any other reviewer.
+#
+# COPILOT NEVER GOES HERE. Re-requesting it on every push spends its monthly allowance, and
+# once the allowance is gone a request registers nothing, so a loop waiting on it cannot
+# converge. A config listing it here has it moved to first_pass_reviewers, with a warning;
+# a list that is then empty stops the run. reference/configuration.md.
 #
 # A reviewer that shows up uninvited (a bot that auto-reviews on push, a review a person
 # posted) is still read and triaged -- evaluation is never config-gated. It just isn't
 # re-engaged after a push and doesn't hold the loop open.
-reviewers: [copilot]
+reviewers: [skeptic]
 
-auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a Ruleset auto-requests Copilot or similar
+# Bots requested ONCE per PR, late: on the commit where the reviewers above are otherwise
+# ready to converge, while the PR is still a draft. Never re-requested. Their findings are
+# triaged like any other and their fixes go through a normal fix round. SKILL.md step 4,
+# "The first pass". Any automatic Copilot review (a repository ruleset, or the account-level
+# setting) must be OFF: this request is meant to be the only one.
+first_pass_reviewers: [copilot]
+
+# How long the loop waits for a first-pass review to arrive before converging without it.
+first_pass_wait_seconds: 600
+
+auto_review_grace_seconds: 0    # wait this long after a push for an auto-trigger before manually requesting; bump to ~60 where a bot in `reviewers` is auto-requested on push
 wait_check_cadence_seconds: 180 # how often the loop polls while waiting on a BOT (3 min; stay in 120-240 = every 2-4 min; <=270 keeps each check inside the 5-min prompt cache -- faster AND cheaper than longer cadences). Skeptic is never waited on.
 max_iterations: 10              # backstop -- reaching it means something went wrong; see below
 
@@ -99,13 +113,7 @@ fix_bar: >-
   a reader to stop looking. Correct-but-cornered is not, and neither is prose that is true and
   could be sharper.
 
-# Why the shipped default is [copilot]: it needs no setup. Copilot is requested with one
-# gh call and reviews whatever it is pointed at, so a first run works in any repo with no
-# config at all.
-#
-# `skeptic` is the shape this skill is designed around, and it is worth the setup:
-#
-#   reviewers: [skeptic]          # or [copilot, skeptic]
+# Why the shipped default is [skeptic]: it is the reviewer this skill is designed around.
 #
 # Blind subagents read the diff knowing the project and what the change was asked to do,
 # but nothing of the author's account, so they judge the code rather than the argument

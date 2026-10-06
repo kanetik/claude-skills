@@ -50,8 +50,8 @@ BASEREPO=$(gh pr view <num> --json url --jq '.url | sub("/pull/.*";"")')
 # that, the lock is a crashed run's leaving: sweep it.
 #
 # ONE WRITE FORM, and the rule for where is short: `: > "<tmp>/run.lock"` at every stage boundary
-# AND immediately before every blocking wait. Four waits block -- the stage-2 config interview,
-# the task distiller (stage 3), the blind pass (stage 4) and the cross-check (stage 6) -- and NONE of them can be heartbeaten:
+# AND immediately before every blocking wait. Three waits block -- the stage-2 config interview,
+# the task distiller (stage 3) and the blind pass (stage 4) -- and NONE of them can be heartbeaten:
 # SKILL.md stage 4 wants a dispatch whose output returns to the caller, which blocks the caller
 # until the last subagent is back, and a turn ends just as completely when it asks a human. There
 # is no turn in which to re-touch. That is why the window is 90 minutes rather than 30: the touch
@@ -194,7 +194,7 @@ rm -rf "<tmp>"                             # the whole per-PR directory, clone a
 
 `--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file is written to a lasting checkout rather than here, and [`SKILL.md`](../SKILL.md) stage 2 says which one, including the two cases where `$REPO` is not one.
 
-Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
+Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `r-<n>.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `r-<n>.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
 ## Scope the change
 
@@ -245,7 +245,23 @@ Fills `{{CI}}`: the failing check names and what they report, or that everything
 Which of these to use, and in what order: [`task.md`](task.md).
 
 ```bash
-# Linked issues -- title and opening body only, never the issue's comments.
+# The frozen statement, from the same review the coverage record came from ($RECORD's review,
+# authenticated account only). Empty -> build it from the sources below.
+gh api "repos/<owner>/<repo>/pulls/<num>/reviews" --paginate \
+  --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-skeptic: task-begin -->\")) | .body" \
+  | awk '/<!-- pr-review-skeptic: task-begin -->/{t=""; on=1; next} /<!-- pr-review-skeptic: task-end -->/{on=0; last=t; next} on{t=t $0 "\n"} END{printf "%s", last}'
+
+# Scope decisions to append (amendment) or include (build). Run per linked issue as well as
+# for the PR (issues/<n>/comments takes either number); keep those newer than the frozen review.
+gh api --paginate "repos/<owner>/<repo>/issues/<num>/comments" \
+  --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-loop: scope-decision -->\")) | [.created_at, .body] | @json"
+
+# Owner decisions, at build time: unmarked comments by OWNER / MEMBER / COLLABORATOR, on the PR
+# and on each linked issue -> the decisions distiller.
+gh api --paginate "repos/<owner>/<repo>/issues/<n>/comments" \
+  --jq '.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR") | select(.body | contains("<!-- pr-review-") | not) | .body'
+
+# Linked issues -- title and opening body.
 gh pr view <num> --json closingIssuesReferences --jq '.closingIssuesReferences[].url'
 gh issue view <issue-url> --json title,body --jq '"# " + .title + "\n\n" + .body'   # once per url
 
@@ -262,7 +278,7 @@ gh pr view <num> --json title,body --jq '"# " + .title + "\n\n" + .body'
 
 ## Prior review history
 
-Read by two stages now, for different things: **stage 3** takes the last-reviewed commit and the settled decisions from it, and **stage 6** takes the whole payload for bucketing.
+Read by two stages, for different things: **stage 3** takes the last-reviewed commit and the settled decisions from it, and **stage 6** takes the review threads for matching.
 
 ### `$LASTREVIEWED` and `$LASTWHOLE` — reading the coverage record (stage 3)
 
@@ -354,25 +370,11 @@ Testing the record's sha rather than `commit_id` is what makes the guard meaning
 
 **Match on the marker *within the authenticated account's own reviews*.** These reviews post under the user's account and are otherwise indistinguishable from a hand-written one, so a filter looking for a *bot* author finds nothing and silently makes every run a first run — but the account itself is a usable filter and a necessary one, for the reason in the block above: the coverage record decides this run's scope, and any reviewer on the PR can write one into a review body. And take the *last* such review, not the first: taking the first re-reviews every round's work on every round, which is the behaviour the delta scope exists to end.
 
-### The full payload (stage 6)
+### Review threads (stages 3 and 6)
 
-```bash
-gh pr view <num> --json body,reviews,comments,commits
-```
+Stage 3's settled list and stage 6's matching also read the PR's issue comments, for the dispositions comments that record findings which never had a thread (`<!-- pr-review-loop: dispositions -->`): `gh api --paginate "repos/<owner>/<repo>/issues/<num>/comments"`.
 
-`comments` here is the PR's **issue** comments, not the review threads below, and it is the one field easy to mistake for redundant. It carries the disposition records for findings that never got a thread ([`cross-check.md`](cross-check.md)) — drop it and exactly those findings come back `new` on every run, which on a PR being driven through a loop is a round that repeats rather than accumulates.
-
-`commits` alone carries no paths — only `oid`, dates, and messages — so it cannot answer the question the `unfixed` bucket asks. Get the paths too, and pass those through with the threads:
-
-```bash
-for oid in $(gh pr view <num> --json commits --jq '.commits[].oid'); do
-  git -C "$REPO" show --name-only --format='%H %cI' "$oid"
-done
-```
-
-That pairing — which commit touched which path, and when — is what separates a concern that was *changed* in response from one that was only argued about. Without it every genuinely unfixed defect falls through to `re-raised`, which keeps its severity, so the bucket [`cross-check.md`](cross-check.md) calls the strongest signal this review produces is unreachable.
-
-Thread resolution state needs GraphQL:
+Threads, with resolution state and each comment's author, need GraphQL:
 
 ```bash
 gh api graphql -f query='
@@ -386,13 +388,13 @@ query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
       }}}}' -F owner=<owner> -F repo=<repo> -F num=<num>
 ```
 
-Paginate on `hasNextPage`. A thread's resolution plus its replies is what separates `settled` from `re-raised` — a thread closed after the author explained why they chose otherwise reads very differently from one closed by a commit.
+Paginate on `hasNextPage`. The first comment's `author.login` is what identifies a Copilot thread (`copilot-pull-request-reviewer`) for stage 6; this skill's own are identified by the marker instead.
 
 `databaseId` is the id the replies endpoint needs, and it is how a run recognises its own earlier comments: every comment this skill posts ends with the marker line `<!-- pr-review-skeptic -->`. Without it there is nothing to recognise — these reviews are authored by the user's own account, indistinguishable from a hand-written one.
 
 `line` comes back **null on any outdated thread**, so match on `originalLine` when it does. Outdated is the common case here, not the rare one: a rebase or a formatting push marks every thread in the PR outdated at once, and the run that follows is exactly the one that needs to find its own earlier comment.
 
-`subjectType` is why it is in the selection: a `FILE` thread — the file-level comments below — has `line` **and** `originalLine` null forever, outdated or not, so it is not distinguishable from an outdated `LINE` thread without it, and a line-based key matches no file-level thread ever. Match those on `path` plus the finding's substance ([`cross-check.md`](cross-check.md)). Getting this wrong posts a second thread beside the first and notifies everyone twice for one defect — on exactly the findings the file-level tier exists to make settleable.
+`subjectType` is why it is in the selection: a `FILE` thread — the file-level comments below — has `line` **and** `originalLine` null forever, outdated or not, so it is not distinguishable from an outdated `LINE` thread without it, and a line-based key matches no file-level thread ever. Match those on `path` plus the finding's substance (SKILL.md stage 6). Getting this wrong posts a second thread beside the first and notifies everyone twice for one defect — on exactly the findings the file-level tier exists to make settleable.
 
 ## Post the review
 
@@ -497,8 +499,10 @@ Read the exit code strictly: `0` = fast-forward, post at the reviewed sha as usu
 Replying to a thread this skill opened on an earlier run, rather than opening a second one beside it:
 
 ```bash
-gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -F "body=@<tmp>/reply.md"
+gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -F "body=@<tmp>/r-<n>.md"
 ```
+
+One file per reply, `<tmp>/r-<n>.md`, ending in the same attribution line and marker as a comment (SKILL.md stage 7), so the pre-post check covers replies too.
 
 The write-to-file rule governs **every** posting call, not just the review payload: `-F key=@path` reads the value from the file, where `-f body=<text>` would put a finding that quotes the reviewed code through the shell first.
 
@@ -514,7 +518,7 @@ gh api repos/<owner>/<repo>/pulls/<num>/comments --method POST \
   -F "body=@<tmp>/f-1.md"
 ```
 
-This is the home for a finding whose path is in the diff and present at `$REVIEWED` but whose line the change never touched — a defect on line 40 of a file the diff only reaches at line 200 ([`SKILL.md`](../SKILL.md) stage 7, tier 2). It buys the one thing the summary body cannot: a real thread, which can be replied to and resolved, and which a later run's cross-check can read as evidence that the finding was dealt with. A finding with no thread comes back every round forever.
+This is the home for a finding whose path is in the diff and present at `$REVIEWED` but whose line the change never touched — a defect on line 40 of a file the diff only reaches at line 200 ([`SKILL.md`](../SKILL.md) stage 7, tier 2). It buys the one thing the summary body cannot: a real thread, which can be replied to and resolved, and which a later run can read as evidence that the finding was dealt with. A finding with no thread comes back every round forever.
 
 **Every finding that qualifies for this tier gets one.** The extra notification is the price of a settleable finding, and it is worth paying at any severity — a `LOW` with no thread re-raises just as forever as a `HIGH` with none. Don't ration them by importance; the only question is whether the tier applies.
 

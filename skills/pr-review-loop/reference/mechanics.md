@@ -13,7 +13,9 @@ For each operation use the best tier your environment supports. Columns denote *
 | Unresolved review threads with `isResolved` | GraphQL via `gh api graphql` (paginated — below) | github MCP `get_pull_request_review_threads` if it exposes resolution state | — |
 | Inline + file-level comments per review | REST `gh api repos/{o}/{r}/pulls/{n}/reviews/{id}/comments` | github MCP `get_pull_request_review_comments` | — |
 | PR issue comments (verdict surface, and the loop's own disposition records) | Paginated GraphQL `comments` connection (below) — carries `author.__typename` and numeric `databaseId`, both needed | github MCP `get_pull_request` | `gh pr view <num> --json comments` as a **non-authoritative** read only — no pagination, omits `__typename` and numeric `databaseId` |
-| Re-request Copilot review | `gh pr edit <num> --add-reviewer @copilot` (gh ≥ 2.85) | github MCP `request_copilot_review` | GraphQL `requestReviews` with `botIds` (gh < 2.85 — below) |
+| Request Copilot — once per PR, the first pass | `gh pr edit <num> --add-reviewer @copilot` (gh ≥ 2.85), after the record comment (below) | github MCP `request_copilot_review` | — (below) |
+| Read the first-pass outcome | `scripts/first-pass.sh status` (below) | — | — |
+| Gather call sites for the closure check | `scripts/call-sites.sh` (below) | language tooling, where the repo already has it | `git grep -n -w` |
 | Trigger Codex review | `gh pr comment <num> --body "@codex review"` | — | `--body-file <path>`, or REST `gh api repos/{o}/{r}/issues/{n}/comments -X POST -f body="@codex review"` (below) |
 | Engage the skeptic reviewer | Invoke the `pr-review-skeptic` skill (below) — no `gh` call, no wait; it posts its own review | — | None. Absent the skill it can't run; pause and ask |
 | Reply to a review thread | GraphQL `addPullRequestReviewThreadReply` | github MCP equivalent | — |
@@ -109,33 +111,49 @@ Where you need only a scalar, prefer `gh`'s built-in `--jq` (embedded engine, no
 
 ## Bot triggers
 
-### Copilot
+### Copilot — the first pass
+
+Copilot is requested **once per PR** (SKILL.md step 4, "The first pass"), and never from `reviewers` (`reference/configuration.md`). Three calls, in this order.
+
+**1. Look for the record first.** The loop's own PR comment, by the authenticated account, carrying `<!-- pr-review-loop: first-pass reviewer=copilot`. Present → Copilot has had its one request on this PR, whatever the record says happened; never request again. This is what keeps a re-entered wake from spending the allowance twice.
 
 ```bash
-gh pr edit <num> --add-reviewer @copilot   # Tier 1 (gh ≥ 2.85) — works for first-ever requests too.
+gh api --paginate "repos/<owner>/<repo>/issues/<num>/comments" \
+  --jq ".[] | select(.user.login == \"$ME\") | select(.body | contains(\"<!-- pr-review-loop: first-pass reviewer=copilot\")) | [.id, .created_at, .body] | @json"
 ```
 
-Tier 2: github MCP `request_copilot_review`. Tier 3 (gh < 2.85): GraphQL `requestReviews` with `botIds`. **Caveat:** Tier 3 derives Copilot's bot ID by scanning existing reviews for the `copilot-pull-request-reviewer` login, so it fails on a PR where Copilot has never reviewed — use Tier 1/2 for a first request.
+**2. Post the record, then request.** Record first, so a crash between the two can only lose a request, never repeat one. The record's `created_at` is the requested-at time every later status check measures from.
 
 ```bash
-PR_ID=$(gh api graphql -F owner=<owner> -F repo=<repo> -F number=<num> \
-  -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){id}}}' \
-  --jq '.data.repository.pullRequest.id')
-COPILOT_ID=$(gh api graphql -F owner=<owner> -F repo=<repo> -F number=<num> \
-  -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviews(last:100){nodes{author{login ... on Bot{id}}}}}}}' \
-  --jq '.data.repository.pullRequest.reviews.nodes[] | select(.author.login? == "copilot-pull-request-reviewer") | .author.id' | head -1)
-[ -z "$COPILOT_ID" ] && { echo "ERROR: no Copilot review on this PR — use Tier 1/2 for a first request." >&2; exit 1; }
-gh api graphql -F prId="$PR_ID" -F botId="$COPILOT_ID" -f query='
-mutation($prId: ID!, $botId: ID!) { requestReviews(input: {pullRequestId: $prId, botIds: [$botId], union: true}) { clientMutationId } }'
+gh pr comment <num> --body-file <tmp>/first-pass.md   # "Requested a Copilot review of <sha> (first pass)."
+                                                      # last line: <!-- pr-review-loop: first-pass reviewer=copilot sha=<sha> -->
+gh pr edit <num> --add-reviewer @copilot              # gh >= 2.85
 ```
 
-**Verify (Tier 1/2):** `reviewRequests` must show `Bot:copilot-pull-request-reviewer`. Query it by dropping the `reviewRequests` field from "Other queries the loop needs" (above) into a `gh api graphql` call:
+Tier 2: github MCP `request_copilot_review`. There is no Tier 3 for this request: the GraphQL `requestReviews` route derives Copilot's bot id from an existing Copilot review, and on a once-per-PR request there is none. A request call that fails outright is outcome `not-available`.
+
+**3. Read the outcome**, with the bundled script (path relative to this skill's directory):
 
 ```bash
-gh api graphql -F owner=<owner> -F repo=<repo> -F number=<num> -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}}}}'
+sh <skill-dir>/scripts/first-pass.sh status <owner>/<repo> <num> <record created_at> <first_pass_wait_seconds>
 ```
 
-(`gh pr view --json reviewRequests` drops bots, so it can't confirm this.)
+It prints the facts it read and then one of:
+
+| Outcome | Meaning | Next |
+|---|---|---|
+| `pending` | Copilot is still in `reviewRequests`, no review yet, inside the wait | Wait (step 3's polling) and check again |
+| `arrived` | Copilot submitted a review after the request | Triage it (step 5) |
+| `timed-out` | Still requested, no review, wait spent | Move on without it; a review that lands later is triaged as for `arrived` |
+| `not-available` | Not in `reviewRequests` and no review — the request registered nothing, which is what an exhausted allowance looks like | Converge without it, at once; do not wait out the timer |
+
+Once the outcome is anything but `pending`, edit the record so the PR says what happened — append `outcome=<outcome>` inside its marker and a line of prose ("Copilot not available this PR.", "No Copilot review within 10 minutes.", "Copilot reviewed."):
+
+```bash
+gh api "repos/<owner>/<repo>/issues/comments/<record id>" -X PATCH -F "body=@<tmp>/first-pass.md"
+```
+
+`<skill-dir>/selfcheck.sh` exercises every row of that table, the `not-available` path included.
 
 ### Codex
 
@@ -187,7 +205,7 @@ Where the fallback does apply, proceed and say the config is uncommitted, so it 
 
 Read the base ref, not the working tree and not the PR head: that is the ref the skeptic skill itself reads, and a config the PR *adds* is a change under review describing the project to its own reviewers — or, for the posting key, granting itself permission to publish. For the five project keys, a file sitting uncommitted in the working tree does satisfy that skill (it falls back to the working copy when the file isn't part of the change), but only from a lasting checkout, so treat it as covering this run rather than as configured-for-good. For `allow_agent_posting` there is no such fallback: uncommitted is not granted.
 
-**Why check 3 is not a nicety.** Without it the skill still runs, still reviews, and still hands you a full verdict — and posts nothing. Every consequence is downstream and silent: no threads to reply to, so no disposition is recorded anywhere; no thread history, so its own next run's cross-check has nothing to bucket against and every finding you already answered comes back `new`; no severity escalation for a defect a fix round missed, since that bucket needs the prior thread. The loop then re-litigates the same findings every round until `max_iterations`. Report the missing key at kickoff, and if the user wants to run anyway, say that is what the run will look like.
+**Why check 3 is not a nicety.** Without it the skill still runs, still reviews, and still hands you a full verdict — and posts nothing. Every consequence is downstream and silent: no threads to reply to, so no disposition is recorded anywhere; no thread history, so its own next run builds no settled list and matches no earlier thread, and every finding you already answered comes back `new`. The loop then re-litigates the same findings every round until `max_iterations`. Report the missing key at kickoff, and if the user wants to run anyway, say that is what the run will look like.
 
 ### Invoking it
 
@@ -200,7 +218,7 @@ Two of that skill's rules matter to you as caller and are not yours to override:
 
 ### Reading what comes back
 
-Two channels, and use both. The skill **returns** a verdict, the findings with severities and buckets (`new` / `unfixed` / `re-raised` / `settled`), a coverage line, and where each finding was placed. It also **posts** that review, so the findings are on the PR as threads. Evaluate from the threads — they are what you reply to and resolve — and use the returned copy as the convenient in-turn source for the rest.
+Two channels, and use both. The skill **returns** a verdict, the findings with severities — each `new`, matched to an earlier thread or dispositions entry, or `unfixed` against a Copilot thread — a coverage line, and where each finding was placed. It also **posts** that review, so the findings are on the PR as threads. Evaluate from the threads — they are what you reply to and resolve — and use the returned copy as the convenient in-turn source for the rest.
 
 Both of the things you most need from the returned copy are also **recoverable from the PR**, and it matters that you know that, because a context-less wake has only the PR: the posted summary body carries the coverage line and the findings that got no thread, under their own heading. So a wake can reconstruct the whole round without the return value — read the marker-carrying review body.
 
@@ -216,7 +234,7 @@ Failure modes, and what each means:
 | "Config is required", listing missing project keys | Pre-flight missed it (a user-level config that turned out empty, say). Pause as in Preconditions. |
 | No unit reviewed — no reviewer's blocks reached the run | **Not a clean round.** Report what the skill reported: the blocks did not arrive. It hits every unit at once, but that says nothing about the cause — the subagent tool being unavailable, rate-limited or erroring produces this, and so does a dispatch whose output had nowhere to go, which the skill's own stage 4 names first. Say so, and be exact about what a retry buys, **which depends on the cause and the cause is not knowable from here.** Where the tool was unavailable or rate-limited — a normal event, since a blind pass dispatches up to `max_reviewers` subagents at once — a retry after a short wait is exactly the remedy, and it spends nothing, because no reviewer ever ran. Where the blocks were produced and had nowhere to go, it is worthless: **changing the dispatch is not something this loop can do** (step 2 hands skeptic the PR reference and nothing else, and the skill's own stage 4 has already spent its one changed-dispatch attempt internally before returning), so re-invoking re-runs the identical thing and spends a full set of reviewers producing reviews that go nowhere. So keep all four on the table — retry after a wait, retry with something the user changed, use a bot, or proceed without it — and say which is which. Do not withdraw retry wholesale: on a `[skeptic]`-only list "proceed without it" is excusing the last reviewer, and a five-minute rate limit is not worth an unreviewed HEAD. "Proceed without it" means **excused for the run** (SKILL.md step 4) — drop it from `active`. Leaving it in place is not proceeding: with no verdict against the current HEAD sha and no stickiness to drop it, it can never be happy, so the loop runs to the cap over a reviewer that never ran. Where it is the only reviewer, say that proceeding means nothing will have reviewed this HEAD, so the run cannot come back converged. **Who asked for this dispatch decides who governs, not what the return contains — and both askers route through the step 2 flow, so that is not the test.** Asked for by the **engage set** (iteration 1, or step 8 after a push): this row. Asked for by **step 4's whole-change clause**: that arm, including when no unit reviewed. It states its own options and its own outcome name; everything in this row is written for the engage-set case. |
 | **"Could not stage — another run holds the staging lock"**, with a path and no wait figure | **Not the row above, and the difference matters.** Nothing was dispatched and nothing failed: a concurrent or crashed skeptic run owns the staging directory, and the skill refused to clear it rather than delete a worktree another run's reviewers may be reading. **Do not excuse the reviewer** — that trades a lock measured in minutes for a whole run with nothing independently reviewing it, and excusing the last reviewer is the *nobody reviewed this HEAD* outcome (SKILL.md step 4). Do not count the round toward `max_iterations` either: no review was solicited, so nothing was spent. Surface the lock path to the user verbatim and **pause**. **Do not quote a remaining wait — the skill does not print one, and any figure derived from the lock's age would be wrong in the direction that matters**, since a live holder re-touches it as it works. What is true and worth saying: a dead holder's lock ages out and is swept within 90 minutes of its last touch with no human action, and a live holder's goes sooner at its own teardown. What it does not do is clear on *this loop's* timescale — rounds burn in seconds against a window measured in minutes, and because this round is not counted they never run out either, so a timer-driven retry spins without terminating. That is why the answer is to pause rather than re-invoke. Waiting or deleting the file are both the user's call, and deleting it while the other run is mid-pass sweeps the worktree its reviewers are reading — so the pause hands them the path and the trade-off, not a countdown. |
-| A clean verdict qualified by unreviewed units, or a cross-check that didn't run | Counts as happy over what was covered. Carry the qualification into what you tell the user, verbatim in substance, and into the final summary. |
+| A clean verdict qualified by unreviewed units | Counts as happy over what was covered. Carry the qualification into what you tell the user, verbatim in substance, and into the final summary. |
 | No PR found, or an empty diff | Something is wrong with the target, not with the change. Surface it; don't treat it as a pass. |
 
 The one reading to avoid: a run that produced no review is not the same as a run that found nothing. Both are quiet.
@@ -225,4 +243,50 @@ The one reading to avoid: a run that produced no review is not the same as a run
 
 @-mention a bot in a reply only when the mention reaches the reviewing bot AND it acts on mentions. `@codex` does — lead Codex replies with it. Copilot's reviewer (`copilot-pull-request-reviewer`) does **not** act on reply mentions, and `@copilot` routes to a different bot (`copilot-swe-agent`) which misfires — reply to Copilot **without** a mention. For a new bot, mention only if you know its handle reaches the reviewer; if unsure, post unmentioned.
 
-**Never mention on a skeptic thread.** There is no account behind it to notify — the review posted under the user's own — so a mention either does nothing or pings the user about their own thread. Its next run reads the reply as text, from the thread; that is the whole channel. Write for that reader: state the disposition and the reasoning in the reply itself rather than pointing at a commit, since a bare "fixed in abc123" gives the cross-check nothing to match a re-found finding against.
+**Never mention on a skeptic thread.** There is no account behind it to notify — the review posted under the user's own — so a mention either does nothing or pings the user about their own thread. Its next run reads the reply as text, from the thread; that is the whole channel. Write for that reader: state the disposition and the reasoning in the reply itself rather than pointing at a commit, since a bare "fixed in abc123" tells a reader who re-finds the defect nothing about what was decided.
+
+### Checking that a skeptic review was produced by the skill
+
+Step 5's posted-review gate finds the new review by marker, author, `databaseId` and coverage record. **It also checks every comment the run posted — selected by review id, not by marker — for its attribution line followed by the marker**, because a review assembled outside the skill — its stages run from memory instead of by invoking it — can carry a marker and a coverage record and still lack them:
+
+```bash
+gh api --paginate "repos/<owner>/<repo>/pulls/<num>/comments" \
+  --jq ".[] | select(.user.login == \"$ME\") | select(.pull_request_review_id >= <new review id>)
+       | select(.body | test(\"<!-- pr-review-skeptic: (scope=(whole|delta) )?unit=[0-9c][0-9c,]* -->[[:space:]]*<!-- pr-review-skeptic -->[[:space:]]*$\") | not) | .html_url"
+```
+
+Select by review id, not by time: a review's inline comments are not timestamped after its `submitted_at`, while every comment the run posts — inline, file-level or reply — carries a review id at or above the new review's. Run it as the skeptic invocation returns, before this round posts any reply of its own: by then every comment in that id range is skeptic's. Where the login cannot be read, drop the `.user.login` filter rather than matching an empty string, which would select nothing and pass. Any output fails the gate: skeptic was not run as the skill. Say so and name the comments. Their findings are still real, so triage them, and say in the round report that their attribution is missing, so step 9's share is computed without them. Never edit or re-post skeptic's comments to repair them; invoke skeptic through the skill tool on the next round.
+
+## The closure check (SKILL.md step 5)
+
+Copilot never re-reviews, so a thread you mark fixed is never re-tested by the reviewer that raised it. Before any Copilot thread is resolved as fixed, one small agent checks the fix against the comment. **It is not a reviewer**: nothing from it reaches `pr-review-skeptic`, it posts nothing itself, and skeptic's reviewers are never told it ran.
+
+**Inputs, gathered by you, after the round's fix commit exists:**
+
+1. The Copilot comment — the thread's first comment, verbatim.
+2. The fix commit's diff — `git diff <fix-sha>^ <fix-sha>`, not `git show`, which adds the commit message.
+3. The flagged file as it stands — `git show HEAD:<path>`.
+4. Every occurrence of the symbols the fix changed, each marked `touched` or `untouched` by that commit:
+
+   ```bash
+   sh <skill-dir>/scripts/call-sites.sh <repo-dir> <fix-sha> <symbol>...
+   ```
+
+   The symbols are what the fix changed — the function, field or key whose callers or readers the comment's concern reaches. Where the repo already has language tooling that finds references, it may replace the grep; never drop the list.
+
+**The brief**, with the four inputs appended and `{{DELIVERY}}` filled as for the pre-push checker (`reference/evaluation.md`):
+
+> Below are a code-review comment, the diff of the commit meant to address it, the flagged file as it stands now, and every occurrence of the symbols that commit changed, each marked `touched` (the commit changed that line) or `untouched`. Decide whether the comment's concern is fully addressed **everywhere it applies**.
+>
+> `closed` — every place the concern applies is handled. `partial` — some are, and at least one place it applies is not. `not-addressed` — the concern stands as the comment described it. An `untouched` occurrence is not evidence on its own: say whether the concern applies there.
+>
+> Read only. Do not edit, stage, stash, check out or fetch anything, and run no `gh` command; read earlier versions with `git show <ref>:<path>`. Return exactly one block:
+>
+> ```
+> VERDICT closed|partial|not-addressed
+> evidence: <for each place the concern applies, path:line and whether it is handled>
+> ```
+>
+> {{DELIVERY}}
+
+What happens with the verdict is SKILL.md step 5's. The skill's `selfcheck.sh` builds a half-done fix from `fixtures/closure-half-done` — three callers, two fixed — and checks the gatherer reports the third as untouched: the input on which the correct verdict is `partial`.

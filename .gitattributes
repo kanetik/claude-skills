@@ -3,3 +3,7 @@
 # "bad interpreter: /usr/bin/env sh^M", and the skills here are published for
 # other people to run.
 *.sh text eol=lf
+
+# Self-check fixtures are read byte-for-byte by those scripts, so they need LF on
+# every checkout for the same reason.
+skills/*/fixtures/** text eol=lf
