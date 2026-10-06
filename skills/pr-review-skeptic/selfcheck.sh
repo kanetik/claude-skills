@@ -28,6 +28,20 @@ tr -d '\r' < "$FX/first-ok.md" | sed 's/$/\r/' > "$crlf"
 if sh "$CHECK" first "$crlf" >/dev/null; then ok "first accepts CRLF body"; else no "first accepts CRLF body"; fi
 rm -f "$crlf"
 
+only=$(mktemp -d)
+cp "$FX/first-ok.md" "$only/c-1.md"
+if sh "$CHECK" first "$only"/c-*.md "$only"/f-*.md "$only"/r-*.md >/dev/null; then
+  ok "the documented globs pass where only c-*.md exists"
+else
+  no "the documented globs pass where only c-*.md exists"
+fi
+if sh "$CHECK" first "$only/c-2.md" >/dev/null 2>&1; then
+  no "a named file that does not exist fails"
+else
+  ok "a named file that does not exist fails"
+fi
+rm -rf "$only"
+
 if sh "$CHECK" first "$FX/first-ok.md" "$FX/no-attribution.md" >/dev/null; then
   no "one bad file fails the batch"
 else

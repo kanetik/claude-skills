@@ -9,7 +9,9 @@ Each file must end with the attribution line and then the marker line:
   first run:  <!-- pr-review-skeptic: unit=<k> -->
   later run:  <!-- pr-review-skeptic: scope=whole|delta unit=<k> -->
               <!-- pr-review-skeptic -->
-Prints each file that does not, and exits 1 if any.
+Prints each file that does not, and exits 1 if any. A glob that matched
+nothing (an argument still holding a literal *) is skipped; any other
+missing file fails.
 EOF
   exit 2
 }
@@ -23,6 +25,7 @@ shift
 
 bad=0
 for f in "$@"; do
+  case $f in *\**) [ -e "$f" ] || continue ;; esac
   tail2=$(tr -d '\r' < "$f" | awk 'NF { a = b; b = $0 } END { print a; print b }')
   attr=$(printf '%s\n' "$tail2" | sed -n 1p)
   marker=$(printf '%s\n' "$tail2" | sed -n 2p)

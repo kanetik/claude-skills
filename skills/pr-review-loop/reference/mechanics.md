@@ -144,7 +144,7 @@ It prints the facts it read and then one of:
 |---|---|---|
 | `pending` | Copilot is still in `reviewRequests`, no review yet, inside the wait | Wait (step 3's polling) and check again |
 | `arrived` | Copilot submitted a review after the request | Triage it (step 5) |
-| `timed-out` | Still requested, no review, wait spent | Converge without it |
+| `timed-out` | Still requested, no review, wait spent | Move on without it; a review that lands later is triaged as for `arrived` |
 | `not-available` | Not in `reviewRequests` and no review — the request registered nothing, which is what an exhausted allowance looks like | Converge without it, at once; do not wait out the timer |
 
 Once the outcome is anything but `pending`, edit the record so the PR says what happened — append `outcome=<outcome>` inside its marker and a line of prose ("Copilot not available this PR.", "No Copilot review within 10 minutes.", "Copilot reviewed."):
@@ -247,16 +247,16 @@ The one reading to avoid: a run that produced no review is not the same as a run
 
 ### Checking that a skeptic review was produced by the skill
 
-Step 5's posted-review gate finds the new review by marker, author, `databaseId` and coverage record. **It also checks every comment of that review for its attribution line**, because a review assembled outside the skill — its stages run from memory instead of by invoking it — can carry a marker and a coverage record and still lack them:
+Step 5's posted-review gate finds the new review by marker, author, `databaseId` and coverage record. **It also checks every comment the run posted for its attribution line**, because a review assembled outside the skill — its stages run from memory instead of by invoking it — can carry a marker and a coverage record and still lack them:
 
 ```bash
 gh api --paginate "repos/<owner>/<repo>/pulls/<num>/comments" \
-  --jq ".[] | select(.user.login == \"$ME\") | select(.created_at >= \"<new review submitted_at>\")
+  --jq ".[] | select(.user.login == \"$ME\") | select(.pull_request_review_id >= <new review id>)
        | select(.body | contains(\"<!-- pr-review-skeptic -->\"))
        | select(.body | test(\"<!-- pr-review-skeptic: (scope=(whole|delta) )?unit=[0-9c][0-9c,]* -->\") | not) | .html_url"
 ```
 
-Any output fails the gate: skeptic was not run as the skill. Say so and name the comments. Their findings are still real, so triage them, and say in the round report that their attribution is missing, so step 9's share is computed without them. Invoke skeptic through the skill tool on the next round.
+Select by review id, not by time: a review's inline comments are not timestamped after its `submitted_at`, while every comment the run posts — inline, file-level or reply — carries a review id at or above the new review's. Any output fails the gate: skeptic was not run as the skill. Say so and name the comments. Their findings are still real, so triage them, and say in the round report that their attribution is missing, so step 9's share is computed without them. Invoke skeptic through the skill tool on the next round.
 
 ## The closure check (SKILL.md step 5)
 

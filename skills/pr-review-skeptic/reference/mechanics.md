@@ -194,7 +194,7 @@ rm -rf "<tmp>"                             # the whole per-PR directory, clone a
 
 `--force` because `git worktree remove` refuses outright on any untracked file a reviewer left behind. Nothing the run needs to keep lives there — stage 2's config file is written to a lasting checkout rather than here, and [`SKILL.md`](../SKILL.md) stage 2 says which one, including the two cases where `$REPO` is not one.
 
-Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `reply.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `reply.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
+Remove the whole `<tmp>` directory, not just its two subdirectories. The payload files sit directly in it — `body.md`, every `c-<n>.md`, every `f-<n>.md`, `r-<n>.md`, `comments.jsonl`, `review.json` — and they hold the full review text, which by design quotes the user's source. Note the `f-<n>.md` and `r-<n>.md` entries: those are read by calls that happen *after* the review call, which is why teardown waits for the last posting call rather than the first ([`SKILL.md`](../SKILL.md) stage 9). Left behind they sit in a deterministic path nothing ever reclaims. The cross-repo clone goes with it, which on a large upstream repo is a few hundred megabytes per run.
 
 ## Scope the change
 
@@ -499,8 +499,10 @@ Read the exit code strictly: `0` = fast-forward, post at the reviewed sha as usu
 Replying to a thread this skill opened on an earlier run, rather than opening a second one beside it:
 
 ```bash
-gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -F "body=@<tmp>/reply.md"
+gh api repos/<owner>/<repo>/pulls/<num>/comments/<comment-id>/replies --method POST -F "body=@<tmp>/r-<n>.md"
 ```
+
+One file per reply, `<tmp>/r-<n>.md`, ending in the same attribution line and marker as a comment (SKILL.md stage 7), so the pre-post check covers replies too.
 
 The write-to-file rule governs **every** posting call, not just the review payload: `-F key=@path` reads the value from the file, where `-f body=<text>` would put a finding that quotes the reviewed code through the shell first.
 
