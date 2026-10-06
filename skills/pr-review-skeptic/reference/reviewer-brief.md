@@ -22,7 +22,7 @@ The text handed to each blind reviewer. Substitute the slots, then pass the resu
 | `{{PR_RANGE}}` | **always `{{BASE}}...{{HEAD}}`, for every reviewer.** The pull request's own range, which a finding's `line` has to fall inside to anchor. Identical to `{{DIFF_RANGE}}` except for a later run's content reviewer — which is exactly the reviewer that needs it, and the one that could not otherwise compute it | `a1b2c3…...e4f5a6…` |
 | `{{PRIOR_REVIEW}}` | on a later run, with `$LASTREVIEWED` substituted: the **Already reviewed** block below for a content reviewer, the **composition** variant at the end of this file for the composition reviewer — they say different things about the range and are not interchangeable. **Empty on a first run** | see below |
 | `{{SETTLED}}` | on a later run with settled decisions, the **Already decided** block below. **Empty on a first run**, and empty on a later run with nothing settled | see below |
-| `{{SETTLED_LIST}}` | the decision lines inside that block — one per accepted consequence, no rationale. **`deferred` only, and only below the blocking severities** (SKILL.md stage 3 says why a rejected, acknowledged or blocking one must stay re-findable) | "Accepted: a trimmed cache directory fails the refresh rather than degrading (thread #12)" |
+| `{{SETTLED_LIST}}` | the decision lines inside that block — one per accepted consequence, no rationale. **`deferred` and `batched` only, and only below the blocking severities** (SKILL.md stage 3 says why a rejected, acknowledged or blocking one must stay re-findable) | "Accepted: a trimmed cache directory fails the refresh rather than degrading (thread #12)" |
 | `{{DELIVERY}}` | the **returning** wording below, until a dispatch in this run hands back an acknowledgement instead of a report; the **detached** wording from then on (SKILL.md stage 4) | see below |
 | `{{CI}}` | failing check runs, or "all checks passing" / "no CI configured" | "`unit-tests` failing: 2 cases in MergeTest" |
 
@@ -149,7 +149,7 @@ note: The retry ceiling is only reachable with both `aggressiveSync` and an offl
 
 If that leaves you with nothing at all, say so. **A short review is the good outcome**, and a reviewer whose whole slice is `SOUND` plus two `NOTED` lines has done the job exactly right.
 
-**This matters most for comments, documentation, and tests, and that is where it is easiest to get wrong.** They need to be correct, not perfect. A comment that asserts something false is a real finding, and often a serious one — a confident claim beside subtly wrong code tells every later reader to stop looking, so report it and say what a reader relying on it would get wrong. A comment that is true but could be sharper, a docstring that could say more, a test name that could be clearer: not findings. Prose has no failing test to pin it, so you are the only check on it, and an adversarial reader of prose can generate objections indefinitely. Apply the bar hardest exactly where it is easiest to clear.
+**This matters most for comments, documentation, and tests, and that is where it is easiest to get wrong.** They need to be correct, not perfect. A comment that asserts something false is a real finding, at `LOW` (the severity table below) — a confident claim beside subtly wrong code tells every later reader to stop looking, so report it and say what a reader relying on it would get wrong. A comment that is true but could be sharper, a docstring that could say more, a test name that could be clearer: not findings. Prose has no failing test to pin it, so you are the only check on it, and an adversarial reader of prose can generate objections indefinitely. Apply the bar hardest exactly where it is easiest to clear.
 
 The same holds for a test: "this test cannot fail for the bug it names" is a real finding, because the test is claiming coverage it does not provide. "This test could also assert X" is not, unless the absence of X lets a specific defect through — in which case name that defect.
 
@@ -161,6 +161,8 @@ The same holds for a test: "this test cannot fail for the bug it names" is a rea
 | `HIGH` | Wrong behaviour on a path real users reach, or a security hole. |
 | `MEDIUM` | Wrong behaviour on an edge path, or a cost that lands on the next person to touch this. |
 | `LOW` | Real but minor — a small correctness or maintenance cost with a named consequence. Still a *problem*, not an imperfection: if the honest description is "this could be better", it is not a `LOW`, it is not a finding. |
+
+**Prose that describes code is `LOW` at most, never `MEDIUM`.** A comment, docstring, README, doc page or description that is stale, false or contradicts the code is `LOW`, however confidently wrong. Prose that a program or an agent *executes* — configuration, a prompt, instructions an agent follows — is behaviour, not description, and takes the row its effect earns. The `HIGH` and `CRITICAL` rows are unchanged.
 
 **Report each finding as a block:**
 

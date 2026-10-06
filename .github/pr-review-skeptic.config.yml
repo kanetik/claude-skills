@@ -4,9 +4,9 @@
 project: >-
   A collection of Claude Code skills, published as an installable plugin.
   No build and no runtime, and for most skills the deliverable is the prose
-  inside each SKILL.md. One skill bundles a POSIX shell script, which is real
-  code and has a runnable self-check at skills/later/selfcheck.sh -- so "no
-  tests" is not true of this repo, and that suite is worth running.
+  inside each SKILL.md. Some skills bundle POSIX shell scripts, which are real
+  code, each with a runnable selfcheck.sh beside the skill's SKILL.md -- so
+  "no tests" is not true of this repo, and those suites are worth running.
 
 users: >-
   Claude Code users who install the plugin or copy individual skill folders
@@ -38,8 +38,8 @@ architecture: >-
   frontmatter + prose body) plus optional config/ and reference/ files it
   loads on demand by relative path. .claude-plugin/plugin.json lists the
   exported skills. Nearly all of it is instructions an agent reads rather
-  than code that runs; the exception is a skill that bundles a POSIX shell
-  script it invokes, which is real code and is wrong in the ordinary ways
+  than code that runs; the exception is a skill that bundles POSIX shell
+  scripts it invokes, which are real code and are wrong in the ordinary ways
   code is wrong.
 
 # Lets pr-review-loop's skeptic reviewer post its findings to the PR.

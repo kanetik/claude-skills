@@ -1,6 +1,6 @@
 # 0001 — Skeptic reviewers see the task, not the author's account
 
-Date: 2026-09-29. Status: accepted.
+Date: 2026-09-29. Status: accepted; amended by [0002](0002-review-loop-audit-changes.md) (owner scope decisions, frozen statement).
 
 ## Context
 
