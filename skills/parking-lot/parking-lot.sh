@@ -498,7 +498,7 @@ if [ "$cmd" = add ]; then
           --next:*) when=next; shift ;;
           --on:[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]) when=$2; shift 2 ;;
           --on:*) die "--on takes a date as YYYY-MM-DD, got '${2:-}'" ;;
-          --tag: | --tag:*[!A-Za-z0-9._/+-]*) die "--tag takes a git tag name, got '${2:-}'" ;;
+          --tag: | --tag:-* | --tag:*[!A-Za-z0-9._/+-]*) die "--tag takes a git tag name, got '${2:-}'" ;;
           --tag:*) when="tag $2"; shift 2 ;;
         esac
         ;;

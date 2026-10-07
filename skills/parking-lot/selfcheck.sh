@@ -348,10 +348,12 @@ git -C "$remrepo" tag v12.2
 rem show | grep -q 'after the release' && ok "a --tag reminder shows once the tag exists" ||
   no "a --tag reminder shows once the tag exists" "$(rem show)"
 
-git -C "$remrepo" tag v1
-git -C "$remrepo" tag v2
-printf -- '- [ ] 2026-01-01 (when: tag v1 v2) two tags\n' >> "$remstore"
-rem list | grep -q '(when: tag v1 v2, waiting) two tags' &&
+# w1 and w2 must sort next to each other in `git tag -l`, or the case passes
+# with the whitespace guard removed.
+git -C "$remrepo" tag w1
+git -C "$remrepo" tag w2
+printf -- '- [ ] 2026-01-01 (when: tag w1 w2) two tags\n' >> "$remstore"
+rem list | grep -q '(when: tag w1 w2, waiting) two tags' &&
   ok "a hand-edited tag holding a space never counts as present" ||
   no "a hand-edited tag holding a space never counts as present" "$(rem list)"
 
@@ -364,6 +366,8 @@ rem add --user --tag v1 "user tag" > /dev/null 2>&1 && no "--tag is refused with
   ok "--tag is refused with --user"
 rem add --on tomorrow "bad date" > /dev/null 2>&1 && no "--on refuses a non-date" "it succeeded" ||
   ok "--on refuses a non-date"
+rem add --tag --user "flag as tag" > /dev/null 2>&1 && no "--tag refuses a flag as its tag name" "it succeeded" ||
+  ok "--tag refuses a flag as its tag name"
 rem add --next --on 2026-01-01 "two" > /dev/null 2>&1 && no "two reminder flags are refused" "it succeeded" ||
   ok "two reminder flags are refused"
 rem add --user --next "user next" > /dev/null
@@ -428,6 +432,33 @@ case "$out" in
   *later.md*) no "an empty later.md is not reported" "$out" ;;
   *) ok "an empty later.md is not reported" ;;
 esac
+
+repomig="$tmp/repomig"
+repomigstore=$(cd "$remrepo" && CLAUDE_CONFIG_DIR="$repomig" sh "$PL" path)
+mkdir -p "${repomigstore%/*}"
+printf -- '- [ ] 2026-01-01 old repo thought\n' > "${repomigstore%/*}/later.md"
+(cd "$remrepo" && CLAUDE_CONFIG_DIR="$repomig" sh "$PL" list) | grep -q 'old repo thought' &&
+  [ -f "$repomigstore" ] && [ ! -e "${repomigstore%/*}/later.md" ] &&
+  ok "a repository store's later.md is moved to parking-lot.md" ||
+  no "a repository store's later.md is moved to parking-lot.md" "$(ls "${repomigstore%/*}")"
+
+# A rename that cannot happen leaves the old file in use rather than starting
+# an empty parking-lot.md beside it.
+failmig="$tmp/failmig"
+mkdir -p "$failmig"
+printf -- '- [ ] 2026-01-01 kept in the old file\n' > "$failmig/later.md"
+chmod 0500 "$failmig" 2>/dev/null
+if [ -w "$failmig" ]; then
+  ok "a failed rename keeps later.md in use (skipped: read-only bit not honoured here)"
+else
+  (cd "$tmp" && CLAUDE_CONFIG_DIR="$failmig" sh "$PL" list --user) | grep -q 'kept in the old file' &&
+    ok "a failed rename still lists later.md" || no "a failed rename still lists later.md" "$(ls "$failmig")"
+  (cd "$tmp" && CLAUDE_CONFIG_DIR="$failmig" sh "$PL" add --user "after a failed rename") > /dev/null 2>&1
+  grep -q 'after a failed rename' "$failmig/later.md" && [ ! -e "$failmig/parking-lot.md" ] &&
+    ok "a failed rename keeps adding to later.md" ||
+    no "a failed rename keeps adding to later.md" "$(ls "$failmig")"
+  chmod 0700 "$failmig" 2>/dev/null
+fi
 
 # --- failure modes ----------------------------------------------------------
 
