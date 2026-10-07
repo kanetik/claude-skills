@@ -94,6 +94,18 @@ grep -q '^- \[x\] .*idea one' "$store" && ok "done marks [x] in the file" ||
 run list | grep -q 'idea one' && no "handled items stop displaying" "still listed" ||
   ok "handled items stop displaying"
 
+before=$(grep 'idea one' "$store" | sed 's/^- \[x\]/- [ ]/')
+handled=$(grep 'idea one' "$store")
+run reopen "$handled" "$before" > /dev/null
+check "reopen puts a handled item back on the list" "$(opens)" "3"
+grep -q -x -F -- "$before" "$store" && ok "reopen restores the line it was given" ||
+  no "reopen restores the line it was given" "$(cat "$store")"
+run reopen "$before" "$before" > /dev/null 2>&1 && no "reopen refuses a line that is not handled" "it succeeded" ||
+  ok "reopen refuses a line that is not handled"
+run reopen "$handled" "$before" > /dev/null 2>&1 && no "reopen refuses when no handled line matches" "it succeeded" ||
+  ok "reopen refuses when no handled line matches"
+run done 1 > /dev/null
+
 run maybe 1 "commit abc123" > /dev/null
 grep -q '^- \[~\] .*idea two -- possibly handled by commit abc123' "$store" &&
   ok "maybe marks [~] with a reason" || no "maybe marks [~] with a reason" "$(cat "$store")"

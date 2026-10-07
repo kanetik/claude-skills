@@ -24,7 +24,7 @@ const REPO_INFO = { root: '/repo', remote: null, internal: false, name: null, id
 
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 
-function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] = []) {
+function engine(on: On, listing: (args: string[]) => string, inRepo = true, argvs: string[][] = []) {
   const opened: string[] = []
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('env.get', async () => ({ value: undefined }))
@@ -37,7 +37,7 @@ function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] 
     return {
       value: {
         exitCode: 0,
-        stdout: listing(),
+        stdout: listing(e.argv.slice(2)),
         stderr: '',
         isStdoutTruncated: false,
         isStderrTruncated: false,
@@ -55,7 +55,7 @@ function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] 
   return opened
 }
 
-function mountBand($: Engine, surface: 'terminal' | 'desktop' = 'terminal') {
+function mountBand($: Engine, surface: 'terminal' | 'desktop' | 'mobile' = 'terminal') {
   return $.ui.mount({ plugin: 'parking-lot', surface, component: 'AbovePrompt', props: BAND_PROPS })
 }
 
@@ -69,12 +69,14 @@ test('shows parked items in the band above the prompt on every surface, without 
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const band = await mountBand($, surface)
-    expect(await band.find({ type: 'Text', text: 'first thought' })).toBeDefined()
+    const client = surface === 'desktop' ? await band.find({ type: 'Client' }) : undefined
+    const scope = client?.key === undefined ? {} : { in: client.key }
+    expect(await band.find({ type: 'Text', text: 'first thought', ...scope })).toBeDefined()
     await band.unmount()
   }
 })
 
-test('rows drop the dash and date, show the origin repo and a glyph, and expand when the number is pressed', async ($, on) => {
+test('rows are checklist items labelled with the id done takes, without dash or date, show the origin repo, and expand on the arrow', async ($, on) => {
   engine(
     on,
     () =>
@@ -87,13 +89,14 @@ test('rows drop the dash and date, show the origin repo and a glyph, and expand 
 
   await $.session.start(START)
   const band = await mountBand($)
-  expect(await band.find({ type: 'Text', text: /2026-10-0|- \[|Mark a u-prefixed/ })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: /2026-10-0|- \[|Mark a u-prefixed|^Parked/ })).toBeUndefined()
   expect(await band.find({ type: 'Text', text: 'from alpha' })).toBeUndefined()
   expect(await band.find({ type: 'Text', text: 'from beta' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: 'from gamma' })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: '◐' })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: '○' })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: '[tag] a long thought' })).toBeDefined()
+  expect(await band.findAll({ type: 'Button', text: '▢' })).toHaveLength(3)
+  expect((await band.findAll({ type: 'Text', text: /^ {2}u\d: $/ })).map(found => found.text)).toEqual(['  u1: ', '  u2: ', '  u3: '])
+  expect((await band.find({ type: 'Text', text: '[tag] a long thought' }))?.props).toMatchObject({ italic: true })
+  expect((await band.find({ type: 'Text', text: 'another thought' }))?.props.italic).toBeUndefined()
   expect(await band.find({ type: 'Text', text: 'possibly handled: PR #4' })).toBeUndefined()
 
   await band.press({ key: 'item-u1' })
@@ -110,7 +113,7 @@ test('a collapsed row fits the band width, so it never wraps onto a second line'
   const band = await mountBand($)
   const body = await band.find({ type: 'Text', text: /x…$/ })
   expect(body).toBeDefined()
-  expect('u1. ○ from wakey  '.length + (body?.text.length ?? 999)).toBeLessThanOrEqual(BAND_PROPS.bodyColumns)
+  expect('││ ▢  u1: from wakey  ▸'.length + (body?.text.length ?? 999)).toBeLessThanOrEqual(BAND_PROPS.bodyColumns)
   await band.unmount()
 })
 
@@ -312,4 +315,175 @@ test('opening or merging a PR toasts the items parked for after the current work
   expect(toasts).toEqual([])
   await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
   expect(toasts).toEqual(['Parked for after this: after this work'])
+})
+
+function fakeStores(repo: string[], user: string[] = []) {
+  const stores = {
+    repo: repo.map(line => ({ line, isDone: false })),
+    user: user.map(line => ({ line, isDone: false })),
+  }
+  const open = (store: 'repo' | 'user') => stores[store].filter(one => !one.isDone)
+  const section = (heading: string, store: 'repo' | 'user', prefix: string) =>
+    open(store).length === 0
+      ? ''
+      : `${heading}:\n${open(store)
+          .map((one, i) => `  ${prefix}${i + 1}. ${one.line}\n`)
+          .join('')}\n`
+  return (args: string[]) => {
+    const store = args.includes('--user') ? 'user' : 'repo'
+    const [cmd, a = '', b = ''] = args.filter(arg => arg !== '--user')
+    if (cmd === 'done') {
+      const one = open(store)[Number(a) - 1]
+      if (one === undefined) return ''
+      one.isDone = true
+      return one.line.replace(/^- \[.\]/, '- [x]')
+    }
+    if (cmd === 'reopen') {
+      const one = stores[store].find(x => x.isDone && x.line.replace(/^- \[.\]/, '- [x]') === a)
+      if (one === undefined) return ''
+      one.isDone = false
+      one.line = b
+      return b
+    }
+    const text =
+      args[1] === '--user'
+        ? section('Parked (user)', 'user', '')
+        : section('Parked in repo', 'repo', '') + section('Parked (user)', 'user', 'u')
+    return text === '' ? 'Nothing parked.\n' : text
+  }
+}
+
+function scriptCalls(argvs: string[][]) {
+  return argvs.map(a => a.slice(2)).filter(a => a[0] !== 'list')
+}
+
+const FIRST = '- [ ] 2026-10-01 first thought'
+const SECOND = '- [~] 2026-10-02 second thought -- possibly handled by PR #9'
+
+test('checking an item marks it done at once and leaves it in place, checked and struck through', async ($, on) => {
+  const argvs: string[][] = []
+  engine(on, fakeStores([FIRST, SECOND, '- [ ] 2026-10-03 third thought']), true, argvs)
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  await band.press({ key: 'check-2' })
+  expect(scriptCalls(argvs)).toEqual([['done', '2']])
+  const texts = (await band.findAll({ type: 'Text', text: /thought$/ })).map(found => found.text)
+  expect(texts).toEqual(['first thought', 'second thought', 'third thought'])
+  expect(await band.find({ type: 'Text', text: /^Parked/ })).toBeUndefined()
+  expect((await band.find({ type: 'Text', text: 'second thought' }))?.props).toMatchObject({ strikethrough: true })
+  expect(await band.findAll({ type: 'Button', text: '▣' })).toHaveLength(1)
+  expect((await band.findAll({ type: 'Text', text: /^ {2}\d: $/ })).map(found => found.text)).toEqual(['  1: ', '  2: '])
+  await band.unmount()
+})
+
+test('a checked item is gone the next time the list is shown', async ($, on) => {
+  engine(on, fakeStores([FIRST, SECOND]))
+
+  await $.session.start(START)
+  let band = await mountBand($)
+  await band.press({ key: 'check-1' })
+  await band.unmount()
+
+  await $.session.start(START)
+  band = await mountBand($)
+  expect(await band.find({ type: 'Text', text: 'first thought' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'second thought' })).toBeDefined()
+  await band.unmount()
+})
+
+test('unchecking reopens the item as it was, possibly-handled reason included', async ($, on) => {
+  const argvs: string[][] = []
+  engine(on, fakeStores([FIRST, SECOND]), true, argvs)
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  await band.press({ key: 'check-2' })
+  await band.press({ key: 'check-x0' })
+  expect(scriptCalls(argvs)).toEqual([
+    ['done', '2'],
+    ['reopen', '- [x] 2026-10-02 second thought -- possibly handled by PR #9', SECOND],
+  ])
+  expect(await band.findAll({ type: 'Button', text: '▣' })).toHaveLength(0)
+  expect((await band.find({ type: 'Text', text: 'second thought' }))?.props).toMatchObject({ italic: true })
+  await band.unmount()
+})
+
+test('the band stays while every item shown is checked', async ($, on) => {
+  engine(on, fakeStores([FIRST]))
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  await band.press({ key: 'check-1' })
+  expect(await band.find({ type: 'Text', text: 'first thought' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: NOTHING_PARKED })).toBeUndefined()
+  await band.unmount()
+})
+
+const NOTHING_PARKED = 'Nothing parked.'
+
+for (const [where, inRepo, key] of [
+  ['inside a repository', true, 'check-u1'],
+  ['outside one', false, 'check-1'],
+] as const) {
+  test(`a user item is marked done in the user store, ${where}`, async ($, on) => {
+    const argvs: string[][] = []
+    engine(on, fakeStores([FIRST], ['- [ ] 2026-10-01 (from alpha) user thought']), inRepo, argvs)
+
+    await $.session.start(START)
+    const band = await mountBand($)
+    await band.press({ key })
+    expect(scriptCalls(argvs)).toEqual([['done', '--user', '1']])
+    await band.unmount()
+  })
+}
+
+test('on the desktop the whole row is the control: a click anywhere on it checks the item, and unchecking keeps the same row', async ($, on) => {
+  const argvs: string[][] = []
+  engine(on, fakeStores([FIRST, SECOND]), true, argvs)
+
+  await $.session.start(START)
+  const band = await mountBand($, 'desktop')
+  const [first] = await band.findAll({ type: 'Client' })
+  const key = first?.key ?? ''
+  expect(await band.find({ type: 'Button', text: '▢' })).toBeUndefined()
+  await band.pointer({ type: 'down', x: 12, y: 0, button: 'left', in: key })
+  expect(scriptCalls(argvs)).toEqual([['done', '1']])
+  expect((await band.find({ type: 'Text', text: 'first thought', in: key }))?.props).toMatchObject({
+    strikethrough: true,
+  })
+  await band.pointer({ type: 'down', x: 12, y: 0, button: 'left', in: key })
+  expect((await band.findAll({ type: 'Client' })).map(found => found.key)[0]).toBe(key)
+  expect((await band.find({ type: 'Text', text: 'first thought', in: key }))?.props.strikethrough).toBeUndefined()
+  await band.unmount()
+})
+
+test('the pane rows are checklist items too', async ($, on) => {
+  const argvs: string[][] = []
+  engine(on, fakeStores([FIRST, SECOND]), true, argvs)
+
+  await $.session.start(START)
+  const pane = await $.ui.mount({
+    plugin: 'parking-lot',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'parking-lot',
+    props: PANE_PROPS,
+  })
+  await pane.press({ key: 'check-1' })
+  expect(scriptCalls(argvs)).toEqual([['done', '1']])
+  expect((await pane.find({ type: 'Text', text: /first thought$/ }))?.props).toMatchObject({ strikethrough: true })
+  await pane.unmount()
+})
+
+test('on the mobile app the rows are checkboxes that mark an item done', async ($, on) => {
+  const argvs: string[][] = []
+  engine(on, fakeStores([FIRST, SECOND]), true, argvs)
+
+  await $.session.start(START)
+  const band = await mountBand($, 'mobile')
+  await band.press({ key: 'check-1' })
+  expect(scriptCalls(argvs)).toEqual([['done', '1']])
+  expect(await band.find({ type: 'Button', text: '▣' })).toBeDefined()
+  await band.unmount()
 })

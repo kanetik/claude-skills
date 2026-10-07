@@ -106,6 +106,7 @@ the working directory at run time is the project root, not this folder.
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" list --all` | Both, user items prefixed `u` |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" done <n>` | Mark repository item *n* handled |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" done --user <n>` | Mark user item *n* handled |
+| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" reopen [--user] <handled-line> <line>` | Put back an item marked done: the store line `done` printed becomes the line given |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" plain <n>` | Drop repository item *n*'s `(when: ...)`, leaving it an ordinary parked item |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" plain --user <n>` | The same, in the user store |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" maybe <n> <why>` | Mark repository item *n* *possibly* handled, recording what suggests it |

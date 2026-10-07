@@ -78,7 +78,8 @@ full path to `sh.exe`.
 The folder is also a Claude Code mod (`.claude-plugin/` and `hooks/` here): it
 lists what is parked in a band above the prompt (collapse it with its `[-]`),
 leaving out reminders whose date or tag has not arrived; `/parking-lot-pane` opens the
-whole list in a side pane; and opening or merging a PR with `gh` shows a toast
+whole list in a side pane; checking an item off there marks it
+done; and opening or merging a PR with `gh` shows a toast
 of the `--next` items. Installed by symlink or copy into
 `~/.claude/skills/`, Claude Code loads it from there; `claude --plugin-dir
 <this folder>` loads it for one session. The marketplace plugin does not load
