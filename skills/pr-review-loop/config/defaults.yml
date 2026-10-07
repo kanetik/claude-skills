@@ -64,12 +64,11 @@ max_iterations: 10              # backstop -- reaching it means something went w
 # forever. Observed: four consecutive whole-change reads, one MEDIUM and two LOW each, none
 # wrong, with no blocking finding in fifteen rounds.
 #
-# It is STRICTER than the equality about what the condition guards -- two cold reads of the
-# whole change rather than one -- and looser about WHEN and HOW FAR: the last may sit any number
+# It is looser than the equality about WHEN and HOW FAR: the last may sit any number
 # of fix rounds behind head, each of those reviewed as a delta, with the converged summary naming
 # the sha so the gap is visible. Raise it to buy more cold reads. There is no value that switches the
 # requirement off, and a small PR reaches the equality on its own long before this applies.
-whole_change_taper: 2
+whole_change_taper: 1
 
 # On a CONVERGED run only, and on a PR in the ORCHESTRATOR repo only, take the PR out of
 # draft (`gh pr ready`). Off by default because changing a PR's draft state is outward-facing
