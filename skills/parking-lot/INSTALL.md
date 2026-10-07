@@ -1,7 +1,7 @@
-# Installing the `later` hook
+# Installing the `parking-lot` hook
 
 The skill captures thoughts on its own. Resurfacing them needs a `SessionStart`
-hook that runs `later.sh hook`, which shows parked items on screen at the top of
+hook that runs `parking-lot.sh hook`, which shows parked items on screen at the top of
 each session and gives the model the list. Without it the store is write-only.
 
 ## As part of the plugin
@@ -38,7 +38,7 @@ and the path inside the command, which is literal and expands nothing but
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$HOME/.claude/skills/later/later.sh\" hook",
+            "command": "sh \"$HOME/.claude/skills/parking-lot/parking-lot.sh\" hook",
             "timeout": 5
           }
         ]
@@ -48,9 +48,11 @@ and the path inside the command, which is literal and expands nothing but
 }
 ```
 
-**Wired this by hand before, with `later.sh" show` at the end?** Change `show` to
-`hook`. `show` still works, but its digest reaches only the model and never
-your screen.
+**Wired this by hand when the skill was called `later`?** Replace that hook's
+command with the one above: the old `skills/later/later.sh` path no longer
+exists, and a hook pointing at it fails silently. Re-link or re-copy the folder
+under its new name too. Parked items carry over; the script renames the old
+store the first time it runs.
 
 A project's own `.claude/settings.json` takes the same block and works, but the
 digest then appears only in that project — including the user store, which is
@@ -63,7 +65,7 @@ deliberately.
 **Use a literal path. `${CLAUDE_PLUGIN_ROOT}` does not work here** — it is
 substituted only for hooks a plugin declares itself. In your own settings there
 is no plugin context, so it reaches the shell as an unset variable, expands to
-empty, and the hook runs `sh "/skills/later/later.sh"` at every session start.
+empty, and the hook runs `sh "/skills/parking-lot/parking-lot.sh"` at every session start.
 
 **Assume any mistake here is silent**, and there are three: the wrong file, a
 wrong path, and `${CLAUDE_PLUGIN_ROOT}`. All three fail the same way — no error,
@@ -80,8 +82,10 @@ full path to `sh.exe`.
 ## The band and the pane
 
 The folder is also a Claude Code mod (`.claude-plugin/` and `hooks/` here): it
-lists what is parked in a band above the prompt (collapse it with its `[-]`), and
-`/later-pane` opens the list in a side pane. Installed by symlink or copy into
+lists what is parked in a band above the prompt (collapse it with its `[-]`),
+leaving out reminders whose date has not come; `/parking-lot-pane` opens the
+whole list in a side pane; and opening or merging a PR with `gh` shows a toast
+of the `--next` items. Installed by symlink or copy into
 `~/.claude/skills/`, Claude Code loads it from there; `claude --plugin-dir
 <this folder>` loads it for one session. The marketplace plugin does not load
 it, so a plugin install gets the digest without the band or the pane.
@@ -105,4 +109,4 @@ nothing else does: no digest at the top of a session, and with it none of the
 behaviour that depends on parked items sitting in context — raising an item the
 current work runs into, and reconciling what got handled when work finishes.
 Porting that half means writing an OpenCode plugin that shells out to
-`later.sh show`, which prints the same digest as plain text.
+`parking-lot.sh show`, which prints the same digest as plain text.

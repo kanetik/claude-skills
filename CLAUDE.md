@@ -2,7 +2,7 @@
 
 This repo is a **collection of Claude Code skills** I find useful and worth sharing, published for others to use. It's not themed around one domain — whatever makes a good, self-contained skill can live here. It's not an application: there's no build and no runtime, and for most skills the deliverable is the prose inside each `SKILL.md`.
 
-**But a skill may bundle executable support files, and three do.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `sh skills/later/selfcheck.sh`, `sh skills/pr-review-loop/selfcheck.sh` and `sh skills/pr-review-skeptic/selfcheck.sh` (each touches nothing outside its own temp directory), and for the `later` mod `claude plugin validate skills/later` and `claude plugin test skills/later`. Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
+**But a skill may bundle executable support files, and three do.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `sh skills/parking-lot/selfcheck.sh`, `sh skills/pr-review-loop/selfcheck.sh` and `sh skills/pr-review-skeptic/selfcheck.sh` (each touches nothing outside its own temp directory), and for the `parking-lot` mod `claude plugin validate skills/parking-lot` and `claude plugin test skills/parking-lot`. Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
 
 ## What goes here
 
