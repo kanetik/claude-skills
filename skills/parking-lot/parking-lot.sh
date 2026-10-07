@@ -1,19 +1,21 @@
 #!/usr/bin/env sh
-# later.sh -- the parked-thought store behind the /later skill.
+# parking-lot.sh -- the parked-thought store behind the /parking-lot skill.
 #
-# One implementation of the store, two callers: the skill (add/list/done/maybe)
+# One implementation of the store, two callers: the skill (add/list/done/plain/maybe)
 # and the SessionStart hook (hook, which wraps show). The path resolution lives here for a
 # reason -- two implementations of the mangling rule would drift, and a drifted
 # path does not error, it silently starts a second invisible store.
 #
 # Usage (a scope flag may go anywhere except in `add`, whose text is free-form):
-#   later.sh add [--user] <text>          park a thought
-#   later.sh list [--user|--all]          numbered open items
-#   later.sh done [--user] <n>            mark item n handled
-#   later.sh maybe [--user] <n> <why>     mark item n possibly handled
-#   later.sh show                         the digest, as plain text
-#   later.sh hook                         the digest as SessionStart hook JSON
-#   later.sh path [--user]                print the store path
+#   parking-lot.sh add [--user] [--next | --on YYYY-MM-DD | --tag <tag>] <text>
+#                                         park a thought, optionally as a reminder
+#   parking-lot.sh list [--user|--all]          numbered open items
+#   parking-lot.sh done [--user] <n>            mark item n handled
+#   parking-lot.sh plain [--user] <n>           drop item n's (when: ...), keeping it parked
+#   parking-lot.sh maybe [--user] <n> <why>     mark item n possibly handled
+#   parking-lot.sh show                         the digest, as plain text
+#   parking-lot.sh hook                         the digest as SessionStart hook JSON
+#   parking-lot.sh path [--user]                print the store path
 #
 # -- ends the flags, for text or a reason that starts with one.
 #
@@ -26,25 +28,25 @@ set -u
 # The store holds thoughts written nowhere else, so it is created private
 # rather than at whatever the caller's umask happens to be -- commonly 022,
 # which makes it 0644 and readable by every other account on the machine. This
-# covers the store, the directory holding it, and the temp file `maybe`/`done`
-# rewrite through, which would otherwise expose the whole store for the length
-# of the rewrite. An existing store keeps its permissions until the next `done`
-# or `maybe`, which replaces it with that temp file and so tightens it -- only
+# covers the store, the directory holding it, and the temp file `done`/`maybe`/
+# `plain` rewrite through, which would otherwise expose the whole store for the
+# length of the rewrite. An existing store keeps its permissions until the next
+# such rewrite, which replaces it with that temp file and so tightens it -- only
 # ever in that direction. On MSYS/Git Bash the mode reads 0644 whatever the
 # umask; NTFS profile ACLs cover the exposure there instead.
 umask 077
 
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-SHOW_REPO_MAX="${LATER_SHOW_REPO_MAX:-7}"
-SHOW_USER_MAX="${LATER_SHOW_USER_MAX:-3}"
+SHOW_REPO_MAX="${PARKING_LOT_SHOW_REPO_MAX:-7}"
+SHOW_USER_MAX="${PARKING_LOT_SHOW_USER_MAX:-3}"
 
 die() {
-  printf 'later: %s\n' "$1" >&2
+  printf 'parking-lot: %s\n' "$1" >&2
   exit 1
 }
 
 # Claude Code keys per-project state on a path with every non-alphanumeric
-# character replaced by a dash. Matching that convention puts later.md beside
+# character replaced by a dash. Matching that convention puts parking-lot.md beside
 # the project's own memory/ directory rather than somewhere novel.
 mangle() {
   printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'
@@ -122,12 +124,32 @@ repo_name() {
 
 store_path() {
   if [ "${1:-repo}" = user ]; then
-    printf '%s/later.md' "$CLAUDE_HOME"
-    return 0
+    dir=$CLAUDE_HOME
+  else
+    r=$(repo_root) || return 1
+    [ -n "$r" ] || return 1
+    dir="$CLAUDE_HOME/projects/$(mangle "$r")"
   fi
-  r=$(repo_root) || return 1
-  [ -n "$r" ] || return 1
-  printf '%s/projects/%s/later.md' "$CLAUDE_HOME" "$(mangle "$r")"
+  # A store under the skill's former name is moved, never copied. One found
+  # beside an existing store is left alone and reported by stray_note.
+  if [ -f "$dir/later.md" ] && [ ! -e "$dir/parking-lot.md" ]; then
+    mv "$dir/later.md" "$dir/parking-lot.md" 2>/dev/null
+    if [ -f "$dir/later.md" ] && [ ! -e "$dir/parking-lot.md" ]; then
+      printf '%s/later.md' "$dir"
+      return 0
+    fi
+  fi
+  printf '%s/parking-lot.md' "$dir"
+}
+
+# Names a later.md holding entries beside the store in use, which nothing else
+# reads. Prints nothing otherwise.
+stray_note() {
+  old="${1%/*}/later.md"
+  [ "$1" != "$old" ] && [ -f "$old" ] || return 0
+  sn=$(count_entries "$old")
+  [ "$sn" -gt 0 ] || return 0
+  printf 'parking-lot: %s holds %s item(s) from before the rename that are not in %s -- move them into it, then delete it\n' "$old" "$sn" "$1"
 }
 
 # Open and possibly-handled items, as "lineno:text". Handled items stay in the
@@ -139,6 +161,58 @@ entries() {
 
 count_entries() {
   entries "$1" | wc -l | tr -d ' '
+}
+
+# Entries as "rank:lineno:text", rank 0 for a reminder that has come due, 1
+# for one to raise at the next stopping point, 2 for an ordinary item, and 9
+# for a reminder whose date or tag has not arrived yet.
+ranked_entries() {
+  [ -f "$1" ] || return 0
+  present=" "
+  if grep -q '(when: tag ' "$1" 2>/dev/null; then
+    present=" $(git tag -l 2>/dev/null | tr '\n' ' ')"
+  fi
+  awk -v today="$(date +%Y%m%d)" -v present="$present" '
+    !/^- \[[ ~]\] / { next }
+    {
+      w = ""
+      if (match($0, /^- \[.\] [0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-] (\(from [^)]*\) )?\(when: [^)]*\) /)) {
+        w = substr($0, 1, RLENGTH)
+        sub(/.*\(when: /, "", w)
+        sub(/\) $/, "", w)
+      }
+      rank = 2
+      if (w == "next") rank = 1
+      else if (w ~ /^tag /) {
+        t = substr(w, 5)
+        rank = (t != "" && t !~ /[ \t]/ && index(present, " " t " ")) ? 0 : 9
+      }
+      else if (w ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) {
+        d = w; gsub(/-/, "", d)
+        rank = (d + 0 <= today + 0) ? 0 : 9
+      }
+      printf "%s:%s:%s\n", rank, NR, $0
+    }
+  ' "$1" | sort -t: -k1,1n -k2,2n
+}
+
+# One store's part of the digest, leading with a newline, or nothing at all.
+# $2 is the heading: "Parked (user" is closed by the count, so the user store
+# reads "Parked (user, 2 open)" and a repository "Parked in foo (2 open)".
+digest_section() {
+  ds_ranked=$(ranked_entries "$1")
+  ds_wait=$(printf '%s\n' "$ds_ranked" | grep -c '^9:' || true)
+  ds_active=$(printf '%s\n' "$ds_ranked" | grep '^[0-8]:' | sed 's/^[0-9]*:[0-9]*:/  /')
+  ds_n=0
+  [ -z "$ds_active" ] || ds_n=$(printf '%s\n' "$ds_active" | wc -l | tr -d ' ')
+  [ "$ds_n" -gt 0 ] || [ "$ds_wait" -gt 0 ] || return 0
+  case "$2" in
+    *'(user') printf '\n%s, %s open):' "$2" "$ds_n" ;;
+    *) printf '\n%s (%s open):' "$2" "$ds_n" ;;
+  esac
+  [ "$ds_n" -eq 0 ] || printf '\n%s' "$(printf '%s\n' "$ds_active" | head -n "$3")"
+  [ "$ds_n" -le "$3" ] || printf '\n  ... and %s more (%s)' "$((ds_n - $3))" "$4"
+  [ "$ds_wait" -eq 0 ] || printf '\n  %s more waiting for a date or tag (%s)' "$ds_wait" "$4"
 }
 
 cmd_add() {
@@ -162,10 +236,10 @@ cmd_add() {
   # a false confirmation is the thought gone.
   if [ ! -f "$store" ]; then
     if [ "$scope" = user ]; then
-      printf '# Later (user)\n\nParked thoughts belonging to no single repository. Written by the /later skill.\n\n' > "$store" ||
+      printf '# Parking lot (user)\n\nParked thoughts belonging to no single repository. Written by the /parking-lot skill.\n\n' > "$store" ||
         die "could not write $store"
     else
-      printf '# Later (%s)\n\nParked thoughts for this repository. Written by the /later skill.\n\n' "$(repo_name)" > "$store" ||
+      printf '# Parking lot (%s)\n\nParked thoughts for this repository. Written by the /parking-lot skill.\n\n' "$(repo_name)" > "$store" ||
         die "could not write $store"
     fi
   fi
@@ -176,13 +250,8 @@ cmd_add() {
   if [ "$scope" = user ]; then
     origin=$(repo_name) || origin=""
   fi
-  if [ -n "$origin" ]; then
-    printf -- '- [ ] %s (from %s) %s\n' "$(date +%Y-%m-%d)" "$origin" "$text" >> "$store" ||
-      die "could not append to $store -- nothing was parked"
-  else
-    printf -- '- [ ] %s %s\n' "$(date +%Y-%m-%d)" "$text" >> "$store" ||
-      die "could not append to $store -- nothing was parked"
-  fi
+  printf -- '- [ ] %s %s%s%s\n' "$(date +%Y-%m-%d)" "${origin:+(from $origin) }" "${when:+(when: $when) }" "$text" >> "$store" ||
+    die "could not append to $store -- nothing was parked"
 
   printf 'Parked (%s store, %s open).\n' "$scope" "$(count_entries "$store")"
 }
@@ -194,13 +263,19 @@ print_list() {
   n=$(count_entries "$store")
   [ "$n" -gt 0 ] || return 0
   printf '%s:\n' "$label"
-  entries "$store" | awk -v pfx="$prefix" '{ sub(/^[0-9]+:/, ""); printf "  %s%d. %s\n", pfx, NR, $0 }'
+  waiting=$(ranked_entries "$store" | awk -F: '$1 == 9 { printf "%s ", $2 }')
+  entries "$store" | awk -v pfx="$prefix" -v waiting=" $waiting" '{
+    ln = $0; sub(/:.*/, "", ln)
+    sub(/^[0-9]+:/, "")
+    if (index(waiting, " " ln " ")) sub(/\(when: [^)]*/, "&, waiting")
+    printf "  %s%d. %s\n", pfx, NR, $0
+  }'
   printf '\n'
 }
 
 # Each store numbers from 1, and `--all` shows both -- so without the prefix
 # there are two items called "1" and the number alone does not say which store
-# it came from. `done`/`maybe` default to the repository store, so a number
+# it came from. `done`/`maybe`/`plain` default to the repository store, so a number
 # read off the user half of an `--all` listing would mark an unrelated
 # repository item and hide it, while the item actually finished stayed open.
 # The `u` is what carries the scope from the listing to the command.
@@ -214,17 +289,19 @@ cmd_list() {
       # otherwise, for the same reason the else branch exists: entries()
       # swallows the grep failure, and -f alone passes a directory through to
       # it. Both arrive as "nothing parked" over a store that was never read.
-      printf 'later: repository store unreachable -- %s cannot be read\n' "$store" >&2
+      printf 'parking-lot: repository store unreachable -- %s cannot be read\n' "$store" >&2
       found=1
     elif [ -n "$store" ]; then
       print_list "$store" "Parked in $(repo_name)"
       [ "$(count_entries "$store")" -gt 0 ] && found=1
+      stray=$(stray_note "$store")
+      [ -z "$stray" ] || { printf '%s\n' "$stray" >&2; found=1; }
     else
       # Say why rather than reporting an empty list. An unreachable store and
       # an empty one look identical from here, and reporting "nothing parked"
       # over items that exist is the silent failure this whole design is
       # arranged to avoid -- refusing to write was only half of it.
-      printf 'later: repository store unreachable -- %s\n' "$(no_repo_reason)" >&2
+      printf 'parking-lot: repository store unreachable -- %s\n' "$(no_repo_reason)" >&2
       found=1
     fi
   fi
@@ -234,23 +311,26 @@ cmd_list() {
       # Named rather than listed as empty, and nothing is listed after it: an
       # empty "Parked (user)" heading under this notice says the store was
       # read and held nothing.
-      printf 'later: user store unreachable -- %s cannot be read\n' "$ustore" >&2
+      printf 'parking-lot: user store unreachable -- %s cannot be read\n' "$ustore" >&2
       found=1
     else
       if [ "$scope" = all ]; then
         print_list "$ustore" "Parked (user)" "u"
         [ "$(count_entries "$ustore")" -gt 0 ] &&
-          printf 'Mark a u-prefixed item with --user: later.sh done --user <n>\n\n'
+          printf 'Mark a u-prefixed item with --user: parking-lot.sh done --user <n>\n\n'
       else
         print_list "$ustore" "Parked (user)"
       fi
       [ "$(count_entries "$ustore")" -gt 0 ] && found=1
+      stray=$(stray_note "$ustore")
+      [ -z "$stray" ] || { printf '%s\n' "$stray" >&2; found=1; }
     fi
   fi
   [ "$found" -eq 1 ] || printf 'Nothing parked.\n'
 }
 
-# Rewrite the mark on the Nth displayed item. Numbering is over displayed
+# Rewrite the mark on the Nth displayed item, or with mark "plain" drop its
+# (when: ...) and leave the mark alone. Numbering is over displayed
 # items, so it matches what `list` printed.
 cmd_mark() {
   scope=$1
@@ -293,8 +373,16 @@ cmd_mark() {
   # happens to contain the delimiter and then marking it truncates the user's
   # own words out of the only copy that exists.
   tmp="${store}.tmp.$$"
-  LATER_WHY="$why" awk -v ln="$lineno" -v mark="$mark" '
-    BEGIN { why = ENVIRON["LATER_WHY"]; sep = " -- possibly handled by " }
+  PARKING_LOT_WHY="$why" awk -v ln="$lineno" -v mark="$mark" '
+    BEGIN { why = ENVIRON["PARKING_LOT_WHY"]; sep = " -- possibly handled by " }
+    NR == ln && mark == "plain" {
+      if (match($0, /^- \[.\] [0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-] (\(from [^)]*\) )?\(when: [^)]*\) /)) {
+        pre = substr($0, 1, RLENGTH)
+        sub(/\(when: [^)]*\) $/, "", pre)
+        print pre substr($0, RLENGTH + 1)
+      } else print
+      next
+    }
     NR == ln {
       was = substr($0, 4, 1)
       body = substr($0, 7)
@@ -319,7 +407,6 @@ cmd_mark() {
 # entries() swallows a grep failure, so without the check it would count as
 # empty, which is the same silent failure one layer down.
 cmd_show() {
-  brief=${1:-}
   out=""
   note=""
 
@@ -331,46 +418,34 @@ cmd_show() {
     # and cannot be read, which is news.
     reason=$(no_repo_reason)
     [ "$reason" = "$NO_REPO" ] ||
-      note="later: repository store unreachable -- $reason"
+      note="parking-lot: repository store unreachable -- $reason"
   elif [ -e "$store" ] && { [ ! -f "$store" ] || [ ! -r "$store" ]; }; then
-    note="later: repository store unreachable -- $store cannot be read"
+    note="parking-lot: repository store unreachable -- $store cannot be read"
   elif [ -f "$store" ]; then
-    n=$(count_entries "$store")
-    if [ "$n" -gt 0 ]; then
-      out="$out
-Parked in $(repo_name) ($n open):
-$(entries "$store" | head -n "$SHOW_REPO_MAX" | sed 's/^[0-9]*:/  /')"
-      if [ "$n" -gt "$SHOW_REPO_MAX" ]; then
-        out="$out
-  ... and $((n - SHOW_REPO_MAX)) more (later.sh list)"
-      fi
-    fi
+    out="$out$(digest_section "$store" "Parked in $(repo_name)" "$SHOW_REPO_MAX" "parking-lot.sh list")"
   fi
 
   ustore=$(store_path user)
   if [ -e "$ustore" ] && { [ ! -f "$ustore" ] || [ ! -r "$ustore" ]; }; then
     note="${note:+$note
-}later: user store unreachable -- $ustore cannot be read"
+}parking-lot: user store unreachable -- $ustore cannot be read"
   elif [ -f "$ustore" ]; then
-    un=$(count_entries "$ustore")
-    if [ "$un" -gt 0 ]; then
-      out="$out
-Parked (user, $un open):
-$(entries "$ustore" | head -n "$SHOW_USER_MAX" | sed 's/^[0-9]*:/  /')"
-      if [ "$un" -gt "$SHOW_USER_MAX" ]; then
-        out="$out
-  ... and $((un - SHOW_USER_MAX)) more (later.sh list --user)"
-      fi
-    fi
+    out="$out$(digest_section "$ustore" "Parked (user" "$SHOW_USER_MAX" "parking-lot.sh list --user")"
   fi
+
+  for s in "$store" "$ustore"; do
+    [ -n "$s" ] || continue
+    stray=$(stray_note "$s")
+    [ -z "$stray" ] || note="${note:+$note
+}$stray"
+  done
 
   [ -z "$note" ] || printf '%s\n' "$note"
   if [ -z "$out" ]; then
-    [ -n "$note" ] || [ -n "$brief" ] || printf 'Nothing parked, via the /later skill.\n'
+    [ -n "$note" ] || printf 'Nothing parked, via the /parking-lot skill.\n'
     exit 0
   fi
-  [ -z "$brief" ] || { printf 'Parked thoughts (/later):%s\n' "$out"; exit 0; }
-  printf 'Parked thoughts from earlier sessions, via the /later skill. Do not act on these now; see the skill for when to raise them.%s\n' "$out"
+  printf 'Parked thoughts from earlier sessions, via the /parking-lot skill. Do not act on these now; see the skill for when to raise them. A (when: <date>) or (when: tag ...) item listed here is a reminder that has come due: mention it once, in one line. A (when: next) item waits for a stopping point.%s\n' "$out"
   exit 0
 }
 
@@ -390,8 +465,12 @@ json_str() {
 # prompt already typed goes straight past. Claude Code prefixes systemMessage
 # with the hook's event name, so the on-screen copy stays short.
 cmd_hook() {
-  screen=$(cmd_show brief | json_str)
-  body=$(cmd_show | json_str)
+  full=$(cmd_show)
+  screen=$(printf '%s\n' "$full" |
+    sed -e '/^Nothing parked, via the \/parking-lot skill\.$/d' \
+        -e 's/^Parked thoughts from earlier sessions, via the \/parking-lot skill\..*/Parked thoughts (\/parking-lot):/' |
+    json_str)
+  body=$(printf '%s\n' "$full" | json_str)
   msg=""
   [ -z "$screen" ] || msg="\"systemMessage\":\"$screen\","
   printf '{%s"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg" "$body"
@@ -400,7 +479,7 @@ cmd_hook() {
 
 # --- arguments --------------------------------------------------------------
 
-[ $# -gt 0 ] || die "usage: later.sh add|list|done|maybe|show|hook|path [--user] [args]"
+[ $# -gt 0 ] || die "usage: parking-lot.sh add|list|done|plain|maybe|show|hook|path [--user] [args]"
 cmd=$1
 shift
 
@@ -416,15 +495,32 @@ scope=repo
 # repository item with the same number, hiding an unrelated thought while the
 # one actually finished stays open. Silently marking the wrong item in the
 # wrong store is the one failure here with no copy to recover from.
+when=""
 if [ "$cmd" = add ]; then
   while [ $# -gt 0 ]; do
     case "$1" in
       --) shift; break ;;
       --user) scope=user; shift ;;
       --all) scope=all; shift ;;
+      --next | --on | --tag)
+        [ -z "$when" ] || die "use only one of --next, --on, --tag"
+        case "$1:${2:-}" in
+          --next:*) when=next; shift ;;
+          --on:[0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9]) when=$2; shift 2 ;;
+          --on:*) die "--on takes a date as YYYY-MM-DD, got '${2:-}'" ;;
+          --tag: | --tag:-* | --tag:*[!A-Za-z0-9._/+-]*) die "--tag takes a git tag name, got '${2:-}'" ;;
+          --tag:*) when="tag $2"; shift 2 ;;
+        esac
+        ;;
       *) break ;;
     esac
   done
+  # A tag is looked up in the repository the session is in, and a user item
+  # surfaces in every repository.
+  case "$scope:$when" in
+    "user:tag "*) die "--tag is for repository items -- park it without --user" ;;
+    user:next) die "--next is for repository items -- park it without --user" ;;
+  esac
 else
   # Rotate the argument list, dropping flags and keeping order. An unknown
   # `--flag` is refused rather than read as a positional -- `done 1 --usr`
@@ -464,6 +560,10 @@ case "$cmd" in
   done)
     [ $# -le 1 ] || die "done takes one item number, got: $*"
     cmd_mark "$scope" "${1:-}" x
+    ;;
+  plain)
+    [ $# -le 1 ] || die "plain takes one item number, got: $*"
+    cmd_mark "$scope" "${1:-}" plain
     ;;
   maybe)
     n=${1:-}

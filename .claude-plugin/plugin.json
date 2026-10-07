@@ -12,7 +12,7 @@
     "./skills/pr-review-loop",
     "./skills/pr-review-skeptic",
     "./skills/post-merge-cleanup",
-    "./skills/later",
+    "./skills/parking-lot",
     "./skills/ga4-custom-dimension"
   ],
   "hooks": {
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/later/later.sh\" hook",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/skills/parking-lot/parking-lot.sh\" hook",
             "timeout": 5
           }
         ]

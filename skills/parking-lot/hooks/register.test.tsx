@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 const PANE_PROPS = {
-  title: 'Later',
+  title: 'Parking lot',
   isFocused: false,
   bodyColumns: 60,
   placement: 'dock',
@@ -56,7 +56,7 @@ function engine(on: On, listing: () => string, inRepo = true, argvs: string[][] 
 }
 
 function mountBand($: Engine, surface: 'terminal' | 'desktop' = 'terminal') {
-  return $.ui.mount({ plugin: 'later', surface, component: 'AbovePrompt', props: BAND_PROPS })
+  return $.ui.mount({ plugin: 'parking-lot', surface, component: 'AbovePrompt', props: BAND_PROPS })
 }
 
 test('shows parked items in the band above the prompt on every surface, without opening the pane', async ($, on) => {
@@ -82,7 +82,7 @@ test('rows drop the dash and date, show the origin repo and a glyph, and expand 
       '  u1. - [~] 2026-10-01 (from alpha) [tag] a long thought -- possibly handled by PR #4\n' +
       '  u2. - [ ] 2026-10-02 (from beta) another thought\n' +
       '  u3. - [ ] 2026-10-03 (from gamma) [see notes] third thought\n\n' +
-      'Mark a u-prefixed item with --user: later.sh done --user <n>\n',
+      'Mark a u-prefixed item with --user: parking-lot.sh done --user <n>\n',
   )
 
   await $.session.start(START)
@@ -114,22 +114,22 @@ test('a collapsed row fits the band width, so it never wraps onto a second line'
   await band.unmount()
 })
 
-test('/later-pane opens the side pane with the listing', async ($, on) => {
+test('/parking-lot-pane opens the side pane with the listing', async ($, on) => {
   const opened = engine(on, () => 'Parked in repo:\n  1. - [ ] 2026-10-03 first thought\n')
 
   await $.session.start(START)
   await $.command.run({
-    command: 'later-pane',
+    command: 'parking-lot-pane',
     args: '',
     origin: { kind: 'composer' },
     presentation: { isFullscreen: true, columns: 120 },
   })
-  expect(opened).toEqual(['later'])
+  expect(opened).toEqual(['parking-lot'])
   const pane = await $.ui.mount({
-    plugin: 'later',
+    plugin: 'parking-lot',
     surface: 'terminal',
     component: 'Pane',
-    requestId: 'later',
+    requestId: 'parking-lot',
     props: PANE_PROPS,
   })
   expect(await pane.find({ type: 'Text', text: 'first thought' })).toBeDefined()
@@ -179,10 +179,10 @@ test('on Windows runs the sh.exe beside git, resolving git from the plugin folde
   await $.session.start(START)
   expect(ran).toEqual(['git', 'C:/Program Files/Git/bin/sh.exe'])
   expect(gitCwd).toBeDefined()
-  expect(`${gitCwd}/later.sh`).toBe(script)
+  expect(`${gitCwd}/parking-lot.sh`).toBe(script)
 })
 
-test('a shell that fails to run later.sh shows an error, not its output as the listing', async ($, on) => {
+test('a shell that fails to run parking-lot.sh shows an error, not its output as the listing', async ($, on) => {
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -200,13 +200,13 @@ test('a shell that fails to run later.sh shows an error, not its output as the l
 
   await $.session.start(START)
   const ui = await $.ui.mount({
-    plugin: 'later',
+    plugin: 'parking-lot',
     surface: 'terminal',
     component: 'Pane',
-    requestId: 'later',
+    requestId: 'parking-lot',
     props: PANE_PROPS,
   })
-  expect(await ui.find({ type: 'Text', text: /^later: could not run later\.sh -- exit 1/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^parking-lot: could not run parking-lot\.sh -- exit 1/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -215,10 +215,10 @@ test('strips terminal control sequences from parked text', async ($, on) => {
 
   await $.session.start(START)
   const ui = await $.ui.mount({
-    plugin: 'later',
+    plugin: 'parking-lot',
     surface: 'terminal',
     component: 'Pane',
-    requestId: 'later',
+    requestId: 'parking-lot',
     props: PANE_PROPS,
   })
   expect(await ui.find({ type: 'Text', text: /\u001b|\u0007/ })).toBeUndefined()
@@ -226,7 +226,7 @@ test('strips terminal control sequences from parked text', async ($, on) => {
   await ui.unmount()
 })
 
-test('a Bash call running later.sh refreshes the listing', async ($, on) => {
+test('a Bash call running parking-lot.sh refreshes the listing', async ($, on) => {
   let listing = 'Nothing parked.\n'
   engine(on, () => listing)
   on('tool.call', async () => ({
@@ -235,15 +235,81 @@ test('a Bash call running later.sh refreshes the listing', async ($, on) => {
 
   await $.session.start(START)
   listing = 'Parked in repo:\n  1. - [ ] 2026-10-03 new thought\n'
-  await $.tool.call({ tool: 'Bash', command: 'sh later.sh add new thought' })
+  await $.tool.call({ tool: 'Bash', command: 'sh parking-lot.sh add new thought' })
 
   const ui = await $.ui.mount({
-    plugin: 'later',
+    plugin: 'parking-lot',
     surface: 'terminal',
     component: 'Pane',
-    requestId: 'later',
+    requestId: 'parking-lot',
     props: PANE_PROPS,
   })
   expect(await ui.find({ type: 'Text', text: 'new thought' })).toBeDefined()
   await ui.unmount()
+})
+
+const REMINDERS =
+  'Parked in repo:\n' +
+  '  1. - [ ] 2026-10-01 (when: next) after this work\n' +
+  '  2. - [ ] 2026-10-01 (when: 2000-01-01) overdue thing\n' +
+  '  3. - [ ] 2026-10-01 (when: 2999-01-01, waiting) far future thing\n' +
+  '  4. - [ ] 2026-10-01 (when: tag v12.2) after release thing\n' +
+  '  5. - [ ] 2026-10-01 (when: tag v13, waiting) unreleased thing\n'
+
+test('the band labels reminders and hides the ones the listing marks waiting', async ($, on) => {
+  engine(on, () => REMINDERS)
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  expect(await band.find({ type: 'Text', text: 'next  ' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'due 2000-01-01  ' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'after v12.2  ' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'overdue thing' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'far future thing' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'unreleased thing' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: /\(when:/ })).toBeUndefined()
+  await band.unmount()
+})
+
+test('the pane lists waiting reminders, labelled without the waiting marker', async ($, on) => {
+  engine(on, () => REMINDERS)
+
+  await $.session.start(START)
+  const pane = await $.ui.mount({
+    plugin: 'parking-lot',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'parking-lot',
+    props: PANE_PROPS,
+  })
+  expect(await pane.find({ type: 'Text', text: /after v13 {2}unreleased thing/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /waiting/ })).toBeUndefined()
+  await pane.unmount()
+})
+
+test('no band when every parked item is waiting', async ($, on) => {
+  engine(on, () => 'Parked in repo:\n  1. - [ ] 2026-10-01 (when: tag v13, waiting) unreleased thing\n')
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  expect(await band.find({ type: 'Text', text: /Parking lot|Parked/ })).toBeUndefined()
+  await band.unmount()
+})
+
+test('opening or merging a PR toasts the items parked for after the current work', async ($, on) => {
+  const toasts: string[] = []
+  engine(on, () => REMINDERS)
+  on('ui.toast', async (_$, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('tool.call', async () => ({
+    result: { stdout: '', stderr: '', interrupted: false },
+  }))
+
+  await $.session.start(START)
+  await $.tool.call({ tool: 'Bash', command: 'git status' })
+  expect(toasts).toEqual([])
+  await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
+  expect(toasts).toEqual(['Parked for after this: after this work'])
 })

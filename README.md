@@ -13,21 +13,23 @@ The skills here are deliberately small and single-purpose. Each one does **one j
 | [`/whats-new`](skills/whats-new/SKILL.md) | Author Play Store "What's New" release notes from your commit log (English only). Pulls commits since the last release tag, drafts bullets within Play's 500-char limit, waits for approval, then writes the source-locale file and hands off to `/translate-content` for the other locales. |
 | [`/pr-review-loop`](skills/pr-review-loop/SKILL.md) | Run an iterative PR review loop with a strict role split: reviewers review and post findings to the PR, and this skill is the author — the only thing that touches code. It reads every finding off the PR and decides each one on whether the problem is real and whether it is this PR's work (fix a real problem the change owns / batch a minor one into one closing commit / acknowledge a correct observation that names no problem / reject with a public rationale / file a follow-up issue for genuinely unrelated work), replies, resolves the thread, pushes, and asks for review again, until a round changes no code — nothing blocking outstanding, and nothing fixed that a reviewer hasn't since seen. Reviewers are `/pr-review-skeptic`, which it re-runs on every fix push, or bots like Codex. Copilot gets exactly one pass per PR, requested on the commit that is about to converge, and each Copilot comment it fixes is checked by a separate agent against every call site before its thread is closed. Bundles config defaults and reference material, reads project overrides from the consuming repo, and degrades gracefully where loop/scheduling primitives are absent. Driving git/PRs is this skill's actual job, not overreach. |
 | [`/pr-review-skeptic`](skills/pr-review-skeptic/SKILL.md) | Get an honest second opinion on a PR from reviewers with no stake in it. Blind subagents read the changes at HEAD knowing the project and what the change was asked to do — from the linked issue, your stated intent, or a requirement distilled from the PR description with the author's account stripped out — but nothing of how or why the author built it, judging whether it does the job, treating comments and docs as claims to check against the code, and reporting what is materially wrong rather than what is merely imperfect. A finding is something someone should change — severity then says how bad it is, never whether it counts — and something correct that nobody should have to act on is noted for the record instead, with no thread and nothing owed in reply. Large PRs are partitioned across reviewers plus a pass on how the pieces compose. They are blind to the *author*, not to the review: the first run reads the whole change cold, and later runs stay as cold on the author's account while being scoped to what has changed since the last review and told which non-blocking consequences the project has already accepted — except the composition reviewer, which is never scoped to the delta and takes the whole change whenever it runs. What the change was asked to do is built once per PR and frozen, so every round judges against the same requirement, and scope decisions the owner made on the issue reach the reviewers with it. A finding that repeats one of its own earlier threads lands beside it rather than as a stranger, and one that re-finds a Copilot comment the loop marked fixed comes back a severity higher — Copilot never re-reads its own fixes, so a re-find is the only sign one did not hold. Every finding gets its own thread, plus a go/no-go verdict: posted when you invoke `/pr-review-skeptic` or ask for it on the PR, shown in the terminal first for question-shaped asks like "is this ready to merge?". |
-| [`/later`](skills/later/SKILL.md) | Park a thought that isn't about the work in progress, and get it back when it's useful again. A tangent said out loud drags the session sideways; kept quiet, it's lost. This takes it verbatim, answers in a word, and carries straight on — no clarifying question, no scoping, no offer to do it, because a fragmented session is the cost of *responding*, not of *mentioning*. Thoughts go to a per-repository store or, when the idea belongs to some other project entirely, a user-level one. The store lives outside the repo, keyed on the main repository root, so it's never a diff for collaborators and never dies with a worktree when the branch lands. A `SessionStart` hook replays what's parked at the top of later sessions, and finished work gets reconciled against the list — an item the work happened to cover is marked *possibly* handled with the reason, never quietly deleted. Storing and returning thoughts is the whole job; doing them is yours. |
+| [`/parking-lot`](skills/parking-lot/SKILL.md) | Put a thought on the parking lot — one that isn't about the work in progress — and get it back when it's useful again. A tangent said out loud drags the session sideways; kept quiet, it's lost. This takes it verbatim, answers in a word, and carries straight on — no clarifying question, no scoping, no offer to do it, because a fragmented session is the cost of *responding*, not of *mentioning*. Thoughts go to a per-repository store or, when the idea belongs to some other project entirely, a user-level one. The store lives outside the repo, keyed on the main repository root, so it's never a diff for collaborators and never dies with a worktree when the branch lands. A `SessionStart` hook replays what's parked at the top of later sessions, and finished work gets reconciled against the list — an item the work happened to cover is marked *possibly* handled with the reason, never quietly deleted. A thought can also be parked *for after this work* — offered back as a question once the current work is done and you're happy with it — or as a reminder for a date ("in two weeks") or a release tag ("after v12.2 ships"), staying out of sight until then. Storing and returning thoughts is the whole job; doing them is yours. |
 | [`/post-merge-cleanup`](skills/post-merge-cleanup/SKILL.md) | Put a repo back to a clean state after a PR lands. Moves the session out of whatever worktree it was in and back to the main checkout, prunes remote-tracking refs, fast-forwards the default branch, and only then removes the worktrees and local branches the merge made stale. Containment is decided by one explicit check against a ref that is current whether or not the checkout cooperated, so the skill can tell a branch whose work is safely contained from one holding commits that exist nowhere else. It refuses to delete anything holding uncommitted work — an untracked file in a worktree exists nowhere else — and asks, with the commits in hand, wherever git genuinely cannot tell a squash-merge from work that never landed. Cleanup only: it doesn't merge the PR, close issues, or tag anything. |
 | [`/ga4-custom-dimension`](skills/ga4-custom-dimension/SKILL.md) | Register a Google Analytics 4 custom dimension from the command line, so an event parameter Firebase already collects becomes reportable instead of being rejected as "not a valid dimension". Its real job is timing: custom dimensions never backfill, so every event sent before registration reports as `(not set)` for that dimension permanently — which makes this something to run *ahead of* the release that starts emitting a parameter, not alongside it. It also knows the two routes that look right and are not, because both cost an afternoon to rediscover: GA4 MCP servers expose only reads, and default application-default credentials carry a scope that does not cover Analytics. The way through is a scoped token minted for a service account without touching ADC. Project identifiers stay in the consuming repo; the skill asks rather than guessing, since a dimension registered against the wrong property can only be archived, never deleted. |
 
 ## Typical workflow
 
-`/later` runs across all of the others rather than at a point in any of them.
+`/parking-lot` runs across all of the others rather than at a point in any of them.
 Mid-task, a thought arrives that isn't about the task — *"oh, the settings
 screen should remember its scroll position"* while you're deep in a translation
-pass. Say `later: settings screen should remember scroll position` and it's
+pass. Say `park this: settings screen should remember scroll position` and it's
 written down, acknowledged in a word, and the translation pass carries on
 uninterrupted. Nothing gets asked about it, and nothing gets proposed. It shows
 up again at the top of a later session in that repo, and if the work happens to
 cover it in the meantime, it comes back marked *possibly handled* with the
-reason attached rather than quietly vanishing.
+reason attached rather than quietly vanishing. Say *"park this for after"*
+instead, and it waits for the translation pass to finish, then comes back as a
+question: pick it up now, or leave it parked.
 
 Translating a feature branch's new strings after review settles:
 
@@ -113,7 +115,7 @@ ln -s ~/Projects/claude-skills/skills/whats-new           ~/.claude/skills/whats
 ln -s ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/pr-review-loop
 ln -s ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/pr-review-skeptic
 ln -s ~/Projects/claude-skills/skills/post-merge-cleanup  ~/.claude/skills/post-merge-cleanup
-ln -s ~/Projects/claude-skills/skills/later               ~/.claude/skills/later
+ln -s ~/Projects/claude-skills/skills/parking-lot               ~/.claude/skills/parking-lot
 ln -s ~/Projects/claude-skills/skills/ga4-custom-dimension ~/.claude/skills/ga4-custom-dimension
 ```
 
@@ -141,14 +143,14 @@ cp -r ~/Projects/claude-skills/skills/whats-new           ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-loop      ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/pr-review-skeptic   ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/post-merge-cleanup  ~/.claude/skills/
-cp -r ~/Projects/claude-skills/skills/later               ~/.claude/skills/
+cp -r ~/Projects/claude-skills/skills/parking-lot               ~/.claude/skills/
 cp -r ~/Projects/claude-skills/skills/ga4-custom-dimension ~/.claude/skills/
 ```
 
-`/later` needs a `SessionStart` hook to replay what you park. Option A ships it
+`/parking-lot` needs a `SessionStart` hook to replay what you park. Option A ships it
 declared in the plugin manifest, so there's nothing to do; Options B and C need
 it added by hand. It also needs **git 2.31 or newer** for its per-repository
-store. See [Per-project setup](#for-later) below.
+store. See [Per-project setup](#for-parking-lot) below.
 
 Installing a subset is fine. The loop ships defaulting to the skeptic as its reviewer, which needs the setup below; a repo that wants a bot-only loop sets `reviewers` to that bot. The loop tells you at kickoff what's missing rather than starting a run that can't finish.
 
@@ -257,13 +259,13 @@ Nothing about any individual change belongs in this file — it describes the pr
 
 It's deliberately the one key that doesn't follow the usual merge rules: it counts only from this file, committed, read at the PR's base ref. Not from `~/.claude/`, not from an uncommitted copy in your tree. So a PR can't grant itself the right to publish in its own diff, the permission is visible and revocable by everyone who works on the repo, and it can't ride your machine's user-level config into someone else's project. It never overrides *"don't post"*, never posts on a merged or closed PR, and `confirm_before_posting: true` cancels it outright.
 
-### For `/later`
+### For `/parking-lot`
 
 No per-project config. **Installed as a plugin (Option A), there is nothing to
 set up** — the `SessionStart` hook ships declared in `.claude-plugin/plugin.json`.
 
 **Installed by symlink or copy (Options B and C), add the hook by hand**, once,
-to **`<claude-config>/settings.json`**. Capture writes to a store, and `later.sh list`
+to **`<claude-config>/settings.json`**. Capture writes to a store, and `parking-lot.sh list`
 will read it back on demand, but nothing replays it *unprompted* — which is the
 half that makes the skill worth having — unless the hook is wired up:
 
@@ -275,7 +277,7 @@ half that makes the skill worth having — unless the hook is wired up:
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"$HOME/.claude/skills/later/later.sh\" hook",
+            "command": "sh \"$HOME/.claude/skills/parking-lot/parking-lot.sh\" hook",
             "timeout": 5
           }
         ]
@@ -284,9 +286,6 @@ half that makes the skill worth having — unless the hook is wired up:
   }
 }
 ```
-
-Wired this by hand before, ending in `show`? Change it to `hook`: `show` still
-works, but its digest reaches only the model and never your screen.
 
 Use a **literal path** to wherever you installed the skill. The block above
 spells out the default `~/.claude`; if you have set `CLAUDE_CONFIG_DIR`,
@@ -300,7 +299,7 @@ ships to collaborators who do not have the skill installed;
 `${CLAUDE_PLUGIN_ROOT}` does *not* work in your own settings:
 it's substituted only for hooks a plugin declares itself, and elsewhere the
 token reaches the shell as an unset variable and expands to empty — so the hook
-silently runs `sh "/skills/later/later.sh"` forever.
+silently runs `sh "/skills/parking-lot/parking-lot.sh"` forever.
 
 **Assume any mistake here is silent** — the wrong file, a wrong literal path,
 and `${CLAUDE_PLUGIN_ROOT}` all fail with no error. The skill won't go
@@ -310,19 +309,20 @@ or a plugin's `hooks/hooks.json`), and a hook written into a plugin's
 version-stamped cache path would break on the next update.
 
 Installed by symlink or copy, the skill folder also loads as a Claude Code mod
-that lists parked items in a band above the prompt;
-`/later-pane` opens them in a side pane. The plugin install gets neither.
+that lists parked items in a band above the prompt and toasts the
+*for-after-this* ones when a PR is opened or merged;
+`/parking-lot-pane` opens them in a side pane. The plugin install gets none of these.
 
-[`skills/later/INSTALL.md`](skills/later/INSTALL.md) has the same instructions
+[`skills/parking-lot/INSTALL.md`](skills/parking-lot/INSTALL.md) has the same instructions
 alongside the skill, plus a Windows note and what does and doesn't carry over to
 OpenCode.
 
 Nothing is stored in your repositories. Repository-scoped thoughts live at
-`<claude-config>/projects/<mangled-repo-root>/later.md`, beside that project's
-`memory/` directory, and user-level ones at `<claude-config>/later.md` — so
+`<claude-config>/projects/<mangled-repo-root>/parking-lot.md`, beside that project's
+`memory/` directory, and user-level ones at `<claude-config>/parking-lot.md` — so
 they're never a diff, never a collaborator's problem, and never deleted along
 with a worktree when its branch lands. `<claude-config>` is `CLAUDE_CONFIG_DIR`
-where you've set it, and `~/.claude` otherwise; `later.sh path` prints the
+where you've set it, and `~/.claude` otherwise; `parking-lot.sh path` prints the
 resolved location.
 
 ## Design principles

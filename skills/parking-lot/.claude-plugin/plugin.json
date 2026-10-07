@@ -1,0 +1,10 @@
+{
+  "name": "parking-lot",
+  "version": "0.2.0",
+  "description": "Shows the /parking-lot list in a band above the prompt, and in a pane on demand.",
+  "author": {
+    "name": "Jeremy Kane",
+    "url": "https://github.com/kanetik"
+  },
+  "types": "./types/index.d.ts"
+}

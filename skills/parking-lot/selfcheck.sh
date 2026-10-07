@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Self-check for later.sh. Run it directly: sh selfcheck.sh
+# Self-check for parking-lot.sh. Run it directly: sh selfcheck.sh
 #
 # Everything happens inside a throwaway directory with CLAUDE_CONFIG_DIR
 # pointed at it, so this never touches a real store.
@@ -7,7 +7,7 @@
 set -u
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-LATER="$here/later.sh"
+PL="$here/parking-lot.sh"
 # Absolute, for the one case that runs with an empty PATH.
 REALSH=$(command -v sh)
 fails=0
@@ -19,7 +19,7 @@ check() {
   if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "expected [$3], got [$2]"; fi
 }
 
-tmp=$(mktemp -d 2>/dev/null || mktemp -d -t later)
+tmp=$(mktemp -d 2>/dev/null || mktemp -d -t parking-lot)
 trap 'rm -rf "$tmp"' EXIT
 
 CLAUDE_CONFIG_DIR="$tmp/claude"
@@ -34,14 +34,14 @@ git -C "$repo" config user.name Test
 git -C "$repo" add seed
 git -C "$repo" commit -qm seed
 
-run() { (cd "$repo" && sh "$LATER" "$@"); }
+run() { (cd "$repo" && sh "$PL" "$@"); }
 opens() { run list | grep -c '^  [0-9]*\.' || true; }
 
 # --- store location ---------------------------------------------------------
 
 # The count `add` reports includes the park it just made, so the first one into
 # an empty store is 1.
-firstpark=$(cd "$repo" && sh "$LATER" add "idea one" 2>&1)
+firstpark=$(cd "$repo" && sh "$PL" add "idea one" 2>&1)
 case "$firstpark" in
   *"1 open"*) ok "the first park into an empty store reports 1" ;;
   *) no "the first park into an empty store reports 1" "$firstpark" ;;
@@ -49,8 +49,8 @@ esac
 
 store=$(run path)
 case "$store" in
-  "$CLAUDE_CONFIG_DIR"/projects/*/later.md) ok "store lands under projects/<mangled>/later.md" ;;
-  *) no "store lands under projects/<mangled>/later.md" "$store" ;;
+  "$CLAUDE_CONFIG_DIR"/projects/*/parking-lot.md) ok "store lands under projects/<mangled>/parking-lot.md" ;;
+  *) no "store lands under projects/<mangled>/parking-lot.md" "$store" ;;
 esac
 [ -f "$store" ] && ok "store file created" || no "store file created" "$store missing"
 
@@ -58,7 +58,7 @@ esac
 # parked thoughts survive the worktree being deleted when a branch lands.
 wt="$tmp/wt"
 git -C "$repo" worktree add -q -b wtbranch "$wt" 2>/dev/null
-wt_store=$(cd "$wt" && sh "$LATER" path)
+wt_store=$(cd "$wt" && sh "$PL" path)
 check "worktree resolves to the same store" "$wt_store" "$store"
 
 # --- add / list -------------------------------------------------------------
@@ -67,7 +67,7 @@ check "worktree resolves to the same store" "$wt_store" "$store"
 # the second park reports 2. SKILL.md quotes `Parked (repo store, N open)` as
 # the only cue that `add` took the scope the caller meant, so the number has to
 # be right for the flag-order rule to be checkable at all.
-first=$(cd "$repo" && sh "$LATER" add "count contract" 2>&1)
+first=$(cd "$repo" && sh "$PL" add "count contract" 2>&1)
 case "$first" in
   *"2 open"*) ok "add reports the count including the item just parked" ;;
   *) no "add reports the count including the item just parked" "$first" ;;
@@ -121,9 +121,9 @@ grep -q 'possibly handled by path C:\\dir\\file' "$store" &&
 # --- user store -------------------------------------------------------------
 
 run add --user "cross-repo idea" > /dev/null
-ustore="$CLAUDE_CONFIG_DIR/later.md"
-[ -f "$ustore" ] && ok "user store created at CLAUDE_CONFIG_DIR/later.md" ||
-  no "user store created at CLAUDE_CONFIG_DIR/later.md" "missing"
+ustore="$CLAUDE_CONFIG_DIR/parking-lot.md"
+[ -f "$ustore" ] && ok "user store created at CLAUDE_CONFIG_DIR/parking-lot.md" ||
+  no "user store created at CLAUDE_CONFIG_DIR/parking-lot.md" "missing"
 grep -q '(from myrepo) cross-repo idea' "$ustore" &&
   ok "user items record the originating repo" || no "user items record the originating repo" "$(cat "$ustore")"
 grep -q 'cross-repo idea' "$store" && no "user item stays out of the repo store" "leaked" ||
@@ -135,7 +135,7 @@ grep -q 'cross-repo idea' "$store" && no "user item stays out of the repo store"
 # open. The prefix is what carries the scope from the listing to the command.
 run list --all | grep -q '  u1\. .*cross-repo idea' &&
   ok "list --all prefixes user items with u" || no "list --all prefixes user items with u" "$(run list --all)"
-run list --all | grep -q 'later.sh done --user' &&
+run list --all | grep -q 'parking-lot.sh done --user' &&
   ok "list --all says how to mark a u-prefixed item" || no "list --all says how to mark a u-prefixed item" "$(run list --all)"
 run list --user | grep -q '  1\. .*cross-repo idea' &&
   ok "list --user numbers plainly from 1" || no "list --user numbers plainly from 1" "$(run list --user)"
@@ -241,17 +241,17 @@ run show | grep -q 'Parked in myrepo' && ok "show reports the repo store" ||
 empty="$tmp/empty"
 mkdir -p "$empty"
 git -C "$empty" init -q
-out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show)
-check "show says so when nothing is parked" "$out" "Nothing parked, via the /later skill."
+out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$PL" show)
+check "show says so when nothing is parked" "$out" "Nothing parked, via the /parking-lot skill."
 
-out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show >/dev/null; echo "rc=$?")
+out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$PL" show >/dev/null; echo "rc=$?")
 check "show exits 0 with an empty store" "$out" "rc=0"
 
 # --- hook (SessionStart JSON) ------------------------------------------------
 
-out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" hook)
+out=$(cd "$empty" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$PL" hook)
 check "hook shows nothing on screen when nothing is parked" "$out" \
-  '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Nothing parked, via the /later skill."}}'
+  '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Nothing parked, via the /parking-lot skill."}}'
 
 # Parked text is free-form, and one unescaped byte invalidates the whole object,
 # which Claude Code then drops without a word.
@@ -260,8 +260,8 @@ mkdir -p "$hookrepo"
 git -C "$hookrepo" init -q
 tab=$(printf '\t')
 bell=$(printf '\007')
-(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" add "q\" b\\ t${tab}x bell${bell}end") >/dev/null
-out=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" hook)
+(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$PL" add "q\" b\\ t${tab}x bell${bell}end") >/dev/null
+out=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$PL" hook)
 case "$out" in
   *'q\" b\\ t x bellend'*) ok "hook escapes quotes and backslashes, and drops control bytes" ;;
   *) no "hook escapes quotes and backslashes, and drops control bytes" "$out" ;;
@@ -271,7 +271,7 @@ case "$out" in
   *) ok "hook output holds no raw control byte" ;;
 esac
 case "$out" in
-  '{"systemMessage":"Parked thoughts (/later):\nParked in hookrepo'*'"additionalContext":"Parked thoughts from earlier sessions, via the /later skill. Do not act on these now;'*)
+  '{"systemMessage":"Parked thoughts (/parking-lot):\nParked in hookrepo'*'"additionalContext":"Parked thoughts from earlier sessions, via the /parking-lot skill. Do not act on these now;'*)
     ok "hook shows a short list on screen and the full instruction in context" ;;
   *) no "hook shows a short list on screen and the full instruction in context" "$out" ;;
 esac
@@ -283,31 +283,214 @@ esac
 
 # `add` turns a tab into a space, so only a hand-edited store carries a raw tab
 # or CR to the encoder.
-hookstore=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" path)
+hookstore=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$PL" path)
 printf -- '- [ ] 2026-01-01 hand%sedit\rmore\n' "$tab" >> "$hookstore"
-out=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$LATER" hook)
+out=$(cd "$hookrepo" && CLAUDE_CONFIG_DIR="$tmp/hookcfg" sh "$PL" hook)
 case "$out" in
   *'hand\tedit\rmore'*) ok "hook escapes a raw tab and CR from a hand-edited store" ;;
   *) no "hook escapes a raw tab and CR from a hand-edited store" "$out" ;;
 esac
 
+# --- reminders: --next, --on, --tag -----------------------------------------
+
+remrepo="$tmp/remrepo"
+mkdir -p "$remrepo"
+git -C "$remrepo" init -q
+git -C "$remrepo" config user.email t@example.com
+git -C "$remrepo" config user.name Test
+git -C "$remrepo" commit -q --allow-empty -m seed
+rem() { (cd "$remrepo" && CLAUDE_CONFIG_DIR="$tmp/remcfg" sh "$PL" "$@"); }
+
+rem add "plain item" > /dev/null
+rem add --next "after this work" > /dev/null
+rem add --on 2000-01-01 "long overdue" > /dev/null
+rem add --on 2999-01-01 "far future" > /dev/null
+rem add --tag v12.2 "after the release" > /dev/null
+remstore=$(rem path)
+grep -q '^- \[ \] [0-9-]* (when: next) after this work$' "$remstore" &&
+  ok "--next is stored as (when: next)" || no "--next is stored as (when: next)" "$(cat "$remstore")"
+grep -q '(when: 2999-01-01) far future$' "$remstore" &&
+  ok "--on stores its date" || no "--on stores its date" "$(cat "$remstore")"
+grep -q '(when: tag v12.2) after the release$' "$remstore" &&
+  ok "--tag stores its tag" || no "--tag stores its tag" "$(cat "$remstore")"
+check "list shows every open item, waiting or not" "$(rem list | grep -c '^  [0-9]*\.')" "5"
+rem list | grep -q '(when: 2999-01-01, waiting) far future$' &&
+  ok "list marks a reminder whose date has not come as waiting" ||
+  no "list marks a reminder whose date has not come as waiting" "$(rem list)"
+rem list | grep -q '(when: tag v12.2, waiting) after the release$' &&
+  ok "list marks a reminder whose tag does not exist as waiting" ||
+  no "list marks a reminder whose tag does not exist as waiting" "$(rem list)"
+rem list | grep -q '(when: 2000-01-01) long overdue$' &&
+  ok "list leaves a reminder that has come due unmarked" ||
+  no "list leaves a reminder that has come due unmarked" "$(rem list)"
+
+out=$(rem show)
+case "$out" in
+  *"far future"*|*"after the release"*) no "show hides reminders still waiting" "$out" ;;
+  *) ok "show hides reminders still waiting" ;;
+esac
+case "$out" in
+  *"(3 open):"*"2 more waiting for a date or tag"*) ok "show counts open and waiting items apart" ;;
+  *) no "show counts open and waiting items apart" "$out" ;;
+esac
+first=$(printf '%s\n' "$out" | grep '^  - ' | head -n 1)
+case "$first" in
+  *"long overdue") ok "a reminder that has come due leads the digest" ;;
+  *) no "a reminder that has come due leads the digest" "$out" ;;
+esac
+second=$(printf '%s\n' "$out" | grep '^  - ' | sed -n 2p)
+case "$second" in
+  *"after this work") ok "a --next item comes before ordinary ones" ;;
+  *) no "a --next item comes before ordinary ones" "$out" ;;
+esac
+
+git -C "$remrepo" tag v12.2
+rem show | grep -q 'after the release' && ok "a --tag reminder shows once the tag exists" ||
+  no "a --tag reminder shows once the tag exists" "$(rem show)"
+
+# w1 and w2 must sort next to each other in `git tag -l`, or the case passes
+# with the whitespace guard removed.
+git -C "$remrepo" tag w1
+git -C "$remrepo" tag w2
+printf -- '- [ ] 2026-01-01 (when: tag w1 w2) two tags\n' >> "$remstore"
+rem list | grep -q '(when: tag w1 w2, waiting) two tags' &&
+  ok "a hand-edited tag holding a space never counts as present" ||
+  no "a hand-edited tag holding a space never counts as present" "$(rem list)"
+
+# A hand-edited when that is neither a date nor a tag must not hide the item.
+printf -- '- [ ] 2026-01-01 (when: someday) hand written\n' >> "$remstore"
+rem show | grep -q 'hand written' && ok "an unrecognised when does not hide the item" ||
+  no "an unrecognised when does not hide the item" "$(rem show)"
+
+rem add --user --tag v1 "user tag" > /dev/null 2>&1 && no "--tag is refused with --user" "it succeeded" ||
+  ok "--tag is refused with --user"
+rem add --on tomorrow "bad date" > /dev/null 2>&1 && no "--on refuses a non-date" "it succeeded" ||
+  ok "--on refuses a non-date"
+rem add --tag --user "flag as tag" > /dev/null 2>&1 && no "--tag refuses a flag as its tag name" "it succeeded" ||
+  ok "--tag refuses a flag as its tag name"
+rem add --user --next "user next item" > /dev/null 2>&1 && no "--next is refused with --user" "it succeeded" ||
+  ok "--next is refused with --user"
+
+before=$(rem list | grep -c '^  [0-9]*\.')
+others=$(grep -v 'after this work$' "$remstore")
+idx=$(rem list | awk '/after this work$/ { gsub(/[^0-9]/, "", $1); print $1; exit }')
+rem plain "$idx" > /dev/null
+[ "$(grep -v 'after this work$' "$remstore")" = "$others" ] &&
+  ok "plain leaves every other line untouched" ||
+  no "plain leaves every other line untouched" "$(cat "$remstore")"
+grep -q '^- \[ \] [0-9-]* after this work$' "$remstore" &&
+  ok "plain drops the (when: next) and keeps the item" ||
+  no "plain drops the (when: next) and keeps the item" "$(grep 'after this work' "$remstore")"
+check "plain leaves the count of open items unchanged" "$(rem list | grep -c '^  [0-9]*\.')" "$before"
+rem add --next --on 2026-01-01 "two" > /dev/null 2>&1 && no "two reminder flags are refused" "it succeeded" ||
+  ok "two reminder flags are refused"
+rem add --user --on 2999-01-01 "user reminder" > /dev/null
+grep -q '(from remrepo) (when: 2999-01-01) user reminder$' "$tmp/remcfg/parking-lot.md" &&
+  ok "a user item carries origin then when" || no "a user item carries origin then when" "$(cat "$tmp/remcfg/parking-lot.md")"
+
+# Only waiting reminders in a store: no "Nothing parked", since items exist.
+waitonly="$tmp/waitonly"
+(cd "$remrepo" && CLAUDE_CONFIG_DIR="$waitonly" sh "$PL" add --user --on 2999-01-01 "later on") > /dev/null
+out=$(cd "$tmp" && CLAUDE_CONFIG_DIR="$waitonly" sh "$PL" show)
+case "$out" in
+  *"0 open"*"1 more waiting"*) ok "a store holding only waiting reminders says so" ;;
+  *) no "a store holding only waiting reminders says so" "$out" ;;
+esac
+
+# The SessionStart hook's timeout is 5 seconds (.claude-plugin/plugin.json).
+manycfg="$tmp/manycfg"
+i=0
+while [ "$i" -lt 60 ]; do
+  case $((i % 4)) in
+    0) rem_flag="--next" ;;
+    1) rem_flag="--on 2999-01-01" ;;
+    *) rem_flag="--tag v$i" ;;
+  esac
+  # shellcheck disable=SC2086
+  (cd "$remrepo" && CLAUDE_CONFIG_DIR="$manycfg" sh "$PL" add $rem_flag "item $i") > /dev/null
+  i=$((i + 1))
+done
+start=$(date +%s)
+(cd "$remrepo" && CLAUDE_CONFIG_DIR="$manycfg" sh "$PL" hook) > /dev/null
+took=$(( $(date +%s) - start ))
+[ "$took" -le 4 ] && ok "hook over 60 entries finishes inside the hook timeout (${took}s)" ||
+  no "hook over 60 entries finishes inside the hook timeout" "took ${took}s"
+
+# --- the store's former name ------------------------------------------------
+
+migcfg="$tmp/migcfg"
+mkdir -p "$migcfg"
+printf -- '- [ ] 2026-01-01 parked under the old name\n' > "$migcfg/later.md"
+(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" list --user) | grep -q 'parked under the old name' &&
+  ok "a later.md store is read under the new name" || no "a later.md store is read under the new name" "$(ls "$migcfg")"
+[ -f "$migcfg/parking-lot.md" ] && [ ! -e "$migcfg/later.md" ] && ok "later.md is moved, not copied" ||
+  no "later.md is moved, not copied" "$(ls "$migcfg")"
+printf '# Later (user)\n\n- [ ] 2026-01-01 stray\n' > "$migcfg/later.md"
+before=$(cat "$migcfg/parking-lot.md")
+out=$(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" list --user 2>&1)
+case "$out" in
+  *"later.md holds 1 item(s)"*) ok "list names a later.md left beside parking-lot.md" ;;
+  *) no "list names a later.md left beside parking-lot.md" "$out" ;;
+esac
+out=$(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" show)
+case "$out" in
+  *"later.md holds 1 item(s)"*) ok "show names a later.md left beside parking-lot.md" ;;
+  *) no "show names a later.md left beside parking-lot.md" "$out" ;;
+esac
+grep -q stray "$migcfg/later.md" && [ "$(cat "$migcfg/parking-lot.md")" = "$before" ] &&
+  ok "a later.md beside parking-lot.md is left untouched, and so is the store" ||
+  no "a later.md beside parking-lot.md is left untouched, and so is the store" "$(cat "$migcfg"/*.md)"
+printf '# Later (user)\n\n' > "$migcfg/later.md"
+out=$(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" list --user 2>&1)
+case "$out" in
+  *later.md*) no "an empty later.md is not reported" "$out" ;;
+  *) ok "an empty later.md is not reported" ;;
+esac
+
+repomig="$tmp/repomig"
+repomigstore=$(cd "$remrepo" && CLAUDE_CONFIG_DIR="$repomig" sh "$PL" path)
+mkdir -p "${repomigstore%/*}"
+printf -- '- [ ] 2026-01-01 old repo thought\n' > "${repomigstore%/*}/later.md"
+(cd "$remrepo" && CLAUDE_CONFIG_DIR="$repomig" sh "$PL" list) | grep -q 'old repo thought' &&
+  [ -f "$repomigstore" ] && [ ! -e "${repomigstore%/*}/later.md" ] &&
+  ok "a repository store's later.md is moved to parking-lot.md" ||
+  no "a repository store's later.md is moved to parking-lot.md" "$(ls "${repomigstore%/*}")"
+
+# A rename that cannot happen leaves the old file in use rather than starting
+# an empty parking-lot.md beside it.
+failmig="$tmp/failmig"
+mkdir -p "$failmig"
+printf -- '- [ ] 2026-01-01 kept in the old file\n' > "$failmig/later.md"
+chmod 0500 "$failmig" 2>/dev/null
+if [ -w "$failmig" ]; then
+  ok "a failed rename keeps later.md in use (skipped: read-only bit not honoured here)"
+else
+  (cd "$tmp" && CLAUDE_CONFIG_DIR="$failmig" sh "$PL" list --user) | grep -q 'kept in the old file' &&
+    ok "a failed rename still lists later.md" || no "a failed rename still lists later.md" "$(ls "$failmig")"
+  (cd "$tmp" && CLAUDE_CONFIG_DIR="$failmig" sh "$PL" add --user "after a failed rename") > /dev/null 2>&1
+  grep -q 'after a failed rename' "$failmig/later.md" && [ ! -e "$failmig/parking-lot.md" ] &&
+    ok "a failed rename keeps adding to later.md" ||
+    no "a failed rename keeps adding to later.md" "$(ls "$failmig")"
+  chmod 0700 "$failmig" 2>/dev/null
+fi
+
 # --- failure modes ----------------------------------------------------------
 
 outside="$tmp/notarepo"
 mkdir -p "$outside"
-if (cd "$outside" && sh "$LATER" add "nope" > /dev/null 2>&1); then
+if (cd "$outside" && sh "$PL" add "nope" > /dev/null 2>&1); then
   no "add outside a repo fails" "it succeeded"
 else
   ok "add outside a repo fails"
 fi
-(cd "$outside" && sh "$LATER" add --user "fine" > /dev/null 2>&1) &&
+(cd "$outside" && sh "$PL" add --user "fine" > /dev/null 2>&1) &&
   ok "add --user works outside a repo" || no "add --user works outside a repo" "it failed"
 
 # A session outside a repository is the ordinary case, not a store that could
 # not be read: there is no repository store to reach, so the digest reports an
 # empty one rather than naming a failure.
-out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$LATER" show 2>&1)
-check "show outside a repo reports an empty store" "$out" "Nothing parked, via the /later skill."
+out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" sh "$PL" show 2>&1)
+check "show outside a repo reports an empty store" "$out" "Nothing parked, via the /parking-lot skill."
 
 # No git on PATH is NOT the case above. A repository store written while git
 # was on it still exists and is now unreadable, so reporting "nothing parked"
@@ -318,14 +501,14 @@ check "show outside a repo reports an empty store" "$out" "Nothing parked, via t
 # and count_entries needs wc and tr, which are gone with everything else. The
 # repository store cannot be resolved without git under any config, so there is
 # no fixture in which this path reads one.
-out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH= "$REALSH" "$LATER" show 2>&1)
+out=$(cd "$outside" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH= "$REALSH" "$PL" show 2>&1)
 case "$out" in
   *"Nothing parked"*) no "show does not claim an empty store when git is not installed" "$out" ;;
   *"git is not installed"*) ok "show does not claim an empty store when git is not installed" ;;
   *) no "show does not claim an empty store when git is not installed" "$out" ;;
 esac
 case "$out" in
-  *"command not found"*|*"line "*|*later.sh:*)
+  *"command not found"*|*"line "*|*parking-lot.sh:*)
     no "the no-git message carries no shell error, path or line number" "$out" ;;
   *) ok "the no-git message carries no shell error, path or line number" ;;
 esac
@@ -336,15 +519,15 @@ esac
 # platform, so it is the one that pins the guard here.
 dirstore="$tmp/dirstore"
 mkdir -p "$dirstore"
-realstore=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" path)
+realstore=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$PL" path)
 mkdir -p "$realstore"
-out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" show 2>&1)
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$PL" show 2>&1)
 case "$out" in
   *"Nothing parked"*) no "show does not claim an empty store over a non-file store path" "$out" ;;
   *"cannot be read"*) ok "show does not claim an empty store over a non-file store path" ;;
   *) no "show does not claim an empty store over a non-file store path" "$out" ;;
 esac
-out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$LATER" list 2>&1)
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$dirstore" sh "$PL" list 2>&1)
 case "$out" in
   *"Nothing parked"*) no "list does not claim an empty store over a non-file store path" "$out" ;;
   *"cannot be read"*) ok "list does not claim an empty store over a non-file store path" ;;
@@ -356,14 +539,14 @@ esac
 # green. It is the half that matters more, holding thoughts that belong to no
 # repository and have no copy anywhere.
 userdir="$tmp/userdir"
-mkdir -p "$userdir/later.md"
-out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$LATER" show 2>&1)
+mkdir -p "$userdir/parking-lot.md"
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$PL" show 2>&1)
 case "$out" in
   *"Nothing parked"*) no "show does not claim an empty user store over a non-file store path" "$out" ;;
   *"user store unreachable"*) ok "show does not claim an empty user store over a non-file store path" ;;
   *) no "show does not claim an empty user store over a non-file store path" "$out" ;;
 esac
-out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$LATER" list --user 2>&1)
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$userdir" sh "$PL" list --user 2>&1)
 case "$out" in
   *"Nothing parked"*) no "list --user does not claim an empty store over a non-file store path" "$out" ;;
   *"user store unreachable"*) ok "list --user does not claim an empty store over a non-file store path" ;;
@@ -388,7 +571,7 @@ mkdir -p "$shim"
 } > "$shim/git"
 chmod +x "$shim/git"
 
-out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" add "on old git" 2>&1)
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$PL" add "on old git" 2>&1)
 if [ $? -eq 0 ]; then
   no "add is refused on pre-2.31 git" "it succeeded -- the store would fragment by cwd"
 else
@@ -402,7 +585,7 @@ esac
 # The digest must degrade rather than break: the repo store is unreachable on
 # old git, but a broken store must never stop a session starting, and the user
 # store is unaffected.
-out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" show 2>&1)
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$PL" show 2>&1)
 rc=$?
 check "show exits 0 on pre-2.31 git" "$rc" "0"
 case "$out" in
@@ -418,7 +601,7 @@ esac
 # claim an empty store over one it could not read. Only reachable with the USER
 # store empty too: with items in it the digest is non-empty and the
 # nothing-parked branch is never taken, which is why the case above misses this.
-out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH="$shim:$PATH" sh "$LATER" show 2>&1)
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$tmp/blank" PATH="$shim:$PATH" sh "$PL" show 2>&1)
 rc=$?
 check "show exits 0 on an unreachable repo store with an empty user store" "$rc" "0"
 case "$out" in
@@ -429,14 +612,14 @@ esac
 
 # Refusing to WRITE on old git was only half of it. `list` reporting an empty
 # store over items that exist is the same silent failure, on the read side.
-out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" list 2>&1)
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$PL" list 2>&1)
 case "$out" in
   *"Nothing parked"*) no "list does not claim an unreachable store is empty" "$out" ;;
   *2.31*) ok "list does not claim an unreachable store is empty" ;;
   *) no "list does not claim an unreachable store is empty" "$out" ;;
 esac
 
-out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" path 2>&1)
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$PL" path 2>&1)
 case "$out" in
   *2.31*) ok "path says why rather than printing nothing" ;;
   *) no "path says why rather than printing nothing" "[$out]" ;;
@@ -452,7 +635,7 @@ mkdir -p "$badshim"
   printf 'exit 128\n'
 } > "$badshim/git"
 chmod +x "$badshim/git"
-out=$(cd "$repo" && PATH="$badshim:$PATH" sh "$LATER" add "x" 2>&1)
+out=$(cd "$repo" && PATH="$badshim:$PATH" sh "$PL" add "x" 2>&1)
 case "$out" in
   *"dubious ownership"*) ok "an unrelated git failure is reported as itself" ;;
   *) no "an unrelated git failure is reported as itself" "$out" ;;
@@ -463,7 +646,7 @@ esac
 # parked; only the "(from <repo>)" label is absent. Locking that down so a
 # later change cannot quietly turn the missing tag into a lost thought.
 before=$(grep -c '^- \[' "$ustore")
-out=$(cd "$repo" && PATH="$shim:$PATH" sh "$LATER" add --user "parked on old git" 2>&1)
+out=$(cd "$repo" && PATH="$shim:$PATH" sh "$PL" add --user "parked on old git" 2>&1)
 case "$out" in
   *"Parked (user store"*) ok "add --user still parks on pre-2.31 git" ;;
   *) no "add --user still parks on pre-2.31 git" "$out" ;;
@@ -495,8 +678,8 @@ grep -q '(from .*) parked on old git' "$ustore" &&
 # (nothing reaches the user either way), and saying so beats implying a
 # coverage this check does not have.
 blocked="$tmp/blocked"
-mkdir -p "$blocked/later.md"
-out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$blocked" sh "$LATER" add --user "unwritable" 2>&1)
+mkdir -p "$blocked/parking-lot.md"
+out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$blocked" sh "$PL" add --user "unwritable" 2>&1)
 case "$out" in
   *Parked*) no "a failed header write is never reported as a park" "$out" ;;
   *) ok "a failed header write is never reported as a park" ;;
@@ -507,19 +690,19 @@ esac
 # path -- every park after the first goes through it.
 appendro="$tmp/appendro"
 mkdir -p "$appendro"
-(cd "$repo" && CLAUDE_CONFIG_DIR="$appendro" sh "$LATER" add --user "first, writable" > /dev/null 2>&1)
-chmod 0400 "$appendro/later.md" 2>/dev/null
-if [ -w "$appendro/later.md" ]; then
+(cd "$repo" && CLAUDE_CONFIG_DIR="$appendro" sh "$PL" add --user "first, writable" > /dev/null 2>&1)
+chmod 0400 "$appendro/parking-lot.md" 2>/dev/null
+if [ -w "$appendro/parking-lot.md" ]; then
   # Some filesystems ignore the read-only bit (running as root, certain mounts).
   # A skipped check is honest; a vacuous one is not.
   ok "a failed append is never reported as a park (skipped: read-only bit not honoured here)"
 else
-  out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$appendro" sh "$LATER" add --user "second, blocked" 2>&1)
+  out=$(cd "$repo" && CLAUDE_CONFIG_DIR="$appendro" sh "$PL" add --user "second, blocked" 2>&1)
   case "$out" in
     *Parked*) no "a failed append is never reported as a park" "$out" ;;
     *) ok "a failed append is never reported as a park" ;;
   esac
-  chmod 0600 "$appendro/later.md" 2>/dev/null
+  chmod 0600 "$appendro/parking-lot.md" 2>/dev/null
 fi
 
 printf '\n'
