@@ -1,7 +1,7 @@
 {
   "name": "parking-lot",
-  "version": "0.2.0",
-  "description": "Shows the /parking-lot list in a band above the prompt, and in a pane on demand.",
+  "version": "0.3.0",
+  "description": "Shows the /parking-lot list as a checklist in a band above the prompt, and in a pane on demand.",
   "author": {
     "name": "Jeremy Kane",
     "url": "https://github.com/kanetik"

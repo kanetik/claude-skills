@@ -402,6 +402,31 @@ cmd_mark() {
   sed -n "${lineno}p" "$store"
 }
 
+cmd_reopen() {
+  case "$2" in '- [x] '*) ;; *) die "reopen takes the handled line as done printed it" ;; esac
+  case "$3" in '- [ ] '* | '- [~] '*) ;; *) die "reopen restores an open or possibly-handled line" ;; esac
+  restore=$(printf '%s\n' "$3" | sed 's/^\(- \[.\] [0-9-]* \((from [^)]*) \)\{0,1\}(when: [^)]*\), waiting)/\1)/')
+  bare=$(PARKING_LOT_LINE="$restore" awk 'BEGIN {
+    l = ENVIRON["PARKING_LOT_LINE"]; b = substr(l, 7); sep = " -- possibly handled by "
+    if (substr(l, 4, 1) == "~") {
+      cut = 0; off = 1
+      while ((i = index(substr(b, off), sep)) > 0) { cut = off + i - 1; off = cut + 1 }
+      if (cut > 0) b = substr(b, 1, cut - 1)
+    }
+    print b
+  }')
+  [ "$bare" = "$(printf '%s\n' "$2" | cut -c7-)" ] || die "reopen restores only the item that handled line came from"
+  store=$(store_path "$1") || die "$(no_repo_reason)"
+  [ -n "$store" ] || die "$(no_repo_reason)"
+  lineno=$(grep -n -x -F -- "$2" "$store" 2>/dev/null | tail -n 1 | cut -d: -f1)
+  [ -n "$lineno" ] || die "no handled item matches that line"
+  tmp="${store}.tmp.$$"
+  PARKING_LOT_LINE="$restore" awk -v ln="$lineno" 'NR == ln { print ENVIRON["PARKING_LOT_LINE"]; next } { print }' "$store" > "$tmp" ||
+    die "could not rewrite $store"
+  mv "$tmp" "$store" || die "could not replace $store"
+  sed -n "${lineno}p" "$store"
+}
+
 # A store whose key cannot be RESOLVED is named rather than counted as empty,
 # for the reason cmd_list gives. A store present but not readable is named too --
 # entries() swallows a grep failure, so without the check it would count as
@@ -479,7 +504,7 @@ cmd_hook() {
 
 # --- arguments --------------------------------------------------------------
 
-[ $# -gt 0 ] || die "usage: parking-lot.sh add|list|done|plain|maybe|show|hook|path [--user] [args]"
+[ $# -gt 0 ] || die "usage: parking-lot.sh add|list|done|reopen|plain|maybe|show|hook|path [--user] [args]"
 cmd=$1
 shift
 
@@ -572,6 +597,10 @@ case "$cmd" in
     # the reason is the whole difference between `maybe` and `done`.
     [ -n "$*" ] || die "maybe needs a reason -- use 'done $n' to mark it handled outright"
     cmd_mark "$scope" "$n" '~' "$*"
+    ;;
+  reopen)
+    [ $# -eq 2 ] || die "reopen takes the handled line and the line to restore"
+    cmd_reopen "$scope" "$1" "$2"
     ;;
   show) cmd_show ;;
   hook) cmd_hook ;;

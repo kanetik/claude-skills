@@ -309,7 +309,7 @@ or a plugin's `hooks/hooks.json`), and a hook written into a plugin's
 version-stamped cache path would break on the next update.
 
 Installed by symlink or copy, the skill folder also loads as a Claude Code mod
-that lists parked items in a band above the prompt and toasts the
+that lists parked items as a checklist in a band above the prompt and toasts the
 *for-after-this* ones when a PR is opened or merged;
 `/parking-lot-pane` opens them in a side pane. The plugin install gets none of these.
 
