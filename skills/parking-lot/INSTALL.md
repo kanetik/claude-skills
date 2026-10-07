@@ -85,6 +85,33 @@ of the `--next` items. Installed by symlink or copy into
 <this folder>` loads it for one session. The marketplace plugin does not load
 it, so a plugin install gets the digest without the band or the pane.
 
+## Requirements
+
+A POSIX shell (`sh`), the standard text tools (`grep`, `sed`, `awk`, `sort`,
+`date`), and **git 2.31 or newer** for the repository store. No network access,
+no `gh`, no `jq`. On older git, repository-scoped `add` is refused and `--user`
+still works; `docs/adr/0003-parking-lot-store-key.md` at the repository root
+says why there is no fallback.
+
+`sh selfcheck.sh` in this folder exercises the store end to end in a throwaway
+directory, touching nothing real.
+
+## Where the store lives
+
+| Scope | Path |
+|---|---|
+| Repository | `<claude-config>/projects/<mangled-repo-root>/parking-lot.md` |
+| User | `<claude-config>/parking-lot.md` |
+
+`<claude-config>` is `CLAUDE_CONFIG_DIR` when set, otherwise `~/.claude`. Every
+worktree and subdirectory of a repository shares one store. `parking-lot.sh
+path` prints the one in use.
+
+A store from when the skill was called `later` (`later.md` in the same place)
+is renamed to `parking-lot.md` automatically. One found beside an existing
+`parking-lot.md` is left alone and named by `list` and the digest; move its
+items across by hand, then delete it.
+
 ## OpenCode and other hosts
 
 OpenCode discovers this skill: it reads `~/.claude/skills/*/SKILL.md` and
