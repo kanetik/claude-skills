@@ -78,8 +78,9 @@ script: it takes only `YYYY-MM-DD`. "In two weeks" on 2026-10-06 is
 convention (`git tag --sort=-creatordate | head` shows it): "after 12.2 ships"
 is `--tag v12.2` in a repository whose tags look like `v12.1`. A tag reaches
 the local clone only when it is fetched, so a release tagged elsewhere shows up
-after the next `git fetch`. `--tag` is refused with `--user`, since a user item
-surfaces in every repository and the tag belongs to one.
+after the next `git fetch`. `--tag` and `--next` are refused with `--user`,
+since a user item surfaces in every repository and the tag or the work in
+progress belongs to one.
 
 A condition that is neither a date nor a tag ("once the API team replies") is
 parked plain, in the user's words. Nothing can check it, so nothing pretends to.
@@ -105,6 +106,8 @@ the working directory at run time is the project root, not this folder.
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" list --all` | Both, user items prefixed `u` |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" done <n>` | Mark repository item *n* handled |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" done --user <n>` | Mark user item *n* handled |
+| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" plain <n>` | Drop repository item *n*'s `(when: ...)`, leaving it an ordinary parked item |
+| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" plain --user <n>` | The same, in the user store |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" maybe <n> <why>` | Mark repository item *n* *possibly* handled, recording what suggests it |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" maybe --user <n> <why>` | The same, in the user store |
 | `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" show` | The digest the SessionStart hook gives the model |
@@ -122,14 +125,14 @@ complains; the scope `add` names back — `Parked (repo store, N open)` — is t
 only cue. On every other command the flag may go anywhere, so `done 1 --user`
 means what it looks like.
 
-Item numbers shift as items are handled, so `list` before `done` or `maybe`
-rather than reusing a number from earlier in the session. **A number means
-nothing without a scope**: each store numbers from 1, and `done` and `maybe`
-without `--user` always mean the repository. The digest prints no numbers at
+Item numbers shift as items are handled, so `list` before `done`, `plain` or
+`maybe` rather than reusing a number from earlier in the session. **A number
+means nothing without a scope**: each store numbers from 1, and `done`, `plain`
+and `maybe` without `--user` always mean the repository. The digest prints no numbers at
 all, so a number never comes from it — run a scoped `list`. `list --all`
 prefixes user items with `u`, and `u2` means `done --user 2`.
 
-`--all` is refused on `add`, `done` and `maybe`, which write to exactly one
+`--all` is refused on `add`, `done`, `plain` and `maybe`, which write to exactly one
 store. `--` ends the flags, for a thought or a reason that begins with one:
 `add -- "--no-verify keeps biting us"`.
 
@@ -210,10 +213,11 @@ or it has been committed, a PR opened, or a branch merged, with nothing left
 pending from them. Not mid-task, not while a review loop or a test run is still
 going, and not while the user is still correcting the work. At that point, ask
 once with `AskUserQuestion`: which `(when: next)` item, if any, to pick up now,
-with an option to leave them parked. A pick starts that item as new work. Leave
-them parked and do not ask again in this session. Ask about `(when: next)` items
-parked in an earlier session the same way, at this session's first stopping
-point.
+with an option to leave them parked. A pick starts that item as new work. Every
+item offered and not picked becomes an ordinary parked item: run `plain <n>` on
+it (after a scoped `list`), so it is never offered again. Ask about
+`(when: next)` items parked in an earlier session the same way, at this
+session's first stopping point.
 
 Beyond those, raise an item unprompted only when the current work runs directly
 into it — the file being edited is the file an item names, or the change about

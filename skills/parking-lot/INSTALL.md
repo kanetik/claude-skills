@@ -48,19 +48,6 @@ and the path inside the command, which is literal and expands nothing but
 }
 ```
 
-**Installed this when the skill was called `later`?** Three steps:
-
-1. Delete `~/.claude/skills/later`, whether it is a link or a copy. A copy left
-   in place is still a working skill that answers "park this", and what it
-   parks lands in the old store.
-2. Link or copy `parking-lot` under its new name, as above.
-3. Replace the old hook's command with the one above. A hook still pointing at
-   `skills/later/later.sh` fails silently once step 1 is done.
-
-Parked items carry over: the script renames the old store the first time it
-runs. Anything the old skill parks after that is named at the top of each
-session until it is moved across by hand.
-
 A project's own `.claude/settings.json` takes the same block and works, but the
 digest then appears only in that project — including the user store, which is
 the half meant to follow you between projects. That file is also committed, so

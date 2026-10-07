@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # parking-lot.sh -- the parked-thought store behind the /parking-lot skill.
 #
-# One implementation of the store, two callers: the skill (add/list/done/maybe)
+# One implementation of the store, two callers: the skill (add/list/done/plain/maybe)
 # and the SessionStart hook (hook, which wraps show). The path resolution lives here for a
 # reason -- two implementations of the mangling rule would drift, and a drifted
 # path does not error, it silently starts a second invisible store.
@@ -11,6 +11,7 @@
 #                                         park a thought, optionally as a reminder
 #   parking-lot.sh list [--user|--all]          numbered open items
 #   parking-lot.sh done [--user] <n>            mark item n handled
+#   parking-lot.sh plain [--user] <n>           drop item n's (when: ...), keeping it parked
 #   parking-lot.sh maybe [--user] <n> <why>     mark item n possibly handled
 #   parking-lot.sh show                         the digest, as plain text
 #   parking-lot.sh hook                         the digest as SessionStart hook JSON
@@ -27,10 +28,10 @@ set -u
 # The store holds thoughts written nowhere else, so it is created private
 # rather than at whatever the caller's umask happens to be -- commonly 022,
 # which makes it 0644 and readable by every other account on the machine. This
-# covers the store, the directory holding it, and the temp file `maybe`/`done`
-# rewrite through, which would otherwise expose the whole store for the length
-# of the rewrite. An existing store keeps its permissions until the next `done`
-# or `maybe`, which replaces it with that temp file and so tightens it -- only
+# covers the store, the directory holding it, and the temp file `done`/`maybe`/
+# `plain` rewrite through, which would otherwise expose the whole store for the
+# length of the rewrite. An existing store keeps its permissions until the next
+# such rewrite, which replaces it with that temp file and so tightens it -- only
 # ever in that direction. On MSYS/Git Bash the mode reads 0644 whatever the
 # umask; NTFS profile ACLs cover the exposure there instead.
 umask 077
@@ -274,7 +275,7 @@ print_list() {
 
 # Each store numbers from 1, and `--all` shows both -- so without the prefix
 # there are two items called "1" and the number alone does not say which store
-# it came from. `done`/`maybe` default to the repository store, so a number
+# it came from. `done`/`maybe`/`plain` default to the repository store, so a number
 # read off the user half of an `--all` listing would mark an unrelated
 # repository item and hide it, while the item actually finished stayed open.
 # The `u` is what carries the scope from the listing to the command.
@@ -328,7 +329,8 @@ cmd_list() {
   [ "$found" -eq 1 ] || printf 'Nothing parked.\n'
 }
 
-# Rewrite the mark on the Nth displayed item. Numbering is over displayed
+# Rewrite the mark on the Nth displayed item, or with mark "plain" drop its
+# (when: ...) and leave the mark alone. Numbering is over displayed
 # items, so it matches what `list` printed.
 cmd_mark() {
   scope=$1
@@ -373,6 +375,14 @@ cmd_mark() {
   tmp="${store}.tmp.$$"
   PARKING_LOT_WHY="$why" awk -v ln="$lineno" -v mark="$mark" '
     BEGIN { why = ENVIRON["PARKING_LOT_WHY"]; sep = " -- possibly handled by " }
+    NR == ln && mark == "plain" {
+      if (match($0, /^- \[.\] [0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-] (\(from [^)]*\) )?\(when: [^)]*\) /)) {
+        pre = substr($0, 1, RLENGTH)
+        sub(/\(when: [^)]*\) $/, "", pre)
+        print pre substr($0, RLENGTH + 1)
+      } else print
+      next
+    }
     NR == ln {
       was = substr($0, 4, 1)
       body = substr($0, 7)
@@ -469,7 +479,7 @@ cmd_hook() {
 
 # --- arguments --------------------------------------------------------------
 
-[ $# -gt 0 ] || die "usage: parking-lot.sh add|list|done|maybe|show|hook|path [--user] [args]"
+[ $# -gt 0 ] || die "usage: parking-lot.sh add|list|done|plain|maybe|show|hook|path [--user] [args]"
 cmd=$1
 shift
 
@@ -509,6 +519,7 @@ if [ "$cmd" = add ]; then
   # surfaces in every repository.
   case "$scope:$when" in
     "user:tag "*) die "--tag is for repository items -- park it without --user" ;;
+    user:next) die "--next is for repository items -- park it without --user" ;;
   esac
 else
   # Rotate the argument list, dropping flags and keeping order. An unknown
@@ -549,6 +560,10 @@ case "$cmd" in
   done)
     [ $# -le 1 ] || die "done takes one item number, got: $*"
     cmd_mark "$scope" "${1:-}" x
+    ;;
+  plain)
+    [ $# -le 1 ] || die "plain takes one item number, got: $*"
+    cmd_mark "$scope" "${1:-}" plain
     ;;
   maybe)
     n=${1:-}

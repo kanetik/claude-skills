@@ -368,10 +368,24 @@ rem add --on tomorrow "bad date" > /dev/null 2>&1 && no "--on refuses a non-date
   ok "--on refuses a non-date"
 rem add --tag --user "flag as tag" > /dev/null 2>&1 && no "--tag refuses a flag as its tag name" "it succeeded" ||
   ok "--tag refuses a flag as its tag name"
+rem add --user --next "user next item" > /dev/null 2>&1 && no "--next is refused with --user" "it succeeded" ||
+  ok "--next is refused with --user"
+
+before=$(rem list | grep -c '^  [0-9]*\.')
+others=$(grep -v 'after this work$' "$remstore")
+idx=$(rem list | awk '/after this work$/ { gsub(/[^0-9]/, "", $1); print $1; exit }')
+rem plain "$idx" > /dev/null
+[ "$(grep -v 'after this work$' "$remstore")" = "$others" ] &&
+  ok "plain leaves every other line untouched" ||
+  no "plain leaves every other line untouched" "$(cat "$remstore")"
+grep -q '^- \[ \] [0-9-]* after this work$' "$remstore" &&
+  ok "plain drops the (when: next) and keeps the item" ||
+  no "plain drops the (when: next) and keeps the item" "$(grep 'after this work' "$remstore")"
+check "plain leaves the count of open items unchanged" "$(rem list | grep -c '^  [0-9]*\.')" "$before"
 rem add --next --on 2026-01-01 "two" > /dev/null 2>&1 && no "two reminder flags are refused" "it succeeded" ||
   ok "two reminder flags are refused"
-rem add --user --next "user next" > /dev/null
-grep -q '(from remrepo) (when: next) user next$' "$tmp/remcfg/parking-lot.md" &&
+rem add --user --on 2999-01-01 "user reminder" > /dev/null
+grep -q '(from remrepo) (when: 2999-01-01) user reminder$' "$tmp/remcfg/parking-lot.md" &&
   ok "a user item carries origin then when" || no "a user item carries origin then when" "$(cat "$tmp/remcfg/parking-lot.md")"
 
 # Only waiting reminders in a store: no "Nothing parked", since items exist.
