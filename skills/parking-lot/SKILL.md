@@ -211,11 +211,14 @@ A `(when: next)` item waits for a **good stopping point**: the piece of work in
 progress is finished and the user is satisfied with it — they have approved it,
 or it has been committed, a PR opened, or a branch merged, with nothing left
 pending from them. Not mid-task, not while a review loop or a test run is still
-going, and not while the user is still correcting the work. At that point, ask
-once with `AskUserQuestion`: which `(when: next)` item, if any, to pick up now,
-with an option to leave them parked. A pick starts that item as new work. Every
-item offered and not picked becomes an ordinary parked item: run `plain <n>` on
-it (after a scoped `list`), so it is never offered again. Ask about
+going, and not while the user is still correcting the work. At that point, run
+a scoped `list` — the digest may be stale — and ask once with
+`AskUserQuestion`: which of its `(when: next)` items, if any, to pick up now,
+with an option to leave them parked. Run `plain <n>` on every item offered and
+not picked, so it stays an ordinary parked item and is never offered or toasted
+again. Then mark a picked item `done`: it has been handed to the work, which
+starts now. In that order, because `plain` keeps the numbers `list` printed and
+`done` shifts them. Ask about
 `(when: next)` items parked in an earlier session the same way, at this
 session's first stopping point.
 
@@ -246,7 +249,7 @@ visible, carrying the reason, for them to confirm or dismiss. Never delete an
 item, and never silently drop one.
 
 `done` is for explicit instructions — the user saying an item is handled, or
-asking to clear it. A `(when: next)` item the user picked up and finished counts.
+asking to clear it, or picking it up at a stopping point.
 
 ## Requirements
 
