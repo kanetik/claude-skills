@@ -277,7 +277,10 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'parking-lot-pane' }, async $ => {
-    await refresh($)
+    await inTurn(async () => {
+      await update($, checked, () => [])
+      await refresh($)
+    })
     await $.ui.open({ id: PANE, title: 'Parking lot' })
 
     return { text: 'Parking lot pane opened.' }

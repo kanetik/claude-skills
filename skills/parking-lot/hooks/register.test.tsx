@@ -522,3 +522,31 @@ test('checking rows from the top down keeps them in their places', async ($, on)
   expect((await band.find({ type: 'Text', text: 'middle thought' }))?.props).toMatchObject({ strikethrough: true })
   await band.unmount()
 })
+
+test('opening the pane again leaves out the items already checked off', async ($, on) => {
+  engine(on, fakeStores([FIRST, SECOND]))
+  const openPane = () =>
+    $.command.run({
+      command: 'parking-lot-pane',
+      args: '',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: true, columns: 120 },
+    })
+
+  await $.session.start(START)
+  await openPane()
+  const pane = await $.ui.mount({
+    plugin: 'parking-lot',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'parking-lot',
+    props: PANE_PROPS,
+  })
+  await pane.press({ key: 'check-1' })
+  expect(await pane.find({ type: 'Text', text: /first thought$/ })).toBeDefined()
+  await openPane()
+  await pane.redraw()
+  expect(await pane.find({ type: 'Text', text: /first thought$/ })).toBeUndefined()
+  expect(await pane.find({ type: 'Text', text: /second thought$/ })).toBeDefined()
+  await pane.unmount()
+})
