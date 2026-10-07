@@ -55,8 +55,8 @@ function engine(on: On, listing: (args: string[]) => string, inRepo = true, argv
   return opened
 }
 
-function mountBand($: Engine, surface: 'terminal' | 'desktop' | 'mobile' = 'terminal') {
-  return $.ui.mount({ plugin: 'parking-lot', surface, component: 'AbovePrompt', props: BAND_PROPS })
+function mountBand<S extends 'terminal' | 'desktop' | 'mobile' = 'terminal'>($: Engine, surface?: S) {
+  return $.ui.mount({ plugin: 'parking-lot', surface: surface ?? ('terminal' as S), component: 'AbovePrompt', props: BAND_PROPS })
 }
 
 test('shows parked items in the band above the prompt on every surface, without opening the pane', async ($, on) => {
@@ -323,6 +323,11 @@ function fakeStores(repo: string[], user: string[] = []) {
     user: user.map(line => ({ line, isDone: false })),
   }
   const open = (store: 'repo' | 'user') => stores[store].filter(one => !one.isDone)
+  const handledOf = (line: string) => {
+    const cut = line.lastIndexOf(' -- possibly handled by ')
+    const body = line.startsWith('- [~]') && cut >= 0 ? line.slice(0, cut) : line
+    return body.replace(/^- \[.\]/, '- [x]')
+  }
   const section = (heading: string, store: 'repo' | 'user', prefix: string) =>
     open(store).length === 0
       ? ''
@@ -336,10 +341,10 @@ function fakeStores(repo: string[], user: string[] = []) {
       const one = open(store)[Number(a) - 1]
       if (one === undefined) return ''
       one.isDone = true
-      return one.line.replace(/^- \[.\]/, '- [x]')
+      return handledOf(one.line)
     }
     if (cmd === 'reopen') {
-      const one = stores[store].find(x => x.isDone && x.line.replace(/^- \[.\]/, '- [x]') === a)
+      const one = stores[store].find(x => x.isDone && handledOf(x.line) === a)
       if (one === undefined) return ''
       one.isDone = false
       one.line = b
@@ -402,7 +407,7 @@ test('unchecking reopens the item as it was, possibly-handled reason included', 
   await band.press({ key: 'check-x0' })
   expect(scriptCalls(argvs)).toEqual([
     ['done', '2'],
-    ['reopen', '- [x] 2026-10-02 second thought -- possibly handled by PR #9', SECOND],
+    ['reopen', '- [x] 2026-10-02 second thought', SECOND],
   ])
   expect(await band.findAll({ type: 'Button', text: '▣' })).toHaveLength(0)
   expect((await band.find({ type: 'Text', text: 'second thought' }))?.props).toMatchObject({ italic: true })
@@ -485,5 +490,35 @@ test('on the mobile app the rows are checkboxes that mark an item done', async (
   await band.press({ key: 'check-1' })
   expect(scriptCalls(argvs)).toEqual([['done', '1']])
   expect(await band.find({ type: 'Button', text: '▣' })).toBeDefined()
+  await band.unmount()
+})
+
+test('checks made in quick succession each mark the item that was clicked', async ($, on) => {
+  const argvs: string[][] = []
+  engine(on, fakeStores([FIRST, '- [ ] 2026-10-02 middle thought', '- [ ] 2026-10-03 third thought']), true, argvs)
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  await Promise.all([band.press({ key: 'check-1' }), band.press({ key: 'check-3' })])
+  expect(scriptCalls(argvs)).toEqual([
+    ['done', '1'],
+    ['done', '2'],
+  ])
+  expect((await band.find({ type: 'Text', text: 'first thought' }))?.props).toMatchObject({ strikethrough: true })
+  expect((await band.find({ type: 'Text', text: 'third thought' }))?.props).toMatchObject({ strikethrough: true })
+  expect((await band.find({ type: 'Text', text: 'middle thought' }))?.props.strikethrough).toBeUndefined()
+  await band.unmount()
+})
+
+test('checking rows from the top down keeps them in their places', async ($, on) => {
+  engine(on, fakeStores([FIRST, '- [ ] 2026-10-02 middle thought', '- [ ] 2026-10-03 third thought']))
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  await band.press({ key: 'check-1' })
+  await band.press({ key: 'check-1' })
+  const texts = (await band.findAll({ type: 'Text', text: /thought$/ })).map(found => found.text)
+  expect(texts).toEqual(['first thought', 'middle thought', 'third thought'])
+  expect((await band.find({ type: 'Text', text: 'middle thought' }))?.props).toMatchObject({ strikethrough: true })
   await band.unmount()
 })

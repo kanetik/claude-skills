@@ -114,31 +114,44 @@ function setChecked($: EngineInterface, entry: string, change: Partial<ParkingLo
   )
 }
 
+let scriptTurn: Promise<void> = Promise.resolve()
+
+function inTurn(work: () => Promise<void>) {
+  const run = scriptTurn.then(work)
+  scriptTurn = run.catch(() => undefined)
+  return run
+}
+
 async function check($: EngineInterface, item: Item) {
-  const at = rows(await read($, listing)).findIndex(row => 'id' in row && row.entry === item.entry)
+  const shown = shownRows(await read($, listing), await read($, checked))
+  const at = shown.findIndex(row => 'id' in row && row.entry === item.entry)
   await update($, checked, done => [...done, { entry: item.entry, handled: '', at }])
-  await refresh($)
-  const live = rows(await read($, listing)).find((row): row is Item => 'id' in row && row.entry === item.entry)
-  const ran = live && (await runScript($, ['done', ...scopeFlag(live), live.id.replace(/^u/, '')]))
-  if (ran === undefined || ran.exitCode !== 0) {
-    await setChecked($, item.entry, undefined)
-    $.ui.toast(`parking-lot: could not mark done -- ${ran?.stderr.trim() || 'the item changed'}`)
-  } else {
-    await setChecked($, item.entry, { handled: ran.stdout.trim() })
-  }
-  await refresh($)
+  return inTurn(async () => {
+    await refresh($)
+    const live = rows(await read($, listing)).find((row): row is Item => 'id' in row && row.entry === item.entry)
+    const ran = live && (await runScript($, ['done', ...scopeFlag(live), live.id.replace(/^u/, '')]))
+    if (ran === undefined || ran.exitCode !== 0) {
+      await setChecked($, item.entry, undefined)
+      $.ui.toast(`parking-lot: could not mark done -- ${ran?.stderr.trim() || 'the item changed'}`)
+    } else {
+      await setChecked($, item.entry, { handled: ran.stdout.trim() })
+    }
+    await refresh($)
+  })
 }
 
 async function uncheck($: EngineInterface, item: Item & { handled: string }) {
   await setChecked($, item.entry, { isReopening: true })
-  const ran = await runScript($, ['reopen', ...scopeFlag(item), item.handled, item.line])
-  if (ran.exitCode !== 0) {
-    await setChecked($, item.entry, { isReopening: false })
-    $.ui.toast(`parking-lot: could not reopen -- ${ran.stderr.trim()}`)
-    return
-  }
-  await refresh($)
-  await setChecked($, item.entry, undefined)
+  return inTurn(async () => {
+    const ran = await runScript($, ['reopen', ...scopeFlag(item), item.handled, item.line])
+    if (ran.exitCode !== 0) {
+      await setChecked($, item.entry, { isReopening: false })
+      $.ui.toast(`parking-lot: could not reopen -- ${ran.stderr.trim()}`)
+      return
+    }
+    await refresh($)
+    await setChecked($, item.entry, undefined)
+  })
 }
 
 function scopeFlag(item: Item) {
