@@ -717,6 +717,32 @@ else
   chmod 0600 "$appendro/parking-lot.md" 2>/dev/null
 fi
 
+# --- reopen of a waiting reminder --------------------------------------------
+
+CLAUDE_CONFIG_DIR="$tmp/reopen-claude"
+(cd "$repo" && sh "$PL" add --on 2099-01-01 "far future thing" > /dev/null)
+(cd "$repo" && sh "$PL" add "plain thing" > /dev/null)
+rstore=$(run path)
+listed=$(run list | grep 'far future thing' | sed 's/^ *[0-9]*\. //')
+case "$listed" in
+  *', waiting)'*) ok "list marks the future reminder waiting" ;;
+  *) no "list marks the future reminder waiting" "$listed" ;;
+esac
+handled=$(run done 1)
+run reopen "$handled" "$listed" > /dev/null
+grep -q -x -F -- "- [ ] $(date +%Y-%m-%d) (when: 2099-01-01) far future thing" "$rstore" &&
+  ok "reopen of a listed waiting reminder restores the stored line" ||
+  no "reopen of a listed waiting reminder restores the stored line" "$(cat "$rstore")"
+run list | grep -q -F '(when: 2099-01-01, waiting) far future thing' && ok "the reopened reminder still waits for its date" ||
+  no "the reopened reminder still waits for its date" "$(run list)"
+
+handled=$(run done 1)
+run reopen "$handled" "- [ ] $(date +%Y-%m-%d) plain thing" > /dev/null 2>&1 &&
+  no "reopen refuses a line that is not the handled item" "it succeeded" ||
+  ok "reopen refuses a line that is not the handled item"
+grep -q -x -F -- "$handled" "$rstore" && ok "a refused reopen leaves the handled line alone" ||
+  no "a refused reopen leaves the handled line alone" "$(cat "$rstore")"
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
   printf 'all checks passed\n'

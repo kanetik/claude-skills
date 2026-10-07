@@ -405,12 +405,23 @@ cmd_mark() {
 cmd_reopen() {
   case "$2" in '- [x] '*) ;; *) die "reopen takes the handled line as done printed it" ;; esac
   case "$3" in '- [ ] '* | '- [~] '*) ;; *) die "reopen restores an open or possibly-handled line" ;; esac
+  restore=$(printf '%s\n' "$3" | sed 's/^\(- \[.\] [0-9-]* \((from [^)]*) \)\{0,1\}(when: [^)]*\), waiting)/\1)/')
+  bare=$(PARKING_LOT_LINE="$restore" awk 'BEGIN {
+    l = ENVIRON["PARKING_LOT_LINE"]; b = substr(l, 7); sep = " -- possibly handled by "
+    if (substr(l, 4, 1) == "~") {
+      cut = 0; off = 1
+      while ((i = index(substr(b, off), sep)) > 0) { cut = off + i - 1; off = cut + 1 }
+      if (cut > 0) b = substr(b, 1, cut - 1)
+    }
+    print b
+  }')
+  [ "$bare" = "$(printf '%s\n' "$2" | cut -c7-)" ] || die "reopen restores only the item that handled line came from"
   store=$(store_path "$1") || die "$(no_repo_reason)"
   [ -n "$store" ] || die "$(no_repo_reason)"
   lineno=$(grep -n -x -F -- "$2" "$store" 2>/dev/null | tail -n 1 | cut -d: -f1)
   [ -n "$lineno" ] || die "no handled item matches that line"
   tmp="${store}.tmp.$$"
-  PARKING_LOT_LINE="$3" awk -v ln="$lineno" 'NR == ln { print ENVIRON["PARKING_LOT_LINE"]; next } { print }' "$store" > "$tmp" ||
+  PARKING_LOT_LINE="$restore" awk -v ln="$lineno" 'NR == ln { print ENVIRON["PARKING_LOT_LINE"]; next } { print }' "$store" > "$tmp" ||
     die "could not rewrite $store"
   mv "$tmp" "$store" || die "could not replace $store"
   sed -n "${lineno}p" "$store"
