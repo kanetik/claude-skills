@@ -287,11 +287,13 @@ half that makes the skill worth having — unless the hook is wired up:
 }
 ```
 
-Wired this by hand when the skill was called `later`? Replace that hook's
-command with the one above, and re-link or re-copy the folder under its new
-name: the old `skills/later/later.sh` path is gone, and a hook pointing at it
-fails silently. Parked items carry over — the script renames the old store the
-first time it runs.
+Installed this when the skill was called `later`? Delete
+`~/.claude/skills/later` first, whether it is a link or a copy — a copy left in
+place still answers "park this" and parks into the old store. Then link or
+copy `parking-lot` under its new name, and replace the old hook's command with
+the one above. Parked items carry over: the script renames the old store the
+first time it runs, and names anything the old skill parks after that at the
+top of each session until it is moved across by hand.
 
 Use a **literal path** to wherever you installed the skill. The block above
 spells out the default `~/.claude`; if you have set `CLAUDE_CONFIG_DIR`,

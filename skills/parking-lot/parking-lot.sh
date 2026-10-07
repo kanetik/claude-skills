@@ -129,15 +129,26 @@ store_path() {
     [ -n "$r" ] || return 1
     dir="$CLAUDE_HOME/projects/$(mangle "$r")"
   fi
-  # A store written under the skill's former name is moved, never copied: two
-  # files would split one list. If the move fails, keep using the old file.
-  if [ ! -e "$dir/parking-lot.md" ] && [ -f "$dir/later.md" ]; then
-    mv "$dir/later.md" "$dir/parking-lot.md" 2>/dev/null || {
+  # A store under the skill's former name is moved, never copied. One found
+  # beside an existing store is left alone and reported by stray_note.
+  if [ -f "$dir/later.md" ] && [ ! -e "$dir/parking-lot.md" ]; then
+    mv "$dir/later.md" "$dir/parking-lot.md" 2>/dev/null
+    if [ -f "$dir/later.md" ] && [ ! -e "$dir/parking-lot.md" ]; then
       printf '%s/later.md' "$dir"
       return 0
-    }
+    fi
   fi
   printf '%s/parking-lot.md' "$dir"
+}
+
+# Names a later.md holding entries beside the store in use, which nothing else
+# reads. Prints nothing otherwise.
+stray_note() {
+  old="${1%/*}/later.md"
+  [ "$1" != "$old" ] && [ -f "$old" ] || return 0
+  sn=$(count_entries "$old")
+  [ "$sn" -gt 0 ] || return 0
+  printf 'parking-lot: %s holds %s item(s) from before the rename that are not in %s -- move them into it, then delete it\n' "$old" "$sn" "$1"
 }
 
 # Open and possibly-handled items, as "lineno:text". Handled items stay in the
@@ -240,7 +251,13 @@ print_list() {
   n=$(count_entries "$store")
   [ "$n" -gt 0 ] || return 0
   printf '%s:\n' "$label"
-  entries "$store" | awk -v pfx="$prefix" '{ sub(/^[0-9]+:/, ""); printf "  %s%d. %s\n", pfx, NR, $0 }'
+  waiting=$(ranked_entries "$store" | awk -F: '$1 == 9 { printf "%s ", $2 }')
+  entries "$store" | awk -v pfx="$prefix" -v waiting=" $waiting" '{
+    ln = $0; sub(/:.*/, "", ln)
+    sub(/^[0-9]+:/, "")
+    if (index(waiting, " " ln " ")) sub(/\(when: [^)]*/, "&, waiting")
+    printf "  %s%d. %s\n", pfx, NR, $0
+  }'
   printf '\n'
 }
 
@@ -265,6 +282,8 @@ cmd_list() {
     elif [ -n "$store" ]; then
       print_list "$store" "Parked in $(repo_name)"
       [ "$(count_entries "$store")" -gt 0 ] && found=1
+      stray=$(stray_note "$store")
+      [ -z "$stray" ] || { printf '%s\n' "$stray" >&2; found=1; }
     else
       # Say why rather than reporting an empty list. An unreachable store and
       # an empty one look identical from here, and reporting "nothing parked"
@@ -291,6 +310,8 @@ cmd_list() {
         print_list "$ustore" "Parked (user)"
       fi
       [ "$(count_entries "$ustore")" -gt 0 ] && found=1
+      stray=$(stray_note "$ustore")
+      [ -z "$stray" ] || { printf '%s\n' "$stray" >&2; found=1; }
     fi
   fi
   [ "$found" -eq 1 ] || printf 'Nothing parked.\n'
@@ -391,6 +412,13 @@ cmd_show() {
   elif [ -f "$ustore" ]; then
     out="$out$(digest_section "$ustore" "Parked (user" "$SHOW_USER_MAX" "parking-lot.sh list --user")"
   fi
+
+  for s in "$store" "$ustore"; do
+    [ -n "$s" ] || continue
+    stray=$(stray_note "$s")
+    [ -z "$stray" ] || note="${note:+$note
+}$stray"
+  done
 
   [ -z "$note" ] || printf '%s\n' "$note"
   if [ -z "$out" ]; then

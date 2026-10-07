@@ -10,11 +10,6 @@ const expanded = atom({ plugin: 'parking-lot', key: 'expanded' } as const, [])
 type Item = { id: string; isMaybe: boolean; origin: string; when: string; body: string; reason: string }
 type Row = Item | { text: string }
 
-function today() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function parseRow(line: string): Row {
   const m = /^\s+(u?\d+)\. - \[([ ~])\] \d{4}-\d{2}-\d{2} (?:\(from ([^)]*)\) )?(?:\(when: ([^)]*)\) )?(.*)$/.exec(line)
   if (!m) return { text: line.trim() }
@@ -31,11 +26,14 @@ function parseRow(line: string): Row {
   }
 }
 
+const WAITING = ', waiting'
+
 function isWaiting(item: Item) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(item.when) && item.when > today()
+  return item.when.endsWith(WAITING)
 }
 
-function whenLabel(when: string) {
+function whenLabel(raw: string) {
+  const when = raw.endsWith(WAITING) ? raw.slice(0, -WAITING.length) : raw
   if (when === '') return ''
   if (when === 'next') return 'next  '
   if (when.startsWith('tag ')) return `after ${when.slice(4)}  `

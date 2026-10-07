@@ -85,8 +85,8 @@ A condition that is neither a date nor a tag ("once the API team replies") is
 parked plain, in the user's words. Nothing can check it, so nothing pretends to.
 
 A reminder whose date or tag has not arrived stays out of the digest and the
-band, counted on one line as waiting. It still appears in `list`, so it can be
-marked `done` early.
+band, counted on one line as waiting. It still appears in `list`, marked
+`, waiting` inside its `(when: ...)`, so it can be marked `done` early.
 
 ## Commands
 
@@ -158,6 +158,8 @@ repository share one store.
 
 A store written when this skill was called `later` (`later.md` in the same
 place) is renamed to `parking-lot.md` the first time the script reaches it.
+One found beside an existing `parking-lot.md` is left alone and named by
+`list` and the digest until its items are moved across by hand.
 
 Handled items stay in the file rather than being deleted — "did I already think
 of this?" is worth being able to answer. They stop appearing in `list` and in

@@ -48,11 +48,18 @@ and the path inside the command, which is literal and expands nothing but
 }
 ```
 
-**Wired this by hand when the skill was called `later`?** Replace that hook's
-command with the one above: the old `skills/later/later.sh` path no longer
-exists, and a hook pointing at it fails silently. Re-link or re-copy the folder
-under its new name too. Parked items carry over; the script renames the old
-store the first time it runs.
+**Installed this when the skill was called `later`?** Three steps:
+
+1. Delete `~/.claude/skills/later`, whether it is a link or a copy. A copy left
+   in place is still a working skill that answers "park this", and what it
+   parks lands in the old store.
+2. Link or copy `parking-lot` under its new name, as above.
+3. Replace the old hook's command with the one above. A hook still pointing at
+   `skills/later/later.sh` fails silently once step 1 is done.
+
+Parked items carry over: the script renames the old store the first time it
+runs. Anything the old skill parks after that is named at the top of each
+session until it is moved across by hand.
 
 A project's own `.claude/settings.json` takes the same block and works, but the
 digest then appears only in that project — including the user store, which is
@@ -83,7 +90,7 @@ full path to `sh.exe`.
 
 The folder is also a Claude Code mod (`.claude-plugin/` and `hooks/` here): it
 lists what is parked in a band above the prompt (collapse it with its `[-]`),
-leaving out reminders whose date has not come; `/parking-lot-pane` opens the
+leaving out reminders whose date or tag has not arrived; `/parking-lot-pane` opens the
 whole list in a side pane; and opening or merging a PR with `gh` shows a toast
 of the `--next` items. Installed by symlink or copy into
 `~/.claude/skills/`, Claude Code loads it from there; `claude --plugin-dir

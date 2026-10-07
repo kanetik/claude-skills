@@ -252,10 +252,11 @@ const REMINDERS =
   'Parked in repo:\n' +
   '  1. - [ ] 2026-10-01 (when: next) after this work\n' +
   '  2. - [ ] 2026-10-01 (when: 2000-01-01) overdue thing\n' +
-  '  3. - [ ] 2026-10-01 (when: 2999-01-01) far future thing\n' +
-  '  4. - [ ] 2026-10-01 (when: tag v12.2) after release thing\n'
+  '  3. - [ ] 2026-10-01 (when: 2999-01-01, waiting) far future thing\n' +
+  '  4. - [ ] 2026-10-01 (when: tag v12.2) after release thing\n' +
+  '  5. - [ ] 2026-10-01 (when: tag v13, waiting) unreleased thing\n'
 
-test('the band labels reminders and hides those whose date has not come', async ($, on) => {
+test('the band labels reminders and hides the ones the listing marks waiting', async ($, on) => {
   engine(on, () => REMINDERS)
 
   await $.session.start(START)
@@ -265,12 +266,29 @@ test('the band labels reminders and hides those whose date has not come', async 
   expect(await band.find({ type: 'Text', text: 'after v12.2  ' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: 'overdue thing' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: 'far future thing' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: 'unreleased thing' })).toBeUndefined()
   expect(await band.find({ type: 'Text', text: /\(when:/ })).toBeUndefined()
   await band.unmount()
 })
 
-test('no band when every parked item is waiting for its date', async ($, on) => {
-  engine(on, () => 'Parked in repo:\n  1. - [ ] 2026-10-01 (when: 2999-01-01) far future thing\n')
+test('the pane lists waiting reminders, labelled without the waiting marker', async ($, on) => {
+  engine(on, () => REMINDERS)
+
+  await $.session.start(START)
+  const pane = await $.ui.mount({
+    plugin: 'parking-lot',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'parking-lot',
+    props: PANE_PROPS,
+  })
+  expect(await pane.find({ type: 'Text', text: /after v13 {2}unreleased thing/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /waiting/ })).toBeUndefined()
+  await pane.unmount()
+})
+
+test('no band when every parked item is waiting', async ($, on) => {
+  engine(on, () => 'Parked in repo:\n  1. - [ ] 2026-10-01 (when: tag v13, waiting) unreleased thing\n')
 
   await $.session.start(START)
   const band = await mountBand($)

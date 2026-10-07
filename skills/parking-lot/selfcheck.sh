@@ -314,6 +314,15 @@ grep -q '(when: 2999-01-01) far future$' "$remstore" &&
 grep -q '(when: tag v12.2) after the release$' "$remstore" &&
   ok "--tag stores its tag" || no "--tag stores its tag" "$(cat "$remstore")"
 check "list shows every open item, waiting or not" "$(rem list | grep -c '^  [0-9]*\.')" "5"
+rem list | grep -q '(when: 2999-01-01, waiting) far future$' &&
+  ok "list marks a reminder whose date has not come as waiting" ||
+  no "list marks a reminder whose date has not come as waiting" "$(rem list)"
+rem list | grep -q '(when: tag v12.2, waiting) after the release$' &&
+  ok "list marks a reminder whose tag does not exist as waiting" ||
+  no "list marks a reminder whose tag does not exist as waiting" "$(rem list)"
+rem list | grep -q '(when: 2000-01-01) long overdue$' &&
+  ok "list leaves a reminder that has come due unmarked" ||
+  no "list leaves a reminder that has come due unmarked" "$(rem list)"
 
 out=$(rem show)
 case "$out" in
@@ -372,11 +381,27 @@ printf -- '- [ ] 2026-01-01 parked under the old name\n' > "$migcfg/later.md"
   ok "a later.md store is read under the new name" || no "a later.md store is read under the new name" "$(ls "$migcfg")"
 [ -f "$migcfg/parking-lot.md" ] && [ ! -e "$migcfg/later.md" ] && ok "later.md is moved, not copied" ||
   no "later.md is moved, not copied" "$(ls "$migcfg")"
-printf -- '- [ ] 2026-01-01 stray\n' > "$migcfg/later.md"
-(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" list --user) > /dev/null
-grep -q stray "$migcfg/later.md" && ! grep -q stray "$migcfg/parking-lot.md" &&
-  ok "an existing parking-lot.md is never overwritten by later.md" ||
-  no "an existing parking-lot.md is never overwritten by later.md" "$(cat "$migcfg"/*.md)"
+printf '# Later (user)\n\n- [ ] 2026-01-01 stray\n' > "$migcfg/later.md"
+before=$(cat "$migcfg/parking-lot.md")
+out=$(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" list --user 2>&1)
+case "$out" in
+  *"later.md holds 1 item(s)"*) ok "list names a later.md left beside parking-lot.md" ;;
+  *) no "list names a later.md left beside parking-lot.md" "$out" ;;
+esac
+out=$(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" show)
+case "$out" in
+  *"later.md holds 1 item(s)"*) ok "show names a later.md left beside parking-lot.md" ;;
+  *) no "show names a later.md left beside parking-lot.md" "$out" ;;
+esac
+grep -q stray "$migcfg/later.md" && [ "$(cat "$migcfg/parking-lot.md")" = "$before" ] &&
+  ok "a later.md beside parking-lot.md is left untouched, and so is the store" ||
+  no "a later.md beside parking-lot.md is left untouched, and so is the store" "$(cat "$migcfg"/*.md)"
+printf '# Later (user)\n\n' > "$migcfg/later.md"
+out=$(cd "$tmp" && CLAUDE_CONFIG_DIR="$migcfg" sh "$PL" list --user 2>&1)
+case "$out" in
+  *later.md*) no "an empty later.md is not reported" "$out" ;;
+  *) ok "an empty later.md is not reported" ;;
+esac
 
 # --- failure modes ----------------------------------------------------------
 
