@@ -348,6 +348,13 @@ git -C "$remrepo" tag v12.2
 rem show | grep -q 'after the release' && ok "a --tag reminder shows once the tag exists" ||
   no "a --tag reminder shows once the tag exists" "$(rem show)"
 
+git -C "$remrepo" tag v1
+git -C "$remrepo" tag v2
+printf -- '- [ ] 2026-01-01 (when: tag v1 v2) two tags\n' >> "$remstore"
+rem list | grep -q '(when: tag v1 v2, waiting) two tags' &&
+  ok "a hand-edited tag holding a space never counts as present" ||
+  no "a hand-edited tag holding a space never counts as present" "$(rem list)"
+
 # A hand-edited when that is neither a date nor a tag must not hide the item.
 printf -- '- [ ] 2026-01-01 (when: someday) hand written\n' >> "$remstore"
 rem show | grep -q 'hand written' && ok "an unrecognised when does not hide the item" ||
@@ -371,6 +378,25 @@ case "$out" in
   *"0 open"*"1 more waiting"*) ok "a store holding only waiting reminders says so" ;;
   *) no "a store holding only waiting reminders says so" "$out" ;;
 esac
+
+# The SessionStart hook's timeout is 5 seconds (.claude-plugin/plugin.json).
+manycfg="$tmp/manycfg"
+i=0
+while [ "$i" -lt 60 ]; do
+  case $((i % 4)) in
+    0) rem_flag="--next" ;;
+    1) rem_flag="--on 2999-01-01" ;;
+    *) rem_flag="--tag v$i" ;;
+  esac
+  # shellcheck disable=SC2086
+  (cd "$remrepo" && CLAUDE_CONFIG_DIR="$manycfg" sh "$PL" add $rem_flag "item $i") > /dev/null
+  i=$((i + 1))
+done
+start=$(date +%s)
+(cd "$remrepo" && CLAUDE_CONFIG_DIR="$manycfg" sh "$PL" hook) > /dev/null
+took=$(( $(date +%s) - start ))
+[ "$took" -le 4 ] && ok "hook over 60 entries finishes inside the hook timeout (${took}s)" ||
+  no "hook over 60 entries finishes inside the hook timeout" "took ${took}s"
 
 # --- the store's former name ------------------------------------------------
 

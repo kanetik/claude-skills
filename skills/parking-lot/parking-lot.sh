@@ -166,22 +166,33 @@ count_entries() {
 # for one to raise at the next stopping point, 2 for an ordinary item, and 9
 # for a reminder whose date or tag has not arrived yet.
 ranked_entries() {
-  today=$(date +%Y%m%d)
-  entries "$1" | while IFS= read -r e; do
-    w=$(printf '%s\n' "${e#*:}" | sed -n 's/^- \[.\] [0-9-]\{10\} \((from [^)]*) \)\{0,1\}(when: \([^)]*\)) .*/\2/p')
-    case "$w" in
-      '') rank=2 ;;
-      next) rank=1 ;;
-      "tag "*)
-        if git rev-parse -q --verify "refs/tags/${w#tag }" > /dev/null 2>&1; then rank=0; else rank=9; fi
-        ;;
-      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-        if [ "$(printf '%s' "$w" | sed 's/-//g')" -le "$today" ]; then rank=0; else rank=9; fi
-        ;;
-      *) rank=2 ;;
-    esac
-    printf '%s:%s\n' "$rank" "$e"
-  done | sort -t: -k1,1n -k2,2n
+  [ -f "$1" ] || return 0
+  present=" "
+  if grep -q '(when: tag ' "$1" 2>/dev/null; then
+    present=" $(git tag -l 2>/dev/null | tr '\n' ' ')"
+  fi
+  awk -v today="$(date +%Y%m%d)" -v present="$present" '
+    !/^- \[[ ~]\] / { next }
+    {
+      w = ""
+      if (match($0, /^- \[.\] [0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-][0-9-] (\(from [^)]*\) )?\(when: [^)]*\) /)) {
+        w = substr($0, 1, RLENGTH)
+        sub(/.*\(when: /, "", w)
+        sub(/\) $/, "", w)
+      }
+      rank = 2
+      if (w == "next") rank = 1
+      else if (w ~ /^tag /) {
+        t = substr(w, 5)
+        rank = (t != "" && t !~ /[ \t]/ && index(present, " " t " ")) ? 0 : 9
+      }
+      else if (w ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) {
+        d = w; gsub(/-/, "", d)
+        rank = (d + 0 <= today + 0) ? 0 : 9
+      }
+      printf "%s:%s:%s\n", rank, NR, $0
+    }
+  ' "$1" | sort -t: -k1,1n -k2,2n
 }
 
 # One store's part of the digest, leading with a newline, or nothing at all.
@@ -386,7 +397,6 @@ cmd_mark() {
 # entries() swallows a grep failure, so without the check it would count as
 # empty, which is the same silent failure one layer down.
 cmd_show() {
-  brief=${1:-}
   out=""
   note=""
 
@@ -422,10 +432,9 @@ cmd_show() {
 
   [ -z "$note" ] || printf '%s\n' "$note"
   if [ -z "$out" ]; then
-    [ -n "$note" ] || [ -n "$brief" ] || printf 'Nothing parked, via the /parking-lot skill.\n'
+    [ -n "$note" ] || printf 'Nothing parked, via the /parking-lot skill.\n'
     exit 0
   fi
-  [ -z "$brief" ] || { printf 'Parked thoughts (/parking-lot):%s\n' "$out"; exit 0; }
   printf 'Parked thoughts from earlier sessions, via the /parking-lot skill. Do not act on these now; see the skill for when to raise them. A (when: <date>) or (when: tag ...) item listed here is a reminder that has come due: mention it once, in one line. A (when: next) item waits for a stopping point.%s\n' "$out"
   exit 0
 }
@@ -446,8 +455,12 @@ json_str() {
 # prompt already typed goes straight past. Claude Code prefixes systemMessage
 # with the hook's event name, so the on-screen copy stays short.
 cmd_hook() {
-  screen=$(cmd_show brief | json_str)
-  body=$(cmd_show | json_str)
+  full=$(cmd_show)
+  screen=$(printf '%s\n' "$full" |
+    sed -e '/^Nothing parked, via the \/parking-lot skill\.$/d' \
+        -e 's/^Parked thoughts from earlier sessions, via the \/parking-lot skill\..*/Parked thoughts (\/parking-lot):/' |
+    json_str)
+  body=$(printf '%s\n' "$full" | json_str)
   msg=""
   [ -z "$screen" ] || msg="\"systemMessage\":\"$screen\","
   printf '{%s"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg" "$body"
