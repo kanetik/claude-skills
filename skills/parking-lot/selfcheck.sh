@@ -736,6 +736,19 @@ grep -q -x -F -- "- [ ] $(date +%Y-%m-%d) (when: 2099-01-01) far future thing" "
 run list | grep -q -F '(when: 2099-01-01, waiting) far future thing' && ok "the reopened reminder still waits for its date" ||
   no "the reopened reminder still waits for its date" "$(run list)"
 
+raw=$(run list | grep 'far future thing')
+handled=$(run done 1)
+run reopen "$handled" "$raw" > /dev/null 2>&1 &&
+  grep -q -x -F -- "- [ ] $(date +%Y-%m-%d) (when: 2099-01-01) far future thing" "$rstore" &&
+  ok "reopen takes a line copied from list, number and all" ||
+  no "reopen takes a line copied from list, number and all" "$raw / $(cat "$rstore")"
+run add --user "user thing" > /dev/null
+ulisted=$(run list --all | grep 'user thing')
+uhandled=$(run done --user 1)
+run reopen --user "$uhandled" "$ulisted" > /dev/null 2>&1 && run list --user | grep -q 'user thing' &&
+  ok "reopen takes a u-prefixed line from list --all" ||
+  no "reopen takes a u-prefixed line from list --all" "$ulisted / $(run list --user)"
+
 handled=$(run done 1)
 run reopen "$handled" "- [ ] $(date +%Y-%m-%d) plain thing" > /dev/null 2>&1 &&
   no "reopen refuses a line that is not the handled item" "it succeeded" ||

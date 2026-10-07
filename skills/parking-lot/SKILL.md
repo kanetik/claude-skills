@@ -1,22 +1,18 @@
 ---
 name: parking-lot
 description: |
-  Put a thought on the parking lot: capture it verbatim into a per-repository
-  or user-level store, say one word, and return to what was happening -- no
-  questions, no scoping, no detour. A thought can also be parked for after the
-  current work (offered back at the next good stopping point), or as a
-  reminder for a date or for a release tag. A SessionStart hook replays what is
-  parked, and what has come due, at the top of later sessions; finished work
-  is reconciled against the list so an item handled along the way stops coming
-  back. Use when the user says "park this", "parking lot this", "put it on the
-  parking lot", "later", "note that down", "don't derail", "while I think of
-  it", "unrelated but", "after this", "when we're done", "remind me in two
-  weeks / tomorrow / after v12.2 ships", or invokes /parking-lot; and when the
-  user asks what is parked, or an item looks like it was handled.
+  Put a thought on the parking lot: capture it verbatim, say one word, and
+  return to what was happening -- no questions, no detour. A thought can also
+  be parked for after the current work, or as a reminder for a date or a
+  release tag. Use when the user says "park this", "parking lot this", "put it
+  on the parking lot", "don't derail", "while I think of it", "unrelated but",
+  "after this", "when we're done", "remind me in two weeks / tomorrow / after
+  v12.2 ships", or invokes /parking-lot; and when the user asks what is parked,
+  or an item looks like it was handled. An instruction ordering the current
+  task ("after this, run the tests") is not a thought to park.
 allowed-tools:
   - Bash
   - Read
-  - Edit
   - AskUserQuestion
 ---
 
@@ -63,6 +59,8 @@ it verbatim anyway and say nothing. It can be deciphered when it comes back.
 
 Most thoughts are parked plain. Three flags on `add` say when one should come
 back instead. Pick at most one, from the words the user used; do not ask.
+"After this" parks only a new thought; followed by the next step of the current
+task, it is an instruction, so do that step instead.
 
 | The user says | Flag | Comes back |
 |---|---|---|
@@ -91,28 +89,24 @@ band, counted on one line as waiting. It still appears in `list`, marked
 
 ## Commands
 
-Run the bundled script. `${CLAUDE_SKILL_DIR}` resolves to this skill's folder;
-the working directory at run time is the project root, not this folder.
+Run the bundled script as `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" <command>`.
+`${CLAUDE_SKILL_DIR}` resolves to this skill's folder; the working directory at
+run time is the project root, not this folder. Every command except `show`
+acts on this repository's store, or on the user store with `--user`.
 
 | Command | What it does |
 |---|---|
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" add <text>` | Park a thought against this repository |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" add --user <text>` | Park it at user level, tagged with the repo it arrived in |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" add --next <text>` | Park it for the next stopping point |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" add --on <YYYY-MM-DD> <text>` | Park it as a reminder for that date |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" add --tag <tag> <text>` | Park it as a reminder for when that tag exists |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" list` | Numbered open items for this repository |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" list --user` | Numbered open items in the user store |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" list --all` | Both, user items prefixed `u` |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" done <n>` | Mark repository item *n* handled |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" done --user <n>` | Mark user item *n* handled |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" reopen [--user] <handled-line> <line>` | Put back an item marked done: `<handled-line>` is the line `done` printed, `<line>` the item as `list` showed it |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" plain <n>` | Drop repository item *n*'s `(when: ...)`, leaving it an ordinary parked item |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" plain --user <n>` | The same, in the user store |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" maybe <n> <why>` | Mark repository item *n* *possibly* handled, recording what suggests it |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" maybe --user <n> <why>` | The same, in the user store |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" show` | The digest the SessionStart hook gives the model |
-| `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" path` | Where this repository's store lives |
+| `add <text>` | Park a thought; with `--user`, tagged with the repo it arrived in |
+| `add --next <text>` | Park it for the next stopping point |
+| `add --on <YYYY-MM-DD> <text>` | Park it as a reminder for that date |
+| `add --tag <tag> <text>` | Park it as a reminder for when that tag exists |
+| `list` | Numbered open items; `--all` lists both stores, user items prefixed `u` |
+| `done <n>` | Mark item *n* handled |
+| `reopen <handled-line> <line>` | Put back an item marked done: `<handled-line>` is the line `done` printed, `<line>` the item's line from `list` |
+| `plain <n>` | Drop item *n*'s `(when: ...)`, leaving it an ordinary parked item |
+| `maybe <n> <why>` | Mark item *n* *possibly* handled, recording what suggests it |
+| `show` | The digest the SessionStart hook gives the model, both stores |
+| `path` | Where the store lives |
 
 **`${CLAUDE_SKILL_DIR}` is a Claude Code substitution.** A host that does not
 provide it leaves it empty, turning every command above into `sh "/parking-lot.sh"`.
@@ -127,14 +121,14 @@ only cue. On every other command the flag may go anywhere, so `done 1 --user`
 means what it looks like.
 
 Item numbers shift as items are handled, so `list` before `done`, `plain` or
-`maybe` rather than reusing a number from earlier in the session. **A number
+`maybe` rather than reusing a number from earlier in the session, and `done`
+several items highest number first. **A number
 means nothing without a scope**: each store numbers from 1, and `done`, `plain`
 and `maybe` without `--user` always mean the repository. The digest prints no numbers at
 all, so a number never comes from it — run a scoped `list`. `list --all`
 prefixes user items with `u`, and `u2` means `done --user 2`.
 
-`--all` is refused on `add`, `done`, `plain` and `maybe`, which write to exactly one
-store. `--` ends the flags, for a thought or a reason that begins with one:
+`--all` is for `list` only; every other command refuses it. `--` ends the flags, for a thought or a reason that begins with one:
 `add -- "--no-verify keeps biting us"`.
 
 ## Choosing the scope
@@ -149,25 +143,11 @@ repository-scoped item is seen more often, and being seen is the point.
 
 ## Where it is stored
 
-| Scope | Path |
-|---|---|
-| Repository | `<claude-config>/projects/<mangled-repo-root>/parking-lot.md` |
-| User | `<claude-config>/parking-lot.md` |
+`path` prints the store in use. Handled items stay in that file, marked `[x]`,
+so "did I already park this?" is answered by reading it.
 
-`<claude-config>` is `CLAUDE_CONFIG_DIR` when set, otherwise `~/.claude`. The
-mangling matches the convention Claude Code uses to key per-project state, so
-the file sits beside that project's `memory/` directory. The script resolves
-the *main* repository root, so every worktree and every subdirectory of a
-repository share one store.
-
-A store written when this skill was called `later` (`later.md` in the same
-place) is renamed to `parking-lot.md` the first time the script reaches it.
-One found beside an existing `parking-lot.md` is left alone and named by
-`list` and the digest until its items are moved across by hand.
-
-Handled items stay in the file rather than being deleted — "did I already think
-of this?" is worth being able to answer. They stop appearing in `list` and in
-the digest.
+On git older than 2.31 a repository-scoped `add` is refused; park with `--user`
+instead.
 
 ## Resurfacing
 
@@ -212,16 +192,19 @@ A `(when: next)` item waits for a **good stopping point**: the piece of work in
 progress is finished and the user is satisfied with it — they have approved it,
 or it has been committed, a PR opened, or a branch merged, with nothing left
 pending from them. Not mid-task, not while a review loop or a test run is still
-going, and not while the user is still correcting the work. At that point, run
-a scoped `list` — the digest may be stale — and ask once with
-`AskUserQuestion`: which of its `(when: next)` items, if any, to pick up now,
-with an option to leave them parked. Run `plain <n>` on every item offered and
-not picked, so it stays an ordinary parked item and is never offered or toasted
-again. Then mark a picked item `done`: it has been handed to the work, which
-starts now. In that order, because `plain` keeps the numbers `list` printed and
-`done` shifts them. Ask about
-`(when: next)` items parked in an earlier session the same way, at this
-session's first stopping point.
+going, and not while the user is still correcting the work. At that point:
+
+1. Run a scoped `list`; the digest may be stale.
+2. Ask once with `AskUserQuestion` which of its `(when: next)` items, if any,
+   to pick up now, with an option to leave them parked.
+3. Run `plain <n>` on every item offered and not picked, so it is never offered
+   again.
+4. Run `done <n>` on every picked item, highest number first: it has been
+   handed to the work, which starts now.
+
+Steps 3 and 4 go in that order because `plain` keeps the numbers `list` printed
+and `done` shifts them. `(when: next)` items parked in an earlier session are
+asked about the same way, at this session's first stopping point.
 
 Beyond those, raise an item unprompted only when the current work runs directly
 into it — the file being edited is the file an item names, or the change about
@@ -235,13 +218,14 @@ Work sometimes covers a parked item without anybody noticing, and re-parking or
 re-proposing something already done is its own kind of fragmentation.
 
 When a piece of work finishes — a task completed, a PR opened, a branch merged
-— compare what was actually done against the open items already in context from
-the digest. This needs no search: both halves are already known. For anything
-that looks handled:
+— compare what was actually done against the open items already in context: the
+digest, and anything parked this session. This needs no search: both halves are
+already known. For anything that looks handled:
 
-1. Mark it with `maybe <n> <why>`, recording what suggests it (`maybe 2 "the
+1. Run a scoped `list` for its number; the digest prints none.
+2. Mark it with `maybe <n> <why>`, recording what suggests it (`maybe 2 "the
    retry backoff commit on this branch"`).
-2. Say so in one line so the user can correct it.
+3. Say so in one line so the user can correct it.
 
 **Use `maybe`, not `done`, unless the user says outright that an item is
 finished.** A false positive that quietly deletes an idea is worse than a stale
@@ -250,22 +234,6 @@ visible, carrying the reason, for them to confirm or dismiss. Never delete an
 item, and never silently drop one.
 
 `done` is for explicit instructions — the user saying an item is handled, or
-asking to clear it, or picking it up at a stopping point.
-
-## Requirements
-
-A POSIX shell (`sh`), the standard text tools (`grep`, `sed`, `awk`, `sort`,
-`date`), and **git 2.31 or newer** for the repository store. No network access,
-no `gh`, no `jq`.
-
-The git floor is hard and has deliberately no fallback: without
-`--path-format=absolute`, the same repository keys a different store from the
-main checkout, from a linked worktree and from a subdirectory, and that failure
-is silent — the thought is written and `list` from anywhere else says nothing is
-parked. So on older git a repository-scoped `add` is refused with a message
-naming the version; `--user` still works, minus the `(from <repo>)` tag, and
-`show` still exits 0, because a missing store must never stop a session
-starting.
-
-`sh "${CLAUDE_SKILL_DIR}/selfcheck.sh"` exercises the store end to end in a
-throwaway directory, touching nothing real.
+asking to clear it, or picking it up at a stopping point. If the user says an
+item just marked `done` is not finished after all, `reopen` it with the line
+`done` printed and the item's line from the `list` you ran before it.
