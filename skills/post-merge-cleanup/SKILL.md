@@ -285,8 +285,15 @@ survived is a separate question, decided by step 6's containment check against
 **Bucket B — merged, remote still present or never pushed.** The branch appears
 in `--merged` output but is not in bucket A. Its commits are already in the
 default branch. **These are deleted without asking**, together with their remote
-branch where the upstream is on `<remote>`, unless step 6 finds a running Claude
-Code session using the branch, or it is the base of open PRs (below).
+branch, unless step 6 finds a running Claude Code session using the branch, or
+it is the base of open PRs (below).
+
+A bucket B branch's **remote branch** is its upstream where that is on
+`<remote>` and is not `<remote>/<default-branch>`. A branch cut from
+`<remote>/<default-branch>` tracks it by default, and that upstream is the
+default branch, never this branch's own: treat such a branch, like one with no
+upstream, as never pushed. The default branch's name must never reach the base
+check, the remote-copy containment check or `git push --delete`.
 
 **Bucket R — remote-only, merged.** Remote branches on `<remote>` that are merged
 into `<default-ref>` and that no local branch tracks:
@@ -307,7 +314,7 @@ them.
 those PRs, and `--merged` cannot tell such a base from finished work: an
 integration branch cut from the default branch with nothing of its own yet, or
 a `develop` just merged in by a release. So check every bucket R candidate and
-every bucket B candidate whose upstream is on `<remote>`. `<name>` is the
+every bucket B candidate with a remote branch (above). `<name>` is the
 branch's name on the remote, without the `<remote>/` prefix (for bucket B, its
 upstream's name, which can differ from the local one). Where `gh` is available:
 
@@ -460,7 +467,12 @@ worktree is the one thing in this whole sweep that exists nowhere else.
 A branch is **in use** when it is checked out in a worktree that a running
 Claude Code session has as its working directory. Claude Code registers each
 running session as a JSON file in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`,
-carrying `pid`, `sessionId` and `cwd`. For every file there:
+carrying `pid`, `sessionId` and `cwd`.
+
+**First, where `$CLAUDE_CODE_SESSION_ID` or `$CLAUDE_PID` is empty**, this
+session cannot be told apart from the others: treat the registry as unreadable
+(below), mark nothing in use, and skip the per-file checks and the lock test
+that follow. Otherwise, for every file there:
 
 - Skip it when `sessionId` equals `$CLAUDE_CODE_SESSION_ID`. That is this
   session, which step 1 already moved out, and its entry can still name the
@@ -477,7 +489,9 @@ does not match it. So a branch is also in use when its worktree is locked with a
 reason naming a pid (`pid <n>`) that is running by the test above, unless that
 pid is this session's (`$CLAUDE_PID`, or the `pid` of this session's registry
 entry). This test needs no registry, so it runs even where the registry cannot
-be read, and a lock it matches is `keep`, never a question.
+be read, though not where either variable is empty (above). A lock it matches
+is `keep`,
+never a question.
 
 A reused pid can make a dead session look alive. That keeps a branch it could
 have deleted, which is the safe direction, so nothing more is checked.
@@ -509,8 +523,8 @@ bucket:
   this skill.** Carry the list to step 7, which asks.
 
 The remote copy gets the same check, `git log <default-ref>..<remote>/<name>
---oneline`, for every bucket R branch and every bucket B branch whose upstream is
-on `<remote>`, since someone may have pushed to it. Non-empty → keep the branch,
+--oneline`, for every bucket R branch and every bucket B branch with a remote
+branch (step 5), since someone may have pushed to it. Non-empty → keep the branch,
 local and remote, and report it.
 
 Two things that look like they would do this job and don't, so neither is used
@@ -563,7 +577,7 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   branch, so it may be a base that open PRs target.
 - **Bucket B, containment empty, remote copy (if any) empty, and step 5's base
   check passed or did not apply** → `delete`, no
-  question, and its remote branch with it when the upstream is on `<remote>`.
+  question, and its remote branch (step 5) with it where it has one.
   Where step 6 could not read the session registry, **ask** instead: nothing then
   says the branch is not in use.
 - **Bucket B, containment non-empty** → `keep`, and report the contradiction with
@@ -688,7 +702,7 @@ skipping one.
 the user's — and reflog archaeology.
 
 Then the remote branch, for every branch in the `delete` set from bucket R, and
-from bucket B where its upstream is on `<remote>`:
+from bucket B where it has a remote branch (step 5):
 
 ```bash
 git push --force-with-lease=<name>:<sha> <remote> --delete <name>
