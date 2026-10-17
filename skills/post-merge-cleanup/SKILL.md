@@ -5,9 +5,9 @@ description: |
   back to the main checkout, prunes remote-tracking refs, fast-forwards the
   default branch, then removes the worktrees, local branches and remote
   branches the merge made stale, clearing stale worktree entries in its path.
-  A branch whose every commit is already in the default branch is deleted,
-  locally and on the remote, without asking, unless a running Claude Code
-  session is using it. Refuses to delete anything holding uncommitted work, and
+  A branch merged into the default branch is deleted, locally and on the
+  remote, without asking, unless a running Claude Code session is using it or
+  its tip never left the default branch's first-parent line. Refuses to delete anything holding uncommitted work, and
   asks rather than guessing wherever git cannot prove the work survived. Use
   when the user says a PR was merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
@@ -285,9 +285,7 @@ survived is a separate question, decided by step 6's containment check against
 in `--merged` output but is not in bucket A. Its commits are already in the
 default branch. **These are deleted without asking**, together with their remote
 branch where the upstream is on `<remote>`, unless step 6 finds a running Claude
-Code session using the branch. `--merged` is an ancestry test, so a branch nobody
-has committed to yet is "merged" too and goes the same way; deleting it loses no
-commit.
+Code session using the branch, or its tip never diverged (below).
 
 **Bucket R — remote-only, merged.** Remote branches on `<remote>` that are merged
 into `<default-ref>` and that no local branch tracks:
@@ -299,9 +297,25 @@ git branch -r --merged <default-ref> --format="%(refname)"
 Keep the `refs/remotes/<remote>/` entries, drop `<remote>/HEAD` and
 `<remote>/<default-branch>` (both always listed), and drop any that is the
 `%(upstream:short)` of a local branch, since that branch's own bucket decides it.
-These are deleted from the remote without asking. No local session can be using
+These are deleted from the remote without asking, unless their tip never
+diverged (below). No local session can be using
 a branch that has no local copy, so step 6's session check does not apply to
 them.
+
+**Branches that never diverged.** `--merged` is an ancestry test, so it also lists
+a branch whose tip sits on the default branch's own first-parent line: one cut
+from it with no commits of its own, such as an integration branch that open PRs
+target, or a `develop` fast-forwarded at release. Deleting a remote branch that
+open PRs target closes those PRs. So test the tip of every bucket B and R
+candidate:
+
+```bash
+git rev-list --first-parent <default-ref> | grep -qx <tip-sha>
+```
+
+Found → it goes to step 7's batched question rather than being deleted. A
+fast-forward merge lands here too, which costs a question and nothing else. Not
+found → the no-question rule above holds.
 
 **Bucket C — everything else.** Leave alone, silently.
 
@@ -439,6 +453,13 @@ carrying `pid`, `sessionId` and `cwd`. For every file there:
   Compare with slashes unified, and case-insensitively on Windows, where the
   registry writes `C:\...` and git writes `C:/...`.
 
+`cwd` is where a session started, and a session that moved into a worktree later
+does not match it. So a branch is also in use when its worktree is locked with a
+reason naming a pid (`pid <n>`) that is running by the test above, unless that
+pid is this session's (`$CLAUDE_PID`, or the `pid` of this session's registry
+entry). This test needs no registry, so it runs even where the registry cannot
+be read, and a lock it matches is `keep`, never a question.
+
 A reused pid can make a dead session look alive. That keeps a branch it could
 have deleted, which is the safe direction, so nothing more is checked.
 
@@ -509,7 +530,7 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   explanation are what get lost.
 
 - **Any branch step 6 found in use by a running session** → `keep`, with the
-  session's `cwd` and `pid` in the report. Second for the same reason the bullet
+  session's `pid` and the `cwd` or lock reason that matched in the report. Second for the same reason the bullet
   above is first.
 - **Bucket A, containment empty** → `delete`, no question. The remote branch is
   gone and every commit is already in the default branch.
@@ -517,18 +538,24 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   branch and the commits step 6 listed, and say plainly that git cannot
   distinguish a squash-merge from work that never landed. The user's answer sets
   `delete` or `keep`.
-- **Bucket B, containment empty, remote copy (if any) empty** → `delete`, no
+- **Bucket B or R, containment and remote copy (if any) empty, tip on the
+  default branch's first-parent line** (step 5) → **ask**, saying its tip never
+  left the default branch, so it may be a base that open PRs target.
+- **Bucket B, containment empty, remote copy (if any) empty, tip off the
+  first-parent line** → `delete`, no
   question, and its remote branch with it when the upstream is on `<remote>`.
   Where step 6 could not read the session registry, **ask** instead: nothing then
   says the branch is not in use.
 - **Bucket B, containment non-empty** → `keep`, and report the contradiction with
   `--merged`. Likewise a non-empty remote copy: `keep`, local and remote.
-- **Bucket R, containment empty** → `delete` from the remote, no question.
+- **Bucket R, containment empty, tip off the first-parent line** → `delete`
+  from the remote, no question.
   Non-empty → `keep` and report.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
-branches, any bucket B branches that reached the ask because the registry could
-not be read, and any **locked worktree belonging to a branch in this candidate
+branches, the bucket B and R branches that never diverged, any bucket B branches
+that reached the ask because the registry could not be read, and any **locked
+worktree belonging to a branch in this candidate
 set** whose lock the rule below says to ask about. Not the branches the bullets
 above already sorted — those are decided, not open.
 Three of each costs one question, not nine. **Do not ask per branch** — that
@@ -610,10 +637,10 @@ So split on whether the lock is demonstrably **yours**:
 **Ask in the batch**, in the same pass-1 question as the ambiguous branches, so
 three locked worktrees cost one question rather than three.
 
-Two tests this rule deliberately does not use: "I was standing in it", which is
-not ownership for the reason above; and matching a session id or pid parsed out
-of the reason text, which is not reliably knowable from inside the skill and
-would send every lock down the ask path. The harness's own answer and the
+Two tests this rule deliberately does not use as proof that a lock is *yours*:
+"I was standing in it", for the reason above; and a session id or pid parsed out
+of the reason text. Step 6 reads a pid there only as evidence the worktree is in
+use, where a wrong read keeps the branch. The harness's own answer and the
 session registry are the trustworthy signals; absent both, ask.
 
 Never unlock a worktree step 6 flagged as holding uncommitted work. The lock
@@ -676,7 +703,8 @@ State plainly what happened:
 - Anything kept, and why — uncommitted work (with the path), a failed `worktree
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
   contradicted `--merged`, a remote copy holding commits the default branch
-  lacks, a branch in use by a running session, a branch excluded because it was
+  lacks, a branch in use by a running session or a lock naming a running pid, a
+  never-diverged branch the user chose to keep, a branch excluded because it was
   checked out
 - Where the session is now
 
