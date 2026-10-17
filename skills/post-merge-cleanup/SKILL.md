@@ -471,12 +471,15 @@ worktrees, also run:
 git -C <worktree-path> status --porcelain --ignored=matching --untracked-files=all
 ```
 
-An `!!` line ending in `/` is exempt only when `git -C <worktree-path>
-check-ignore -v <path>` shows the pattern that matched it ends in `/` too, such
-as `build/`: a directory pattern, which is how regenerable output is usually
-ignored. Every other `!!` line, `.env`, `local.properties`, a keystore or a
-directory caught by a bare name such as `secrets`, means the worktree holds
-something that may exist nowhere else. Step 7 asks about it.
+An `!!` line ending in `/` is a wholly ignored directory, such as `build/`, `.gradle/`
+or `node_modules/`, and is treated as regenerable. Every other `!!` line is an
+ignored file, such as `.env`, `local.properties` or a keystore: those are the
+worktree's **ignored files**. A directory ignored as a whole goes with the
+worktree unasked, so a `secrets/` ignored wholesale is lost with it; that is the
+cost of not asking about every build directory.
+
+**No worktree holding ignored files is removed before the user has seen those
+paths** (step 7).
 
 ### Running sessions
 
@@ -602,8 +605,9 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   from the remote, no question.
   Non-empty → `keep` and report.
 
-**Then, any branch the bullets above sorted to `delete` whose worktree step 6
-found holding ignored files** → **ask** instead, listing those paths. Declined →
+**Then, any branch whose worktree holds ignored files (step 6)**: one sorted to
+`delete` above goes to the question instead; one already in the question has
+those paths listed beside it. Either way a yes covers the files, and a no is
 `keep`.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
