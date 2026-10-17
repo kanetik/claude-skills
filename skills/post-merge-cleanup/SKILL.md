@@ -8,7 +8,7 @@ description: |
   A branch merged into the default branch is deleted, locally and on the
   remote, without asking, unless a running Claude Code session is using it,
   open PRs target it (checked with gh where available), or its worktree holds
-  ignored files. Refuses to delete anything holding uncommitted work, and
+  ignored files other than build and cache output. Refuses to delete anything holding uncommitted work, and
   asks rather than guessing wherever git cannot prove the work survived. Use
   when the user says a PR was merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
@@ -471,12 +471,13 @@ worktrees, also run:
 git -C <worktree-path> status --porcelain --ignored=matching --untracked-files=all
 ```
 
-An `!!` line ending in `/` is a wholly ignored directory, such as `build/`, `.gradle/`
-or `node_modules/`, and is treated as regenerable. Every other `!!` line is an
-ignored file, such as `.env`, `local.properties` or a keystore: those are the
-worktree's **ignored files**. A directory ignored as a whole goes with the
-worktree unasked, so a `secrets/` ignored wholesale is lost with it; that is the
-cost of not asking about every build directory.
+An `!!` line ending in `/` is a directory ignored as a whole. It is regenerable
+build or cache output, and goes with the worktree unasked, when its last path
+component is one of: `build`, `.gradle`, `node_modules`, `dist`, `target`,
+`.venv`, `venv`, `.cxx`, `.kotlin`, `__pycache__`, `.next`. Every other `!!`
+line, an ignored file such as `.env`, `local.properties` or a keystore, or any
+other ignored directory such as `secrets/` or `.idea/`, is one of the
+worktree's **ignored files**.
 
 **No worktree holding ignored files is removed before the user has seen those
 paths** (step 7).
