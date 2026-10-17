@@ -3,10 +3,13 @@ name: post-merge-cleanup
 description: |
   Return a repo to a clean state after a pull request lands. Moves the session
   back to the main checkout, prunes remote-tracking refs, fast-forwards the
-  default branch, then removes the worktrees and local branches the merge made
-  stale, clearing stale worktree entries in its path. Refuses to delete
-  anything holding uncommitted work, and asks rather than guessing wherever git
-  cannot prove the work survived. Use when the user says a PR was merged, or
+  default branch, then removes the worktrees, local branches and remote
+  branches the merge made stale, clearing stale worktree entries in its path.
+  A branch whose every commit is already in the default branch is deleted,
+  locally and on the remote, without asking, unless a running Claude Code
+  session is using it. Refuses to delete anything holding uncommitted work, and
+  asks rather than guessing wherever git cannot prove the work survived. Use
+  when the user says a PR was merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
   to main", or invokes /post-merge-cleanup.
 allowed-tools:
@@ -45,8 +48,9 @@ time.
 step 1's `git rev-parse --path-format`, and the `locked` annotation in `git
 worktree list --porcelain` that steps 6 and 7 read. (The same release added
 `prunable`, which this skill deliberately does not rely on — step 6 says why.)
-Nothing else: no `gh`, no `jq`, no network access beyond whatever `git fetch`
-needs.
+Nothing else: no `gh`, no `jq`, no network access beyond what `git fetch` and
+`git push --delete` need, and push rights on the remote for step 7 to delete
+remote branches.
 
 ## Step 1: Find the main checkout and leave any worktree
 
@@ -277,12 +281,27 @@ bucket A is "the remote branch is gone" and nothing more. Whether the work
 survived is a separate question, decided by step 6's containment check against
 `<default-ref>` — and where that check cannot decide, by asking.
 
-**Bucket B — merged, remote still present.** The branch appears in `--merged`
-output but is not in bucket A. Its commits are already in the default branch and
-its remote branch still exists, so someone may still be using it. **These are
-asked about**, in step 7's single batched question — mostly because `--merged` is
-an ancestry test, so a branch nobody has committed to yet is "merged" too, and
-that is work someone is about to start rather than work that landed.
+**Bucket B — merged, remote still present or never pushed.** The branch appears
+in `--merged` output but is not in bucket A. Its commits are already in the
+default branch. **These are deleted without asking**, together with their remote
+branch where the upstream is on `<remote>`, unless step 6 finds a running Claude
+Code session using the branch. `--merged` is an ancestry test, so a branch nobody
+has committed to yet is "merged" too and goes the same way; deleting it loses no
+commit.
+
+**Bucket R — remote-only, merged.** Remote branches on `<remote>` that are merged
+into `<default-ref>` and that no local branch tracks:
+
+```bash
+git branch -r --merged <default-ref> --format="%(refname)"
+```
+
+Keep the `refs/remotes/<remote>/` entries, drop `<remote>/HEAD` and
+`<remote>/<default-branch>` (both always listed), and drop any that is the
+`%(upstream:short)` of a local branch, since that branch's own bucket decides it.
+These are deleted from the remote without asking. No local session can be using
+a branch that has no local copy, so step 6's session check does not apply to
+them.
 
 **Bucket C — everything else.** Leave alone, silently.
 
@@ -403,6 +422,31 @@ This is the one place this skill differs sharply from a plain
 delete-everything-gone script, and it is deliberate: an untracked file in a
 worktree is the one thing in this whole sweep that exists nowhere else.
 
+### Running sessions
+
+A branch is **in use** when it is checked out in a worktree that a running
+Claude Code session has as its working directory. Claude Code registers each
+running session as a JSON file in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`,
+carrying `pid`, `sessionId` and `cwd`. For every file there:
+
+- Skip it when `sessionId` equals `$CLAUDE_CODE_SESSION_ID`. That is this
+  session, which step 1 already moved out, and its entry can still name the
+  worktree it started in.
+- Skip it when `pid` is not running: `tasklist /FI "PID eq <pid>" /NH` on
+  Windows (`//FI` from Git Bash) prints the pid only when it is, and `kill -0
+  <pid>` answers elsewhere. Registry files outlive crashed sessions.
+- Otherwise, a branch whose worktree path equals `cwd` or contains it is in use.
+  Compare with slashes unified, and case-insensitively on Windows, where the
+  registry writes `C:\...` and git writes `C:/...`.
+
+A reused pid can make a dead session look alive. That keeps a branch it could
+have deleted, which is the safe direction, so nothing more is checked.
+
+**If the registry directory does not exist or cannot be read, nothing is known
+about sessions**, so step 7 falls back to asking: bucket B branches, and locked
+worktrees whose lock is not this session's, go into its batched question.
+An empty directory is a reading, not a failure: no session is running.
+
 ### The containment check
 
 Then, for **every** branch about to be deleted, in either bucket, list the
@@ -423,6 +467,11 @@ bucket:
   originals, and the same work is in the default branch under one new sha) or
   work that never merged at all. **Git cannot tell these apart, and neither can
   this skill.** Carry the list to step 7, which asks.
+
+The remote copy gets the same check, `git log <default-ref>..<remote>/<name>
+--oneline`, for every bucket R branch and every bucket B branch whose upstream is
+on `<remote>`, since someone may have pushed to it. Non-empty → keep the branch,
+local and remote, and report it.
 
 Two things that look like they would do this job and don't, so neither is used
 in its place:
@@ -459,24 +508,29 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   underneath you". Git refuses the deletion either way; the lock and the
   explanation are what get lost.
 
+- **Any branch step 6 found in use by a running session** → `keep`, with the
+  session's `cwd` and `pid` in the report. Second for the same reason the bullet
+  above is first.
 - **Bucket A, containment empty** → `delete`, no question. The remote branch is
   gone and every commit is already in the default branch.
 - **Bucket A, containment non-empty** → **ask, and do not guess.** Show the
   branch and the commits step 6 listed, and say plainly that git cannot
   distinguish a squash-merge from work that never landed. The user's answer sets
   `delete` or `keep`.
-- **Bucket B, containment empty** → **ask.** The remote branch is still there, so
-  someone may still be working on this, and a branch nobody has committed to yet
-  is "merged" too. Nothing is at risk — the work is contained and the remote copy
-  remains — but it is not this skill's call.
+- **Bucket B, containment empty, remote copy (if any) empty** → `delete`, no
+  question, and its remote branch with it when the upstream is on `<remote>`.
+  Where step 6 could not read the session registry, **ask** instead: nothing then
+  says the branch is not in use.
 - **Bucket B, containment non-empty** → `keep`, and report the contradiction with
-  `--merged`.
+  `--merged`. Likewise a non-empty remote copy: `keep`, local and remote.
+- **Bucket R, containment empty** → `delete` from the remote, no question.
+  Non-empty → `keep` and report.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
-branches, the bucket B branches *that reached the ask*, and any **locked worktree
-belonging to a branch in this candidate set** whose lock you cannot attribute to
-this session (below). Not the bucket B branches the bullet above already sorted
-to `keep` — those are decided, not open.
+branches, any bucket B branches that reached the ask because the registry could
+not be read, and any **locked worktree belonging to a branch in this candidate
+set** whose lock the rule below says to ask about. Not the branches the bullets
+above already sorted — those are decided, not open.
 Three of each costs one question, not nine. **Do not ask per branch** — that
 trains the user to say yes without reading, which costs exactly the case the
 asking exists for. **Ask about nothing outside that set**, and in particular not
@@ -500,10 +554,12 @@ No `--force`. Three failures are expected here and only the last is a problem:
 - **`fatal: cannot remove a locked working tree`** — the worktree is locked, and
   **this is where you go and apply the lock rule below**, not where you conclude
   anything. Locked is the *normal* state for the worktrees this skill deals with,
-  since agent tooling locks what it creates for the life of the session. Three
-  outcomes, and the answer from pass 1 picks between them:
+  since agent tooling locks what it creates for the life of the session. Four
+  outcomes:
 
   - the lock is this session's → unlock and retry the removal;
+  - it is not, and step 6 read the session registry → unlock and retry the
+    removal;
   - it is not, and pass 1's question came back **approved** → unlock and retry
     the removal;
   - it is not, and pass 1's question came back **declined** → keep the branch and
@@ -541,17 +597,15 @@ So split on whether the lock is demonstrably **yours**:
   directory.** That needs an enter-by-path and a live owner, so it is cornered
   rather than likely — but it is the reason the second half is there, and the
   reason collapsing this to "the tool said we left it, so it is ours" is wrong.
-  Where you cannot tell, you cannot tell: take the bullet below.
-- **Everything else**, including a reason naming another session and a reason you
-  cannot attribute at all. Show the user the path and the lock reason verbatim
+  Where you cannot tell, you cannot tell: take one of the bullets below.
+- **Step 6 read the session registry.** A branch in use never reaches `delete`,
+  so no running session is in this worktree and the lock guards nothing a clean,
+  fully decided worktree still needs. `git worktree unlock <path>`, then remove.
+  No question.
+- **Everything else** — the registry could not be read, so a lock naming another
+  session may be a live one. Show the user the path and the lock reason verbatim
   and ask before unlocking, then **act on the answer**: approved → unlock and
   remove, as above; declined → keep the branch and report it with the reason.
-
-  **This is the ordinary path, not the exception**, since the worktree being
-  cleaned up is usually another session's. A rule that stops at "ask" leaves the
-  commonest run in this skill's remit asking, getting a yes, and having no
-  instruction for the yes — worktree still locked, branch still undeleted, both
-  reported as kept despite consent, and a re-run producing the same non-result.
 
 **Ask in the batch**, in the same pass-1 question as the ambiguous branches, so
 three locked worktrees cost one question rather than three.
@@ -559,8 +613,8 @@ three locked worktrees cost one question rather than three.
 Two tests this rule deliberately does not use: "I was standing in it", which is
 not ownership for the reason above; and matching a session id or pid parsed out
 of the reason text, which is not reliably knowable from inside the skill and
-would send every lock down the ask path. The harness's own answer is the only
-trustworthy signal; absent it, ask.
+would send every lock down the ask path. The harness's own answer and the
+session registry are the trustworthy signals; absent both, ask.
 
 Never unlock a worktree step 6 flagged as holding uncommitted work. The lock
 question only arises for worktrees already established as clean.
@@ -585,6 +639,19 @@ skipping one.
 -D` prints it, and it is the only thing between a wrong answer — the skill's or
 the user's — and reflog archaeology.
 
+Then the remote branch, for every branch in the `delete` set from bucket R, and
+from bucket B where its upstream is on `<remote>`:
+
+```bash
+git push --force-with-lease=<name>:<sha> <remote> --delete <name>
+```
+
+`<name>` is the branch name on the remote, without the `<remote>/` prefix, and
+`<sha>` is `git rev-parse <remote>/<name>` as step 3 fetched it, so the delete is
+refused with `(stale info)` if anyone pushed since step 6 checked it. Any failure
+— that one, a protected branch, missing push rights — leaves the remote branch
+in place: report what git said and carry on. Record the sha here too.
+
 No second `git worktree prune` is needed: step 6's prune and its per-entry
 unlock-and-prune already cleared what this run is responsible for, and `git
 worktree remove` clears the entry for each worktree it removes.
@@ -598,6 +665,8 @@ State plainly what happened:
   since that is the difference between the user being left on an updated default
   branch and being left where they started
 - Branches deleted, with the sha of each and which bucket it came from
+- Remote branches deleted, with the sha of each, and any remote delete that
+  failed with what git said
 - Worktrees removed
 - **Worktree entries pruned**, from step 6's `git worktree prune -v 2>&1` output —
   separately from the line above, because these are entries whose directory was
@@ -606,7 +675,9 @@ State plainly what happened:
   Silence here is the normal case and needs no line at all
 - Anything kept, and why — uncommitted work (with the path), a failed `worktree
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
-  contradicted `--merged`, a branch excluded because it was checked out
+  contradicted `--merged`, a remote copy holding commits the default branch
+  lacks, a branch in use by a running session, a branch excluded because it was
+  checked out
 - Where the session is now
 
 If nothing needed cleaning, say that in one line. A repo that was already clean
