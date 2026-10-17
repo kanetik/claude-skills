@@ -3,10 +3,15 @@ name: post-merge-cleanup
 description: |
   Return a repo to a clean state after a pull request lands. Moves the session
   back to the main checkout, prunes remote-tracking refs, fast-forwards the
-  default branch, then removes the worktrees and local branches the merge made
-  stale, clearing stale worktree entries in its path. Refuses to delete
-  anything holding uncommitted work, and asks rather than guessing wherever git
-  cannot prove the work survived. Use when the user says a PR was merged, or
+  default branch, then removes the worktrees, local branches and remote
+  branches the merge made stale, clearing stale worktree entries in its path.
+  A branch merged into the default branch is deleted, locally and on the
+  remote, without asking, unless a running Claude Code session is using it,
+  it is the base or head of open PRs (checked with gh where available), or its
+  worktree holds ignored files other than build and cache output. Refuses to
+  delete anything holding uncommitted work, and asks rather than guessing
+  wherever git cannot prove the work survived. Use when the user says a PR was
+  merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
   to main", or invokes /post-merge-cleanup.
 allowed-tools:
@@ -45,8 +50,10 @@ time.
 step 1's `git rev-parse --path-format`, and the `locked` annotation in `git
 worktree list --porcelain` that steps 6 and 7 read. (The same release added
 `prunable`, which this skill deliberately does not rely on — step 6 says why.)
-Nothing else: no `gh`, no `jq`, no network access beyond whatever `git fetch`
-needs.
+Push rights on the remote, for step 7's remote deletes. `gh` is optional: step
+5 uses it to spare the bases and heads of open PRs, and falls back to a weaker test
+without it. No `jq`, and no network access beyond what `git fetch`, `git push
+--delete` and `gh` need.
 
 ## Step 1: Find the main checkout and leave any worktree
 
@@ -277,12 +284,80 @@ bucket A is "the remote branch is gone" and nothing more. Whether the work
 survived is a separate question, decided by step 6's containment check against
 `<default-ref>` — and where that check cannot decide, by asking.
 
-**Bucket B — merged, remote still present.** The branch appears in `--merged`
-output but is not in bucket A. Its commits are already in the default branch and
-its remote branch still exists, so someone may still be using it. **These are
-asked about**, in step 7's single batched question — mostly because `--merged` is
-an ancestry test, so a branch nobody has committed to yet is "merged" too, and
-that is work someone is about to start rather than work that landed.
+**Bucket B — merged, remote still present or never pushed.** The branch appears
+in `--merged` output but is not in bucket A. Its commits are already in the
+default branch. **These are deleted without asking**, together with their remote
+branch, unless step 6 finds a running Claude Code session using the branch or
+ignored files in its worktree, or it is the base or head of open PRs (below).
+
+A bucket B branch's **remote branch** is its upstream where that is on
+`<remote>` and is not `<remote>/<default-branch>`. A branch cut from
+`<remote>/<default-branch>` tracks it by default, and that upstream is the
+default branch, never this branch's own: treat such a branch, like one with no
+upstream, as never pushed. The default branch's name must never reach the
+open-PR check, the remote-copy containment check or `git push --delete`. Where
+another local branch that is not being deleted has that upstream's name or
+tracks it too, this branch has no remote branch of its own either: the local
+branch goes and the remote one stays.
+
+**Bucket R — remote-only, merged.** Remote branches on `<remote>` that are merged
+into `<default-ref>` and that no local branch tracks or shares a name with:
+
+```bash
+git branch -r --merged <default-ref> --format="%(refname)"
+```
+
+Keep the `refs/remotes/<remote>/` entries, drop `<remote>/HEAD` and
+`<remote>/<default-branch>` (both always listed), and drop any that is the
+`%(upstream:short)` of a local branch or whose name, without the
+`refs/remotes/<remote>/` prefix, is a local branch's name. Such a remote branch
+goes only as a local branch's remote branch (bucket B), and is otherwise left in
+place.
+These are deleted from the remote without asking, unless they are the base or
+head of open PRs (below). No local session can be using
+a branch that has no local copy, so step 6's session check does not apply to
+them.
+
+**Bases and heads of open PRs.** Deleting a remote branch that open PRs target closes
+those PRs, and `--merged` cannot tell such a base from finished work: an
+integration branch cut from the default branch with nothing of its own yet, or
+a `develop` just merged in by a release. So check every bucket R candidate and
+every bucket B candidate with a remote branch (above). `<name>` is the
+branch's name on the remote, without the `<remote>/` prefix (for bucket B, its
+upstream's name, which can differ from the local one). Where `gh` is available:
+
+```bash
+git remote get-url <remote>
+gh pr list --repo <that url> --base <name> --state open --json number --jq length
+gh pr list --repo <that url> --head <name> --state open --json number --jq length
+```
+
+`--repo` is not optional: in a fork clone `gh` would otherwise ask the parent
+repository about the fork's branches. The second call is there because
+deleting a branch also closes the open PRs it is the head of, such as a
+backport into a release branch. A fork's branch heads its PRs in the parent
+repository, so where `gh repo view <that url> --json parent --jq
+'.parent // empty | .owner.login + "/" + .name'` prints an `owner/name` (it prints
+nothing for a repository that is not a fork), run the `--head` call against
+that parent too. Any non-zero → `keep`,
+and report it as the base or head of open PRs. All `0` → the open-PR check
+passed.
+
+**Where `gh` is missing or any of those calls fails**, fall back to the shape such a base
+usually has, a tip that never left the default branch's first-parent line. Take
+the full sha with `git rev-parse <remote>/<name>`, then look for it in:
+
+```bash
+git rev-list --first-parent <default-ref>
+```
+
+Found → it goes to step 7's batched question rather than being deleted. A
+fast-forward merge lands here too, which costs a question. Not found → the check
+passed, though a base merged in with a merge commit is not caught, and neither
+is the head of an open PR: this fallback is weaker than the `gh` check.
+
+A bucket B branch that was never pushed has no remote branch to protect, so the
+check does not apply to it.
 
 **Bucket C — everything else.** Leave alone, silently.
 
@@ -401,7 +476,65 @@ look.
 
 This is the one place this skill differs sharply from a plain
 delete-everything-gone script, and it is deliberate: an untracked file in a
-worktree is the one thing in this whole sweep that exists nowhere else.
+worktree exists nowhere else.
+
+**Ignored files exist nowhere else either**, and that check does not show them,
+while `git worktree remove` deletes them with the directory. So for the same
+worktrees, also run:
+
+```bash
+git -C <worktree-path> status --porcelain --ignored=matching --untracked-files=all
+```
+
+An `!!` line ending in `/` is a directory ignored as a whole. It is regenerable
+build or cache output, and goes with the worktree unasked, when its last path
+component is one of: `build`, `.gradle`, `node_modules`, `dist`, `target`,
+`.venv`, `venv`, `.cxx`, `.kotlin`, `__pycache__`, `.next`. Every other `!!`
+line, an ignored file such as `.env`, `local.properties` or a keystore, or any
+other ignored directory such as `secrets/` or `.idea/`, is one of the
+worktree's **ignored files**.
+
+**No worktree holding ignored files is removed before the user has seen those
+paths** (step 7).
+
+### Running sessions
+
+A branch is **in use** when it is checked out in a worktree that a running
+Claude Code session has as its working directory. Claude Code registers each
+running session as a JSON file in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`,
+carrying `pid`, `sessionId` and `cwd`.
+
+**First, where `$CLAUDE_CODE_SESSION_ID` or `$CLAUDE_PID` is empty**, this
+session cannot be told apart from the others: treat the registry as unreadable
+(below), mark nothing in use, and skip the per-file checks and the lock test
+that follow. Otherwise, for every file there:
+
+- Skip it when `sessionId` equals `$CLAUDE_CODE_SESSION_ID`. That is this
+  session, which step 1 already moved out, and its entry can still name the
+  worktree it started in.
+- Skip it when `pid` is not running: `tasklist /FI "PID eq <pid>" /NH` on
+  Windows (`//FI` from Git Bash) prints the pid only when it is, and `kill -0
+  <pid>` answers elsewhere. Registry files outlive crashed sessions.
+- Otherwise, a branch whose worktree path equals `cwd` or contains it is in use.
+  Compare with slashes unified, and case-insensitively on Windows, where the
+  registry writes `C:\...` and git writes `C:/...`.
+
+`cwd` is where a session started, and a session that moved into a worktree later
+does not match it. So a branch is also in use when its worktree is locked with a
+reason naming a pid (`pid <n>`) that is running by the test above, unless that
+pid is this session's (`$CLAUDE_PID`, or the `pid` of this session's registry
+entry). This test needs no registry, so it runs even where the registry cannot
+be read, though not where either variable is empty (above). A lock it matches
+is `keep`,
+never a question.
+
+A reused pid can make a dead session look alive. That keeps a branch it could
+have deleted, which is the safe direction, so nothing more is checked.
+
+**If the registry directory does not exist or cannot be read, nothing is known
+about sessions**, so step 7 falls back to asking: bucket B branches, and locked
+worktrees whose lock is not this session's, go into its batched question.
+An empty directory is a reading, not a failure: no session is running.
 
 ### The containment check
 
@@ -423,6 +556,11 @@ bucket:
   originals, and the same work is in the default branch under one new sha) or
   work that never merged at all. **Git cannot tell these apart, and neither can
   this skill.** Carry the list to step 7, which asks.
+
+The remote copy gets the same check, `git log <default-ref>..<remote>/<name>
+--oneline`, for every bucket R branch and every bucket B branch with a remote
+branch (step 5), since someone may have pushed to it. Non-empty → keep the branch,
+local and remote, and report it.
 
 Two things that look like they would do this job and don't, so neither is used
 in its place:
@@ -459,24 +597,42 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   underneath you". Git refuses the deletion either way; the lock and the
   explanation are what get lost.
 
+- **Any branch step 6 found in use by a running session** → `keep`, with the
+  session's `pid` and the `cwd` or lock reason that matched in the report.
+  Second for the same reason the bullet above is first.
 - **Bucket A, containment empty** → `delete`, no question. The remote branch is
   gone and every commit is already in the default branch.
 - **Bucket A, containment non-empty** → **ask, and do not guess.** Show the
   branch and the commits step 6 listed, and say plainly that git cannot
   distinguish a squash-merge from work that never landed. The user's answer sets
   `delete` or `keep`.
-- **Bucket B, containment empty** → **ask.** The remote branch is still there, so
-  someone may still be working on this, and a branch nobody has committed to yet
-  is "merged" too. Nothing is at risk — the work is contained and the remote copy
-  remains — but it is not this skill's call.
+- **Bucket B or R that step 5 found to be the base or head of open PRs** → `keep`.
+- **Bucket B or R, containment and remote copy (if any) empty, caught by step
+  5's first-parent fallback** → **ask**, saying its tip never left the default
+  branch, so it may be a base that open PRs target.
+- **Bucket B, containment empty, remote copy (if any) empty, and step 5's open-PR
+  check passed or did not apply** → `delete`, no
+  question, and its remote branch (step 5) with it where it has one.
+  Where step 6 could not read the session registry, **ask** instead: nothing then
+  says the branch is not in use.
 - **Bucket B, containment non-empty** → `keep`, and report the contradiction with
-  `--merged`.
+  `--merged`. Likewise a non-empty remote copy: `keep`, local and remote.
+- **Bucket R, containment empty, and step 5's open-PR check passed** → `delete`
+  from the remote, no question.
+  Non-empty → `keep` and report.
+
+**Then, any branch whose worktree holds ignored files (step 6)**: one sorted to
+`delete` above goes to the question instead; one already in the question has
+those paths listed beside it. Either way a yes covers the files, and a no is
+`keep`.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
-branches, the bucket B branches *that reached the ask*, and any **locked worktree
-belonging to a branch in this candidate set** whose lock you cannot attribute to
-this session (below). Not the bucket B branches the bullet above already sorted
-to `keep` — those are decided, not open.
+branches, worktrees holding ignored files (step 6), the bucket B and R branches step 5's first-parent fallback caught, any
+bucket B branches
+that reached the ask because the registry could not be read, and any **locked
+worktree belonging to a branch in this candidate
+set** whose lock the rule below says to ask about. Not the branches the bullets
+above already sorted — those are decided, not open.
 Three of each costs one question, not nine. **Do not ask per branch** — that
 trains the user to say yes without reading, which costs exactly the case the
 asking exists for. **Ask about nothing outside that set**, and in particular not
@@ -500,14 +656,16 @@ No `--force`. Three failures are expected here and only the last is a problem:
 - **`fatal: cannot remove a locked working tree`** — the worktree is locked, and
   **this is where you go and apply the lock rule below**, not where you conclude
   anything. Locked is the *normal* state for the worktrees this skill deals with,
-  since agent tooling locks what it creates for the life of the session. Three
-  outcomes, and the answer from pass 1 picks between them:
+  since agent tooling locks what it creates for the life of the session. Four
+  outcomes:
 
   - the lock is this session's → unlock and retry the removal;
-  - it is not, and pass 1's question came back **approved** → unlock and retry
-    the removal;
-  - it is not, and pass 1's question came back **declined** → keep the branch and
-    report it with the lock reason.
+  - it is not, and step 6 read the session registry → unlock and retry the
+    removal;
+  - it is not, and pass 1's question about this lock came back **approved** →
+    unlock and retry the removal;
+  - it is not, and pass 1's question about this lock came back **declined** →
+    keep the branch and report it with the lock reason.
 
   Reading this error as a decline on its own reports a refusal nobody was asked
   for, and leaves the worktree and branch the run exists to remove both standing.
@@ -541,26 +699,24 @@ So split on whether the lock is demonstrably **yours**:
   directory.** That needs an enter-by-path and a live owner, so it is cornered
   rather than likely — but it is the reason the second half is there, and the
   reason collapsing this to "the tool said we left it, so it is ours" is wrong.
-  Where you cannot tell, you cannot tell: take the bullet below.
-- **Everything else**, including a reason naming another session and a reason you
-  cannot attribute at all. Show the user the path and the lock reason verbatim
+  Where you cannot tell, you cannot tell: take one of the bullets below.
+- **Step 6 read the session registry.** A branch in use never reaches `delete`,
+  so no running session is in this worktree and the lock guards nothing a clean,
+  fully decided worktree still needs. `git worktree unlock <path>`, then remove.
+  No question.
+- **Everything else** — the registry could not be read, so a lock naming another
+  session may be a live one. Show the user the path and the lock reason verbatim
   and ask before unlocking, then **act on the answer**: approved → unlock and
   remove, as above; declined → keep the branch and report it with the reason.
-
-  **This is the ordinary path, not the exception**, since the worktree being
-  cleaned up is usually another session's. A rule that stops at "ask" leaves the
-  commonest run in this skill's remit asking, getting a yes, and having no
-  instruction for the yes — worktree still locked, branch still undeleted, both
-  reported as kept despite consent, and a re-run producing the same non-result.
 
 **Ask in the batch**, in the same pass-1 question as the ambiguous branches, so
 three locked worktrees cost one question rather than three.
 
-Two tests this rule deliberately does not use: "I was standing in it", which is
-not ownership for the reason above; and matching a session id or pid parsed out
-of the reason text, which is not reliably knowable from inside the skill and
-would send every lock down the ask path. The harness's own answer is the only
-trustworthy signal; absent it, ask.
+Two tests this rule deliberately does not use as proof that a lock is *yours*:
+"I was standing in it", for the reason above; and a session id or pid parsed out
+of the reason text. Step 6 reads a pid there only as evidence the worktree is in
+use, where a wrong read keeps the branch. The harness's own answer and the
+session registry are the trustworthy signals; absent both, ask.
 
 Never unlock a worktree step 6 flagged as holding uncommitted work. The lock
 question only arises for worktrees already established as clean.
@@ -585,6 +741,19 @@ skipping one.
 -D` prints it, and it is the only thing between a wrong answer — the skill's or
 the user's — and reflog archaeology.
 
+Then the remote branch, for every branch in the `delete` set from bucket R, and
+from bucket B where it has a remote branch (step 5):
+
+```bash
+git push --force-with-lease=<name>:<sha> <remote> --delete <name>
+```
+
+`<name>` is the branch name on the remote, without the `<remote>/` prefix, and
+`<sha>` is `git rev-parse <remote>/<name>` as step 3 fetched it, so the delete is
+refused with `(stale info)` if anyone pushed since step 6 checked it. Any failure
+— that one, a protected branch, missing push rights — leaves the remote branch
+in place: report what git said and carry on. Record the sha here too.
+
 No second `git worktree prune` is needed: step 6's prune and its per-entry
 unlock-and-prune already cleared what this run is responsible for, and `git
 worktree remove` clears the entry for each worktree it removes.
@@ -598,6 +767,8 @@ State plainly what happened:
   since that is the difference between the user being left on an updated default
   branch and being left where they started
 - Branches deleted, with the sha of each and which bucket it came from
+- Remote branches deleted, with the sha of each, and any remote delete that
+  failed with what git said
 - Worktrees removed
 - **Worktree entries pruned**, from step 6's `git worktree prune -v 2>&1` output —
   separately from the line above, because these are entries whose directory was
@@ -606,7 +777,11 @@ State plainly what happened:
   Silence here is the normal case and needs no line at all
 - Anything kept, and why — uncommitted work (with the path), a failed `worktree
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
-  contradicted `--merged`, a branch excluded because it was checked out
+  contradicted `--merged`, a remote copy holding commits the default branch
+  lacks, a branch in use by a running session or a lock naming a running pid, a
+  base or head of open PRs, a never-diverged branch or a worktree holding ignored files the user chose to
+  keep, a branch excluded because it was
+  checked out
 - Where the session is now
 
 If nothing needed cleaning, say that in one line. A repo that was already clean
