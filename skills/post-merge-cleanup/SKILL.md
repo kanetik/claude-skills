@@ -295,10 +295,13 @@ A bucket B branch's **remote branch** is its upstream where that is on
 `<remote>/<default-branch>` tracks it by default, and that upstream is the
 default branch, never this branch's own: treat such a branch, like one with no
 upstream, as never pushed. The default branch's name must never reach the
-open-PR check, the remote-copy containment check or `git push --delete`.
+open-PR check, the remote-copy containment check or `git push --delete`. Where
+another local branch that is not being deleted has that upstream's name or
+tracks it too, this branch has no remote branch of its own either: the local
+branch goes and the remote one stays.
 
 **Bucket R — remote-only, merged.** Remote branches on `<remote>` that are merged
-into `<default-ref>` and that no local branch tracks:
+into `<default-ref>` and that no local branch tracks or shares a name with:
 
 ```bash
 git branch -r --merged <default-ref> --format="%(refname)"
@@ -306,7 +309,10 @@ git branch -r --merged <default-ref> --format="%(refname)"
 
 Keep the `refs/remotes/<remote>/` entries, drop `<remote>/HEAD` and
 `<remote>/<default-branch>` (both always listed), and drop any that is the
-`%(upstream:short)` of a local branch, since that branch's own bucket decides it.
+`%(upstream:short)` of a local branch or whose name, without the
+`refs/remotes/<remote>/` prefix, is a local branch's name. Such a remote branch
+goes only as a local branch's remote branch (bucket B), and is otherwise left in
+place.
 These are deleted from the remote without asking, unless they are the base or
 head of open PRs (below). No local session can be using
 a branch that has no local copy, so step 6's session check does not apply to
