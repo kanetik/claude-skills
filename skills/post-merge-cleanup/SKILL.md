@@ -7,10 +7,11 @@ description: |
   branches the merge made stale, clearing stale worktree entries in its path.
   A branch merged into the default branch is deleted, locally and on the
   remote, without asking, unless a running Claude Code session is using it,
-  open PRs target it (checked with gh where available), or its worktree holds
-  ignored files other than build and cache output. Refuses to delete anything holding uncommitted work, and
-  asks rather than guessing wherever git cannot prove the work survived. Use
-  when the user says a PR was merged, or
+  it is the base or head of open PRs (checked with gh where available), or its
+  worktree holds ignored files other than build and cache output. Refuses to
+  delete anything holding uncommitted work, and asks rather than guessing
+  wherever git cannot prove the work survived. Use when the user says a PR was
+  merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
   to main", or invokes /post-merge-cleanup.
 allowed-tools:
@@ -50,7 +51,7 @@ step 1's `git rev-parse --path-format`, and the `locked` annotation in `git
 worktree list --porcelain` that steps 6 and 7 read. (The same release added
 `prunable`, which this skill deliberately does not rely on — step 6 says why.)
 Push rights on the remote, for step 7's remote deletes. `gh` is optional: step
-5 uses it to spare the bases of open PRs, and falls back to a weaker test
+5 uses it to spare the bases and heads of open PRs, and falls back to a weaker test
 without it. No `jq`, and no network access beyond what `git fetch`, `git push
 --delete` and `gh` need.
 
@@ -287,14 +288,14 @@ survived is a separate question, decided by step 6's containment check against
 in `--merged` output but is not in bucket A. Its commits are already in the
 default branch. **These are deleted without asking**, together with their remote
 branch, unless step 6 finds a running Claude Code session using the branch or
-ignored files in its worktree, or it is the base of open PRs (below).
+ignored files in its worktree, or it is the base or head of open PRs (below).
 
 A bucket B branch's **remote branch** is its upstream where that is on
 `<remote>` and is not `<remote>/<default-branch>`. A branch cut from
 `<remote>/<default-branch>` tracks it by default, and that upstream is the
 default branch, never this branch's own: treat such a branch, like one with no
-upstream, as never pushed. The default branch's name must never reach the base
-check, the remote-copy containment check or `git push --delete`.
+upstream, as never pushed. The default branch's name must never reach the
+open-PR check, the remote-copy containment check or `git push --delete`.
 
 **Bucket R — remote-only, merged.** Remote branches on `<remote>` that are merged
 into `<default-ref>` and that no local branch tracks:
@@ -306,12 +307,12 @@ git branch -r --merged <default-ref> --format="%(refname)"
 Keep the `refs/remotes/<remote>/` entries, drop `<remote>/HEAD` and
 `<remote>/<default-branch>` (both always listed), and drop any that is the
 `%(upstream:short)` of a local branch, since that branch's own bucket decides it.
-These are deleted from the remote without asking, unless they are the base of
-open PRs (below). No local session can be using
+These are deleted from the remote without asking, unless they are the base or
+head of open PRs (below). No local session can be using
 a branch that has no local copy, so step 6's session check does not apply to
 them.
 
-**Bases of open PRs.** Deleting a remote branch that open PRs target closes
+**Bases and heads of open PRs.** Deleting a remote branch that open PRs target closes
 those PRs, and `--merged` cannot tell such a base from finished work: an
 integration branch cut from the default branch with nothing of its own yet, or
 a `develop` just merged in by a release. So check every bucket R candidate and
@@ -322,13 +323,21 @@ upstream's name, which can differ from the local one). Where `gh` is available:
 ```bash
 git remote get-url <remote>
 gh pr list --repo <that url> --base <name> --state open --json number --jq length
+gh pr list --repo <that url> --head <name> --state open --json number --jq length
 ```
 
 `--repo` is not optional: in a fork clone `gh` would otherwise ask the parent
-repository about the fork's branches. Non-zero → `keep`, and report it as the
-base of open PRs. `0` → the check passed.
+repository about the fork's branches. The second call is there because
+deleting a branch also closes the open PRs it is the head of, such as a
+backport into a release branch. A fork's branch heads its PRs in the parent
+repository, so where `gh repo view <that url> --json parent --jq
+'.parent // empty | .owner.login + "/" + .name'` prints an `owner/name` (it prints
+nothing for a repository that is not a fork), run the `--head` call against
+that parent too. Any non-zero → `keep`,
+and report it as the base or head of open PRs. All `0` → the open-PR check
+passed.
 
-**Where `gh` is missing or that call fails**, fall back to the shape such a base
+**Where `gh` is missing or any of those calls fails**, fall back to the shape such a base
 usually has, a tip that never left the default branch's first-parent line. Take
 the full sha with `git rev-parse <remote>/<name>`, then look for it in:
 
@@ -338,8 +347,8 @@ git rev-list --first-parent <default-ref>
 
 Found → it goes to step 7's batched question rather than being deleted. A
 fast-forward merge lands here too, which costs a question. Not found → the check
-passed, though a base merged in with a merge commit is not caught: this fallback
-is weaker than the `gh` check.
+passed, though a base merged in with a merge commit is not caught, and neither
+is the head of an open PR: this fallback is weaker than the `gh` check.
 
 A bucket B branch that was never pushed has no remote branch to protect, so the
 check does not apply to it.
@@ -591,18 +600,18 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   branch and the commits step 6 listed, and say plainly that git cannot
   distinguish a squash-merge from work that never landed. The user's answer sets
   `delete` or `keep`.
-- **Bucket B or R that step 5 found to be the base of open PRs** → `keep`.
+- **Bucket B or R that step 5 found to be the base or head of open PRs** → `keep`.
 - **Bucket B or R, containment and remote copy (if any) empty, caught by step
   5's first-parent fallback** → **ask**, saying its tip never left the default
   branch, so it may be a base that open PRs target.
-- **Bucket B, containment empty, remote copy (if any) empty, and step 5's base
+- **Bucket B, containment empty, remote copy (if any) empty, and step 5's open-PR
   check passed or did not apply** → `delete`, no
   question, and its remote branch (step 5) with it where it has one.
   Where step 6 could not read the session registry, **ask** instead: nothing then
   says the branch is not in use.
 - **Bucket B, containment non-empty** → `keep`, and report the contradiction with
   `--merged`. Likewise a non-empty remote copy: `keep`, local and remote.
-- **Bucket R, containment empty, and step 5's base check passed** → `delete`
+- **Bucket R, containment empty, and step 5's open-PR check passed** → `delete`
   from the remote, no question.
   Non-empty → `keep` and report.
 
@@ -764,7 +773,7 @@ State plainly what happened:
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
   contradicted `--merged`, a remote copy holding commits the default branch
   lacks, a branch in use by a running session or a lock naming a running pid, a
-  base of open PRs, a never-diverged branch or a worktree holding ignored files the user chose to
+  base or head of open PRs, a never-diverged branch or a worktree holding ignored files the user chose to
   keep, a branch excluded because it was
   checked out
 - Where the session is now
