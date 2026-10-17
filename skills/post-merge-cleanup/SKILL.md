@@ -6,8 +6,9 @@ description: |
   default branch, then removes the worktrees, local branches and remote
   branches the merge made stale, clearing stale worktree entries in its path.
   A branch merged into the default branch is deleted, locally and on the
-  remote, without asking, unless a running Claude Code session is using it or
-  open PRs target it (checked with gh where available). Refuses to delete anything holding uncommitted work, and
+  remote, without asking, unless a running Claude Code session is using it,
+  open PRs target it (checked with gh where available), or its worktree holds
+  ignored files. Refuses to delete anything holding uncommitted work, and
   asks rather than guessing wherever git cannot prove the work survived. Use
   when the user says a PR was merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
@@ -285,8 +286,8 @@ survived is a separate question, decided by step 6's containment check against
 **Bucket B — merged, remote still present or never pushed.** The branch appears
 in `--merged` output but is not in bucket A. Its commits are already in the
 default branch. **These are deleted without asking**, together with their remote
-branch, unless step 6 finds a running Claude Code session using the branch, or
-it is the base of open PRs (below).
+branch, unless step 6 finds a running Claude Code session using the branch or
+ignored files in its worktree, or it is the base of open PRs (below).
 
 A bucket B branch's **remote branch** is its upstream where that is on
 `<remote>` and is not `<remote>/<default-branch>`. A branch cut from
@@ -460,7 +461,22 @@ look.
 
 This is the one place this skill differs sharply from a plain
 delete-everything-gone script, and it is deliberate: an untracked file in a
-worktree is the one thing in this whole sweep that exists nowhere else.
+worktree exists nowhere else.
+
+**Ignored files exist nowhere else either**, and that check does not show them,
+while `git worktree remove` deletes them with the directory. So for the same
+worktrees, also run:
+
+```bash
+git -C <worktree-path> status --porcelain --ignored=matching --untracked-files=all
+```
+
+An `!!` line ending in `/` is exempt only when `git -C <worktree-path>
+check-ignore -v <path>` shows the pattern that matched it ends in `/` too, such
+as `build/`: a directory pattern, which is how regenerable output is usually
+ignored. Every other `!!` line, `.env`, `local.properties`, a keystore or a
+directory caught by a bare name such as `secrets`, means the worktree holds
+something that may exist nowhere else. Step 7 asks about it.
 
 ### Running sessions
 
@@ -563,8 +579,8 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   explanation are what get lost.
 
 - **Any branch step 6 found in use by a running session** → `keep`, with the
-  session's `pid` and the `cwd` or lock reason that matched in the report. Second for the same reason the bullet
-  above is first.
+  session's `pid` and the `cwd` or lock reason that matched in the report.
+  Second for the same reason the bullet above is first.
 - **Bucket A, containment empty** → `delete`, no question. The remote branch is
   gone and every commit is already in the default branch.
 - **Bucket A, containment non-empty** → **ask, and do not guess.** Show the
@@ -586,8 +602,12 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   from the remote, no question.
   Non-empty → `keep` and report.
 
+**Then, any branch the bullets above sorted to `delete` whose worktree step 6
+found holding ignored files** → **ask** instead, listing those paths. Declined →
+`keep`.
+
 **Everything needing an answer goes into one question**: those ambiguous bucket A
-branches, the bucket B and R branches step 5's first-parent fallback caught, any
+branches, worktrees holding ignored files (step 6), the bucket B and R branches step 5's first-parent fallback caught, any
 bucket B branches
 that reached the ask because the registry could not be read, and any **locked
 worktree belonging to a branch in this candidate
@@ -622,10 +642,10 @@ No `--force`. Three failures are expected here and only the last is a problem:
   - the lock is this session's → unlock and retry the removal;
   - it is not, and step 6 read the session registry → unlock and retry the
     removal;
-  - it is not, and pass 1's question came back **approved** → unlock and retry
-    the removal;
-  - it is not, and pass 1's question came back **declined** → keep the branch and
-    report it with the lock reason.
+  - it is not, and pass 1's question about this lock came back **approved** →
+    unlock and retry the removal;
+  - it is not, and pass 1's question about this lock came back **declined** →
+    keep the branch and report it with the lock reason.
 
   Reading this error as a decline on its own reports a refusal nobody was asked
   for, and leaves the worktree and branch the run exists to remove both standing.
@@ -739,7 +759,8 @@ State plainly what happened:
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
   contradicted `--merged`, a remote copy holding commits the default branch
   lacks, a branch in use by a running session or a lock naming a running pid, a
-  base of open PRs, a never-diverged branch the user chose to keep, a branch excluded because it was
+  base of open PRs, a never-diverged branch or a worktree holding ignored files the user chose to
+  keep, a branch excluded because it was
   checked out
 - Where the session is now
 
