@@ -7,7 +7,7 @@ description: |
   branches the merge made stale, clearing stale worktree entries in its path.
   A branch merged into the default branch is deleted, locally and on the
   remote, without asking, unless a running Claude Code session is using it or
-  its tip never left the default branch's first-parent line. Refuses to delete anything holding uncommitted work, and
+  open PRs target it (checked with gh where available). Refuses to delete anything holding uncommitted work, and
   asks rather than guessing wherever git cannot prove the work survived. Use
   when the user says a PR was merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
@@ -48,9 +48,10 @@ time.
 step 1's `git rev-parse --path-format`, and the `locked` annotation in `git
 worktree list --porcelain` that steps 6 and 7 read. (The same release added
 `prunable`, which this skill deliberately does not rely on — step 6 says why.)
-Nothing else: no `gh`, no `jq`, no network access beyond what `git fetch` and
-`git push --delete` need, and push rights on the remote for step 7 to delete
-remote branches.
+Push rights on the remote, for step 7's remote deletes. `gh` is optional: step
+5 uses it to spare the bases of open PRs, and falls back to a weaker test
+without it. No `jq`, and no network access beyond what `git fetch`, `git push
+--delete` and `gh` need.
 
 ## Step 1: Find the main checkout and leave any worktree
 
@@ -285,7 +286,7 @@ survived is a separate question, decided by step 6's containment check against
 in `--merged` output but is not in bucket A. Its commits are already in the
 default branch. **These are deleted without asking**, together with their remote
 branch where the upstream is on `<remote>`, unless step 6 finds a running Claude
-Code session using the branch, or its tip never diverged (below).
+Code session using the branch, or it is the base of open PRs (below).
 
 **Bucket R — remote-only, merged.** Remote branches on `<remote>` that are merged
 into `<default-ref>` and that no local branch tracks:
@@ -297,25 +298,43 @@ git branch -r --merged <default-ref> --format="%(refname)"
 Keep the `refs/remotes/<remote>/` entries, drop `<remote>/HEAD` and
 `<remote>/<default-branch>` (both always listed), and drop any that is the
 `%(upstream:short)` of a local branch, since that branch's own bucket decides it.
-These are deleted from the remote without asking, unless their tip never
-diverged (below). No local session can be using
+These are deleted from the remote without asking, unless they are the base of
+open PRs (below). No local session can be using
 a branch that has no local copy, so step 6's session check does not apply to
 them.
 
-**Branches that never diverged.** `--merged` is an ancestry test, so it also lists
-a branch whose tip sits on the default branch's own first-parent line: one cut
-from it with no commits of its own, such as an integration branch that open PRs
-target, or a `develop` fast-forwarded at release. Deleting a remote branch that
-open PRs target closes those PRs. So test the tip of every bucket B and R
-candidate:
+**Bases of open PRs.** Deleting a remote branch that open PRs target closes
+those PRs, and `--merged` cannot tell such a base from finished work: an
+integration branch cut from the default branch with nothing of its own yet, or
+a `develop` just merged in by a release. So check every bucket R candidate and
+every bucket B candidate whose upstream is on `<remote>`. `<name>` is the
+branch's name on the remote, without the `<remote>/` prefix (for bucket B, its
+upstream's name, which can differ from the local one). Where `gh` is available:
 
 ```bash
-git rev-list --first-parent <default-ref> | grep -qx <tip-sha>
+git remote get-url <remote>
+gh pr list --repo <that url> --base <name> --state open --json number --jq length
+```
+
+`--repo` is not optional: in a fork clone `gh` would otherwise ask the parent
+repository about the fork's branches. Non-zero → `keep`, and report it as the
+base of open PRs. `0` → the check passed.
+
+**Where `gh` is missing or that call fails**, fall back to the shape such a base
+usually has, a tip that never left the default branch's first-parent line. Take
+the full sha with `git rev-parse <remote>/<name>`, then look for it in:
+
+```bash
+git rev-list --first-parent <default-ref>
 ```
 
 Found → it goes to step 7's batched question rather than being deleted. A
-fast-forward merge lands here too, which costs a question and nothing else. Not
-found → the no-question rule above holds.
+fast-forward merge lands here too, which costs a question. Not found → the check
+passed, though a base merged in with a merge commit is not caught: this fallback
+is weaker than the `gh` check.
+
+A bucket B branch that was never pushed has no remote branch to protect, so the
+check does not apply to it.
 
 **Bucket C — everything else.** Leave alone, silently.
 
@@ -538,22 +557,24 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   branch and the commits step 6 listed, and say plainly that git cannot
   distinguish a squash-merge from work that never landed. The user's answer sets
   `delete` or `keep`.
-- **Bucket B or R, containment and remote copy (if any) empty, tip on the
-  default branch's first-parent line** (step 5) → **ask**, saying its tip never
-  left the default branch, so it may be a base that open PRs target.
-- **Bucket B, containment empty, remote copy (if any) empty, tip off the
-  first-parent line** → `delete`, no
+- **Bucket B or R that step 5 found to be the base of open PRs** → `keep`.
+- **Bucket B or R, containment and remote copy (if any) empty, caught by step
+  5's first-parent fallback** → **ask**, saying its tip never left the default
+  branch, so it may be a base that open PRs target.
+- **Bucket B, containment empty, remote copy (if any) empty, and step 5's base
+  check passed or did not apply** → `delete`, no
   question, and its remote branch with it when the upstream is on `<remote>`.
   Where step 6 could not read the session registry, **ask** instead: nothing then
   says the branch is not in use.
 - **Bucket B, containment non-empty** → `keep`, and report the contradiction with
   `--merged`. Likewise a non-empty remote copy: `keep`, local and remote.
-- **Bucket R, containment empty, tip off the first-parent line** → `delete`
+- **Bucket R, containment empty, and step 5's base check passed** → `delete`
   from the remote, no question.
   Non-empty → `keep` and report.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
-branches, the bucket B and R branches that never diverged, any bucket B branches
+branches, the bucket B and R branches step 5's first-parent fallback caught, any
+bucket B branches
 that reached the ask because the registry could not be read, and any **locked
 worktree belonging to a branch in this candidate
 set** whose lock the rule below says to ask about. Not the branches the bullets
@@ -704,7 +725,7 @@ State plainly what happened:
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
   contradicted `--merged`, a remote copy holding commits the default branch
   lacks, a branch in use by a running session or a lock naming a running pid, a
-  never-diverged branch the user chose to keep, a branch excluded because it was
+  base of open PRs, a never-diverged branch the user chose to keep, a branch excluded because it was
   checked out
 - Where the session is now
 
