@@ -6,9 +6,8 @@ description: |
   default branch, then removes the worktrees, local branches and remote
   branches the merge made stale, clearing stale worktree entries in its path.
   A branch merged into the default branch is deleted, locally and on the
-  remote, without asking, unless a running Claude Code session is using it,
-  it is the base or head of open PRs (checked with gh where available), or its
-  worktree holds ignored files other than build and cache output. Refuses to
+  remote, without asking, unless a running Claude Code session is using it, or
+  it is the base or head of open PRs (checked with gh where available). Refuses to
   delete anything holding uncommitted work, and asks rather than guessing
   wherever git cannot prove the work survived. Use when the user says a PR was
   merged, or
@@ -287,8 +286,8 @@ survived is a separate question, decided by step 6's containment check against
 **Bucket B — merged, remote still present or never pushed.** The branch appears
 in `--merged` output but is not in bucket A. Its commits are already in the
 default branch. **These are deleted without asking**, together with their remote
-branch, unless step 6 finds a running Claude Code session using the branch or
-ignored files in its worktree, or it is the base or head of open PRs (below).
+branch, unless step 6 finds a running Claude Code session using the branch, or
+it is the base or head of open PRs (below).
 
 A bucket B branch's **remote branch** is its upstream where that is on
 `<remote>` and is not `<remote>/<default-branch>`. A branch cut from
@@ -478,24 +477,8 @@ This is the one place this skill differs sharply from a plain
 delete-everything-gone script, and it is deliberate: an untracked file in a
 worktree exists nowhere else.
 
-**Ignored files exist nowhere else either**, and that check does not show them,
-while `git worktree remove` deletes them with the directory. So for the same
-worktrees, also run:
-
-```bash
-git -C <worktree-path> status --porcelain --ignored=matching --untracked-files=all
-```
-
-An `!!` line ending in `/` is a directory ignored as a whole. It is regenerable
-build or cache output, and goes with the worktree unasked, when its last path
-component is one of: `build`, `.gradle`, `node_modules`, `dist`, `target`,
-`.venv`, `venv`, `.cxx`, `.kotlin`, `__pycache__`, `.next`. Every other `!!`
-line, an ignored file such as `.env`, `local.properties` or a keystore, or any
-other ignored directory such as `secrets/` or `.idea/`, is one of the
-worktree's **ignored files**.
-
-**No worktree holding ignored files is removed before the user has seen those
-paths** (step 7).
+Ignored files are not checked and not asked about: a worktree that is otherwise
+deletable goes with everything in it, ignored or not.
 
 ### Running sessions
 
@@ -621,13 +604,8 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   from the remote, no question.
   Non-empty → `keep` and report.
 
-**Then, any branch whose worktree holds ignored files (step 6)**: one sorted to
-`delete` above goes to the question instead; one already in the question has
-those paths listed beside it. Either way a yes covers the files, and a no is
-`keep`.
-
 **Everything needing an answer goes into one question**: those ambiguous bucket A
-branches, worktrees holding ignored files (step 6), the bucket B and R branches step 5's first-parent fallback caught, any
+branches, the bucket B and R branches step 5's first-parent fallback caught, any
 bucket B branches
 that reached the ask because the registry could not be read, and any **locked
 worktree belonging to a branch in this candidate
@@ -779,8 +757,8 @@ State plainly what happened:
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
   contradicted `--merged`, a remote copy holding commits the default branch
   lacks, a branch in use by a running session or a lock naming a running pid, a
-  base or head of open PRs, a never-diverged branch or a worktree holding ignored files the user chose to
-  keep, a branch excluded because it was
+  base or head of open PRs, a never-diverged branch the user chose to keep, a
+  branch excluded because it was
   checked out
 - Where the session is now
 
