@@ -2,12 +2,12 @@
 
 This repo is a **collection of Claude Code skills** I find useful and worth sharing, published for others to use. It's not themed around one domain — whatever makes a good, self-contained skill can live here. It's not an application: there's no build and no runtime, and for most skills the deliverable is the prose inside each `SKILL.md`.
 
-**But a skill may bundle executable support files, and three do.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `sh skills/parking-lot/selfcheck.sh`, `sh skills/pr-review-loop/selfcheck.sh` and `sh skills/pr-review-skeptic/selfcheck.sh` (each touches nothing outside its own temp directory), and for the `parking-lot` mod `claude plugin validate skills/parking-lot` and `claude plugin test skills/parking-lot`. Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
+**But a skill may bundle executable support files, and four do.** Where it does, that script is real code and is wrong in the ordinary ways code is wrong — so it ships with a runnable self-check beside it, and **the self-check is run before any change to that script lands.** Right now that means `sh skills/parking-lot/selfcheck.sh`, `sh skills/pr-review-loop/selfcheck.sh`, `sh skills/pr-review-skeptic/selfcheck.sh` and `pwsh skills/pickup-issue/selfcheck.ps1` (each touches nothing outside its own temp directory), and for the `parking-lot` mod `claude plugin validate skills/parking-lot` and `claude plugin test skills/parking-lot`. Treating this repo as prose-only is how a change to a bundled script gets shipped unverified.
 
 ## What goes here
 
 - `skills/<name>/SKILL.md` — one skill per folder, frontmatter + body
-- `skills/<name>/*.sh`, `skills/<name>/scripts/*.sh` — optional bundled scripts, with a `selfcheck.sh` beside the skill's `SKILL.md` and its cases under `fixtures/`
+- `skills/<name>/*.sh`, `skills/<name>/scripts/*.ps1` — optional bundled scripts, with a `selfcheck.sh` (or `selfcheck.ps1` for PowerShell) beside the skill's `SKILL.md` and its cases under `fixtures/`
 - `skills/<name>/.claude-plugin/`, `hooks/`, `types/` — optional Claude Code mod in the skill folder, with a `*.test.tsx` beside its hooks module
 - `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports, and any hook a skill declares
 - `.claude-plugin/marketplace.json` — what a marketplace install resolves against. Its `plugins[0].description` enumerates the skills, as `plugin.json`'s `description` does; both are kept current. Its *top-level* `description` is the marketplace blurb and is not a skill list
