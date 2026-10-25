@@ -37,7 +37,7 @@ If the repo has `docs/agents/triage-labels.md`, map the canonical role names thr
 
 ## 1. Choose
 
-**Given an issue number:** use it, and skip the limit check. Stop and say why if it is closed, already carries `agent-pickup`, or has an open blocker.
+**Given an issue number:** use it, and skip the limit check. Stop and say why if it is closed, assigned, carries `agent-pickup`, or has an open blocker. An assignee is how a claimed issue stays marked after its PR opens, so name any open PR that closes it.
 
 **Otherwise:**
 
