@@ -29,7 +29,7 @@ Requires `gh` (authenticated) and `jq`. One run takes at most one issue.
 
 | Role | Default label | Meaning |
 |---|---|---|
-| go | `agent-go` | The owner wants this one now. Picked first, and bypasses the one-PR limit |
+| go | `agent-go` | The owner wants this one now. Picked first, bypasses the one-PR limit, and overrides `needs-info` |
 | claimed | `agent-pickup` | An agent has taken this issue, or opened this PR. Applied to both |
 | not for an agent | `ready-for-human`, `needs-info`, `wontfix`, `defer` | Skipped |
 
@@ -42,19 +42,20 @@ If the repo has `docs/agents/triage-labels.md`, map the canonical role names thr
 **Otherwise:**
 
 1. **Limit.** If any open PR carries `agent-pickup`, the only candidates are open issues labelled `agent-go`. If there are none, stop: report the open PR and exit.
-2. **Candidates.** `gh issue list --state open --limit 200 --json number,title,labels,assignees,author,createdAt,body`. Keep an issue only if all of these hold:
+2. **Candidates.** `gh issue list --state open --limit 200 --json number,title,labels,assignees,author,createdAt,body`, plus the same query with `--label agent-go` so no `agent-go` issue falls outside the 200. Keep an issue only if all of these hold:
    - no assignee, and no `agent-pickup` label;
-   - none of the "not for an agent" labels, and not a tracking or map issue (for example `wayfinder:map`);
+   - none of the "not for an agent" labels (`needs-info` alongside `agent-go` does not count: the owner has answered and wants it now), and not a tracking or map issue (for example `wayfinder:map`);
    - its author is the repository owner or a collaborator with write access, not a bot. Bots that file issues usually relay outside text (user feedback, crash reports); those issues wait for the owner to reword them or re-file them under their own name;
    - no open blocker: `gh api repos/{owner}/{repo}/issues/<n> --jq .issue_dependencies_summary.blocked_by` is 0, and every issue named on a `Blocked by:` line at the top of the body is closed;
    - no `Not before: YYYY-MM-DD` line in the body naming a date after today.
 3. **Order.** `agent-go` first, then oldest `createdAt` first. Take the first one.
+4. **Release ineligible `agent-go` issues.** For every open `agent-go` issue this pass excluded, remove `agent-go` and comment which condition kept it out. Left in place, the label keeps starting runs that cannot take it.
 
 Nothing eligible: say so in one line and exit. That is a normal outcome.
 
 ## 2. Claim
 
-Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent-pickup --remove-label agent-go`. Then re-read the issue. If another assignee appeared, another run claimed it first: remove your assignee and label and stop.
+Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent-pickup`, removing `agent-go` and `needs-info` where present. Claiming first is what lets a later run's step 1 skip the issue.
 
 ## 3. Triage
 
@@ -84,14 +85,13 @@ One short paragraph: the issue, the PR link (or why there is none), and anything
 
 ## Unattended runs (Windows)
 
-`scripts/pickup.ps1` (PowerShell 7) registers two Task Scheduler tasks for one checkout, under the current user:
+`scripts/pickup.ps1` (PowerShell 7) registers one Task Scheduler task for a checkout, under the current user:
 
 ```powershell
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Register -NightlyAt 01:00
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Unregister
 ```
 
-- **nightly** starts `claude --bg --permission-mode auto /pickup-issue` in the checkout.
-- **agent-go** runs every 15 minutes, and starts the same session only when an open issue carries `agent-go`.
+Every 15 minutes it starts `claude --bg --permission-mode auto /pickup-issue` in the checkout when the day's run after `-NightlyAt` has not happened yet, or when an open issue carries `agent-go`; never within 30 minutes of its last launch.
 
 A background session refuses a folder whose workspace trust was never accepted, so run `claude` interactively in the checkout once before registering. Stagger `-NightlyAt` across repositories so their runs do not share the machine. On macOS or Linux, a cron entry running the same `claude` command in the checkout does the nightly half.

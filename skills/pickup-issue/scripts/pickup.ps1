@@ -2,9 +2,8 @@
 [CmdletBinding(DefaultParameterSetName = 'Run')]
 param(
     [Parameter(Mandatory)][string] $RepoDir,
-    [Parameter(ParameterSetName = 'Run')][switch] $OnlyIfGo,
+    [Parameter(ParameterSetName = 'Run')][Parameter(ParameterSetName = 'Register')][string] $NightlyAt = '01:00',
     [Parameter(ParameterSetName = 'Register', Mandatory)][switch] $Register,
-    [Parameter(ParameterSetName = 'Register')][string] $NightlyAt = '01:00',
     [Parameter(ParameterSetName = 'Register')][int] $PollMinutes = 15,
     [Parameter(ParameterSetName = 'Unregister', Mandatory)][switch] $Unregister,
     [switch] $DryRun
@@ -12,15 +11,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'decide.ps1')
 
 $RepoDir = (Resolve-Path -LiteralPath $RepoDir).ProviderPath
 if (-not (Test-Path -LiteralPath (Join-Path $RepoDir '.git'))) { throw "$RepoDir is not a git checkout." }
 $name = Split-Path -Leaf $RepoDir
 $taskPath = '\pickup-issue\'
+$taskName = "$name pickup"
 $stateDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'pickup-issue'
-$stamp = Join-Path $stateDir "$name.last-launch"
-# A run normally claims its issue within minutes; this stops the poller relaunching while it does.
-$relaunchGuard = [TimeSpan]::FromMinutes(30)
+$launchStamp = Join-Path $stateDir "$name.last-launch"
+$nightlyStamp = Join-Path $stateDir "$name.last-nightly"
 
 function Get-Exe([string] $cmd) {
     $c = Get-Command $cmd -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -28,7 +28,33 @@ function Get-Exe([string] $cmd) {
     $c.Source
 }
 
-function Test-GoIssue {
+if ($Register) {
+    $pwsh = Get-Exe 'pwsh'
+    $taskArgs = "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$PSCommandPath`" -RepoDir `"$RepoDir`" -NightlyAt $NightlyAt"
+    if ($DryRun) { "register $taskPath${taskName} every $PollMinutes min: $pwsh $taskArgs"; return }
+    # One task, so Task Scheduler's IgnoreNew is what keeps two launches from ever running at once.
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $PollMinutes)
+    $action = New-ScheduledTaskAction -Execute $pwsh -Argument $taskArgs -WorkingDirectory $RepoDir
+    Register-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+    "registered $taskPath$taskName"
+    return
+}
+
+if ($Unregister) {
+    if ($DryRun) { "unregister $taskPath$taskName"; return }
+    Unregister-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    "unregistered $taskPath$taskName"
+    return
+}
+
+$claude = Get-Exe 'claude'
+$claudeArgs = @('--bg', '--permission-mode', 'auto', '/pickup-issue')
+if ($DryRun) { "launch in ${RepoDir}: $claude $($claudeArgs -join ' ')"; return }
+
+$lastLaunch = if (Test-Path -LiteralPath $launchStamp) { (Get-Item -LiteralPath $launchStamp).LastWriteTime } else { $null }
+$lastNightly = if (Test-Path -LiteralPath $nightlyStamp) { (Get-Content -LiteralPath $nightlyStamp -Raw).Trim() } else { '' }
+$hasGo = {
     Push-Location $RepoDir
     try {
         $n = gh issue list --state open --label agent-go --json number --jq length
@@ -36,44 +62,12 @@ function Test-GoIssue {
         [int]$n -gt 0
     } finally { Pop-Location }
 }
+$now = Get-Date
+$reason = Get-LaunchReason -Now $now -NightlyAt ([timespan]::Parse($NightlyAt)) -LastNightlyDate $lastNightly -LastLaunch $lastLaunch -HasGoIssue $hasGo
+if (-not $reason) { return }
 
-if ($Register) {
-    $pwsh = Get-Exe 'pwsh'
-    $self = $PSCommandPath
-    $base = "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$self`" -RepoDir `"$RepoDir`""
-    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
-    $tasks = @(
-        @{ Name = "$name nightly"; Args = $base; Trigger = New-ScheduledTaskTrigger -Daily -At $NightlyAt }
-        @{ Name = "$name agent-go"; Args = "$base -OnlyIfGo"
-           Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $PollMinutes) }
-    )
-    foreach ($t in $tasks) {
-        if ($DryRun) { "register $taskPath$($t.Name): $pwsh $($t.Args)"; continue }
-        $action = New-ScheduledTaskAction -Execute $pwsh -Argument $t.Args -WorkingDirectory $RepoDir
-        Register-ScheduledTask -TaskPath $taskPath -TaskName $t.Name -Action $action -Trigger $t.Trigger -Settings $settings -Force | Out-Null
-        "registered $taskPath$($t.Name)"
-    }
-    return
-}
-
-if ($Unregister) {
-    foreach ($t in "$name nightly", "$name agent-go") {
-        if ($DryRun) { "unregister $taskPath$t"; continue }
-        Unregister-ScheduledTask -TaskPath $taskPath -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
-        "unregistered $taskPath$t"
-    }
-    return
-}
-
-if ($OnlyIfGo) {
-    if ((Test-Path -LiteralPath $stamp) -and ((Get-Date) - (Get-Item -LiteralPath $stamp).LastWriteTime) -lt $relaunchGuard) { return }
-    if (-not (Test-GoIssue)) { return }
-}
-
-$claude = Get-Exe 'claude'
-$claudeArgs = @('--bg', '--permission-mode', 'auto', '/pickup-issue')
-if ($DryRun) { "launch in ${RepoDir}: $claude $($claudeArgs -join ' ')"; return }
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-Set-Content -LiteralPath $stamp -Value (Get-Date -Format o)
+Set-Content -LiteralPath $launchStamp -Value ($now.ToString('o'))
+if ($reason -eq 'nightly') { Set-Content -LiteralPath $nightlyStamp -Value ($now.ToString('yyyy-MM-dd')) }
 Push-Location $RepoDir
 try { & $claude @claudeArgs } finally { Pop-Location }
