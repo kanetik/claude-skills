@@ -7,7 +7,7 @@ This repo is a **collection of Claude Code skills** I find useful and worth shar
 ## What goes here
 
 - `skills/<name>/SKILL.md` — one skill per folder, frontmatter + body
-- `skills/<name>/*.sh`, `skills/<name>/scripts/*.ps1` — optional bundled scripts, with a `selfcheck.sh` (or `selfcheck.ps1` for PowerShell) beside the skill's `SKILL.md` and its cases under `fixtures/`
+- `skills/<name>/*.sh`, `skills/<name>/scripts/*.sh`, `skills/<name>/scripts/*.ps1` — optional bundled scripts, with a `selfcheck.sh` (or `selfcheck.ps1` for PowerShell) beside the skill's `SKILL.md` and its cases under `fixtures/`
 - `skills/<name>/.claude-plugin/`, `hooks/`, `types/` — optional Claude Code mod in the skill folder, with a `*.test.tsx` beside its hooks module
 - `.claude-plugin/plugin.json` — manifest listing every skill the plugin exports, and any hook a skill declares
 - `.claude-plugin/marketplace.json` — what a marketplace install resolves against. Its `plugins[0].description` enumerates the skills, as `plugin.json`'s `description` does; both are kept current. Its *top-level* `description` is the marketplace blurb and is not a skill list

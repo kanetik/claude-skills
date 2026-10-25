@@ -2,12 +2,13 @@
 name: pickup-issue
 description: |
   Pick up one open GitHub issue and carry it to a draft PR under review, with no
-  human choosing it first. An issue is workable by default: the skill skips only
-  ones that are closed, assigned, blocked, dated for later, or labelled as not for
-  an agent, and it triages at pickup time instead of requiring a ready label: an
-  issue too vague to build gets a specific question and a needs-info label, not a
-  guess. One pickup in flight per repository at a time, unless the owner named the
-  issue or labelled it to go now. Use when the user says "pick up an issue", "work the backlog",
+  human choosing it first. An issue is workable by default: the skill skips
+  ones that are closed, assigned, blocked, dated for later, written by a bot or
+  someone outside the repo, or labelled as not for an agent, and it triages at
+  pickup time instead of requiring a ready label: an issue too vague to build gets
+  a specific question and a needs-info label, not a guess. One pickup in flight
+  per repository at a time, unless the owner named the issue or labelled it to go
+  now. Use when the user says "pick up an issue", "work the backlog",
   "take the next issue", "work issue #N", or invokes /pickup-issue (optionally with
   an issue number); scheduled runs launch it headless.
 allowed-tools:
@@ -49,7 +50,7 @@ An issue whose agent PR merged keeps its label: the merge closes it, or it is wa
 
 ## 1. Choose
 
-**Given an issue number:** use it, and skip the limit check. Stop and say why if it is closed, still carries `agent-pickup` after the release above (name the PR that closes it, if any), or has an open blocker.
+**Given an issue number:** use it, and skip the limit check. Stop and say why if it is closed, assigned to anyone other than the authenticated account, still carries `agent-pickup` after the release above (name the PR that closes it, if any), or has an open blocker.
 
 **Otherwise:**
 
