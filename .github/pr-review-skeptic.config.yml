@@ -4,9 +4,10 @@
 project: >-
   A collection of Claude Code skills, published as an installable plugin.
   No build and no runtime, and for most skills the deliverable is the prose
-  inside each SKILL.md. Some skills bundle POSIX shell scripts, which are real
-  code, each with a runnable selfcheck.sh beside the skill's SKILL.md -- so
-  "no tests" is not true of this repo, and those suites are worth running.
+  inside each SKILL.md. Some skills bundle scripts (POSIX shell, and
+  PowerShell 7 for pickup-issue), which are real code, each with a runnable
+  selfcheck.sh or selfcheck.ps1 beside the skill's SKILL.md -- so "no tests"
+  is not true of this repo, and those suites are worth running.
 
 users: >-
   Claude Code users who install the plugin or copy individual skill folders
@@ -16,10 +17,12 @@ users: >-
 irreplaceable_data: >-
   Nothing in THIS repo is unrecoverable -- it is all versioned text. The
   blast radius is on the consuming side, and there are two kinds. First,
-  pr-review-loop and pr-review-skeptic drive git and the GitHub API against
-  other people's repositories: a defect there posts a review under the
-  user's account, resolves threads, pushes commits, or removes a worktree
-  and refs from a checkout that is not the skill's own. None of that can be
+  pr-review-loop, pr-review-skeptic, pickup-issue and post-merge-cleanup drive git and the GitHub
+  API against other people's repositories, pickup-issue unattended on a
+  schedule: a defect there posts a review under the user's account, resolves
+  threads, pushes commits, claims, labels, comments on or closes issues, opens
+  PRs, or removes a worktree and refs from a checkout that is not the skill's
+  own. None of that can be
   unsent, and some of it cannot be undone. Second, and the only genuinely
   irreplaceable data any skill here touches: the `parking-lot` store, under
   CLAUDE_CONFIG_DIR (defaulting to ~/.claude) at parking-lot.md and
@@ -38,8 +41,8 @@ architecture: >-
   frontmatter + prose body) plus optional config/ and reference/ files it
   loads on demand by relative path. .claude-plugin/plugin.json lists the
   exported skills. Nearly all of it is instructions an agent reads rather
-  than code that runs; the exception is a skill that bundles POSIX shell
-  scripts it invokes, which are real code and are wrong in the ordinary ways
+  than code that runs; the exception is a skill that bundles shell or
+  PowerShell scripts it invokes, which are real code and are wrong in the ordinary ways
   code is wrong.
 
 # Lets pr-review-loop's skeptic reviewer post its findings to the PR.

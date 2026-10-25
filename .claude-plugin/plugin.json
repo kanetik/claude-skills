@@ -1,6 +1,6 @@
 {
   "name": "kanetik-skills",
-  "description": "Translation, Play Store release notes, an iterative PR review loop with an independent skeptic, post-merge cleanup, parked thoughts, and GA4 custom dimension registration.",
+  "description": "Translation, Play Store release notes, an iterative PR review loop with an independent skeptic, unattended issue pickup, post-merge cleanup, parked thoughts, and GA4 custom dimension registration.",
   "author": {
     "name": "Jeremy Kane",
     "url": "https://github.com/kanetik"
@@ -11,6 +11,7 @@
     "./skills/whats-new",
     "./skills/pr-review-loop",
     "./skills/pr-review-skeptic",
+    "./skills/pickup-issue",
     "./skills/post-merge-cleanup",
     "./skills/parking-lot",
     "./skills/ga4-custom-dimension"

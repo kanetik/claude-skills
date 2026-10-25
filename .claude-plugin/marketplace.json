@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "kanetik-skills",
-      "description": "Translation, Play Store release notes, an iterative PR review loop with an independent skeptic, post-merge cleanup, parked thoughts, and GA4 custom dimension registration.",
+      "description": "Translation, Play Store release notes, an iterative PR review loop with an independent skeptic, unattended issue pickup, post-merge cleanup, parked thoughts, and GA4 custom dimension registration.",
       "source": "./",
       "category": "productivity"
     }
