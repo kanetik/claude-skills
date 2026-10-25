@@ -6,8 +6,8 @@ description: |
   ones that are closed, assigned, blocked, dated for later, or labelled as not for
   an agent, and it triages at pickup time instead of requiring a ready label: an
   issue too vague to build gets a specific question and a needs-info label, not a
-  guess. One agent PR open per repository at a time, unless the owner labelled an
-  issue to go now. Use when the user says "pick up an issue", "work the backlog",
+  guess. One pickup in flight per repository at a time, unless the owner named the
+  issue or labelled it to go now. Use when the user says "pick up an issue", "work the backlog",
   "take the next issue", "work issue #N", or invokes /pickup-issue (optionally with
   an issue number); scheduled runs launch it headless.
 allowed-tools:
@@ -29,8 +29,8 @@ Requires `gh` (authenticated) and `jq`. One run takes at most one issue.
 
 | Role | Default label | Meaning |
 |---|---|---|
-| go | `agent-go` | The owner wants this one now. Picked first, bypasses the one-PR limit, and overrides `needs-info` |
-| claimed | `agent-pickup` | An agent has taken this issue, or opened this PR. Applied to both |
+| go | `agent-go` | The owner wants this one now. Picked first, bypasses the one-pickup limit, and overrides `needs-info` |
+| claimed | `agent-pickup` | On an issue: an agent has claimed it and has not opened its PR yet. On a PR: an agent opened it |
 | not for an agent | `ready-for-human`, `needs-info`, `wontfix`, `defer` | Skipped |
 
 If the repo has `docs/agents/triage-labels.md`, map the canonical role names through it, and treat any other label it says pickup skips as "not for an agent" too. Create a missing `agent-go` or `agent-pickup` label with `gh label create` on first use.
@@ -41,7 +41,7 @@ If the repo has `docs/agents/triage-labels.md`, map the canonical role names thr
 
 **Otherwise:**
 
-1. **Limit.** If any open PR carries `agent-pickup`, the only candidates are open issues labelled `agent-go`. If there are none, stop: report the open PR and exit.
+1. **Limit.** Another pickup holds the limit while an open PR carries `agent-pickup`, or an open issue carries it with a claim comment (step 2) under 24 hours old. While one does, the only candidates are open issues labelled `agent-go`; if there are none, stop, report what holds the limit, and exit. An older claim with no PR is a run that died: name it as stale in your report. It no longer holds the limit.
 2. **Candidates.** `gh issue list --state open --limit 200 --json number,title,labels,assignees,author,createdAt,body`, plus the same query with `--label agent-go` so no `agent-go` issue falls outside the 200. Keep an issue only if all of these hold:
    - no assignee, and no `agent-pickup` label;
    - none of the "not for an agent" labels (`needs-info` alongside `agent-go` does not count: the owner has answered and wants it now), and not a tracking or map issue (for example `wayfinder:map`);
@@ -55,7 +55,7 @@ Nothing eligible: say so in one line and exit. That is a normal outcome.
 
 ## 2. Claim
 
-Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent-pickup`, removing `agent-go` and `needs-info` where present. Claiming first is what lets a later run's step 1 skip the issue.
+Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent-pickup`, removing `agent-go` and `needs-info` where present, then comment `Claimed by an automated pickup run.` on the issue. Claiming first is what lets a later run's step 1 skip the issue.
 
 ## 3. Triage
 
@@ -74,6 +74,8 @@ The PR:
 - opened as a draft unless the repo says otherwise;
 - body starts with `Closes #<n>`;
 - labelled `agent-pickup`.
+
+Once the PR is open, remove `agent-pickup` from the issue: the PR holds the limit from then on, and closing it, merged or not, releases it.
 
 Then start the repo's PR review flow. Where `/pr-review-loop` is available, invoke it on the new PR and run it to convergence.
 
