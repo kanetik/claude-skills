@@ -31,12 +31,14 @@ function Get-Exe([string] $cmd) {
 
 if ($Register) {
     $pwsh = Get-Exe 'pwsh'
-    $taskArgs = "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$PSCommandPath`" -RepoDir `"$RepoDir`" -NightlyAt $NightlyAt"
-    if ($DryRun) { "register $taskPath${taskName} every $PollMinutes min: $pwsh $taskArgs"; return }
+    # conhost --headless: a console program started directly by the task flashes a window on every poll.
+    $conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+    $taskArgs = "--headless `"$pwsh`" -NoProfile -NonInteractive -File `"$PSCommandPath`" -RepoDir `"$RepoDir`" -NightlyAt $NightlyAt"
+    if ($DryRun) { "register $taskPath${taskName} every $PollMinutes min: $conhost $taskArgs"; return }
     # One task, so Task Scheduler's IgnoreNew is what keeps two launches from ever running at once.
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $PollMinutes)
-    $action = New-ScheduledTaskAction -Execute $pwsh -Argument $taskArgs -WorkingDirectory $RepoDir
+    $action = New-ScheduledTaskAction -Execute $conhost -Argument $taskArgs -WorkingDirectory $RepoDir
     Register-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
     "registered $taskPath$taskName"
     return

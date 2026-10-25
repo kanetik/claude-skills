@@ -40,11 +40,11 @@ If the repo has `docs/agents/triage-labels.md`, map the canonical role names thr
 
 An issue's **agent PR** is a PR, open or closed, labelled `agent-pickup` whose body's first line is `Closes #<n>`: `gh pr list --state all --label agent-pickup --search 'Closes <n> in:body' --json number,state,mergedAt,createdAt,body --jq '.[] | select(.body | test("^Closes #<n>([^0-9]|$)"))'`. The search narrows the list on GitHub's side and the `test` makes the match exact; match the body rather than GitHub's linked-issue field, which stays empty for a PR into a non-default branch. Where several match (a retry after a rejected attempt), the most recently created one is the issue's agent PR.
 
-An issue is **in flight** while it carries `agent-pickup` and either its agent PR is open or its most recent claim comment (step 2) is under 24 hours old.
+Judge each claim by the issue's most recent claim comment (step 2) and its agent PR. An issue carrying `agent-pickup` is **in flight** while an agent PR created after that claim is open, or while no agent PR was created after that claim and the claim is under 24 hours old.
 
 Every run starts by releasing each open `agent-pickup` issue that is not in flight, with a comment saying why:
-- **its agent PR was closed without merging:** remove `agent-pickup` and the assignee, and add `needs-info`. The owner says what should change, and `agent-go` retries it;
-- **no agent PR at all, and the most recent claim is over 24 hours old** (the run that claimed it died): remove `agent-pickup` and the assignee, leaving it workable.
+- **an agent PR created after the claim was closed without merging:** remove `agent-pickup` and the assignee, and add `needs-info`. The owner says what should change, and `agent-go` retries it;
+- **no agent PR created after the claim, and the claim is over 24 hours old** (the run that claimed it died): remove `agent-pickup` and the assignee, leaving it workable.
 
 An issue whose agent PR merged keeps its label: the merge closes it, or it is waiting on a branch that has not landed yet.
 
