@@ -21,6 +21,7 @@ $taskName = "$name pickup"
 $stateDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'pickup-issue'
 $launchStamp = Join-Path $stateDir "$name.last-launch"
 $nightlyStamp = Join-Path $stateDir "$name.last-nightly"
+$usageFile = Join-Path $stateDir 'usage.json'
 
 function Get-Exe([string] $cmd) {
     $c = Get-Command $cmd -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -65,6 +66,8 @@ $hasGo = {
 $now = Get-Date
 $reason = Get-LaunchReason -Now $now -NightlyAt ([timespan]::Parse($NightlyAt)) -LastNightlyDate $lastNightly -LastLaunch $lastLaunch -HasGoIssue $hasGo
 if (-not $reason) { return }
+$rateLimits = if (Test-Path -LiteralPath $usageFile) { try { Get-Content -LiteralPath $usageFile -Raw | ConvertFrom-Json } catch { $null } } else { $null }
+if (Get-QuotaHold -Now $now -RateLimits $rateLimits) { return }
 
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 Set-Content -LiteralPath $launchStamp -Value ($now.ToString('o'))

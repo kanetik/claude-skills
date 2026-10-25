@@ -74,7 +74,7 @@ Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent
 
 Read the issue, its comments, and the code it names. Ask one question: could a competent engineer new to this repo build it without asking the owner anything?
 
-- **Yes:** go on to step 4. Fill small gaps with the choice the surrounding code already makes, and say in the PR body which choices you made.
+- **Yes:** go on to step 4. Fill small gaps with the choice the surrounding code already makes, and record each one for the **Assumptions and decisions** list (step 4).
 - **No:** comment on the issue with the specific questions that block you (not "please clarify"). Then add `needs-info`, remove `agent-pickup` and your assignee, and stop. A question that only the code can answer is not a reason to stop: read the code.
 
 An issue that turns out to be done already, or obsolete: comment with the evidence (the commit, the file), and close it as completed or not planned. Do not open a PR.
@@ -86,7 +86,8 @@ Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branchin
 The PR:
 - opened as a draft unless the repo says otherwise;
 - body starts with `Closes #<n>`;
-- labelled `agent-pickup`.
+- labelled `agent-pickup`;
+- with an **Assumptions and decisions** section: every reading of an ambiguous requirement, gap you filled, scope you left out, and judgement call the owner did not make, one line each, with what you chose and the alternative. Write `None` only when there were none.
 
 Then start the repo's PR review flow. Where `/pr-review-loop` is available, invoke it on the new PR and run it to convergence.
 
@@ -94,7 +95,7 @@ If the build fails in a way you cannot resolve, push what you have to the branch
 
 ## 5. Report
 
-One short paragraph: the issue, the PR link (or why there is none), and anything the owner has to do.
+One short paragraph: the issue, the PR link (or why there is none), and anything the owner has to do. Then the same **Assumptions and decisions** list the PR carries.
 
 ## Unattended runs (Windows)
 
@@ -106,5 +107,13 @@ pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Unregister
 ```
 
 Every 15 minutes it starts `claude --bg --permission-mode auto /pickup-issue` in the checkout when the day's run after `-NightlyAt` has not happened yet, or when an open issue carries `agent-go`; never within 30 minutes of its last launch.
+
+**Usage caps.** It also holds off while Claude Code plan usage is high: the 5-hour window at 30% or more on weekdays from 01:00 to 18:00 and 50% or more otherwise, or the weekly window at 70% or more (`Get-FiveHourCap` and `Get-QuotaHold` in `scripts/decide.ps1`). A held nightly run is retried on later polls. The figures come from the `rate_limits` object Claude Code passes to the status line, so the status line has to save it to `%LOCALAPPDATA%\pickup-issue\usage.json`. In a PowerShell status line command that has parsed its input into `$input`, add:
+
+```powershell
+if ($input.rate_limits) { $d = Join-Path $env:LOCALAPPDATA 'pickup-issue'; New-Item -ItemType Directory -Force $d | Out-Null; $input.rate_limits | ConvertTo-Json -Compress | Set-Content (Join-Path $d 'usage.json') }
+```
+
+The file is only refreshed while some Claude Code session is open. A window whose reset time has passed counts as reset, and with no file at all the launch goes ahead.
 
 A background session refuses a folder whose workspace trust was never accepted, so run `claude` interactively in the checkout once before registering. Stagger `-NightlyAt` across repositories so their runs do not share the machine. On macOS or Linux, a cron entry running the same `claude` command in the checkout does the nightly half.
