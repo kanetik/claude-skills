@@ -45,7 +45,7 @@ If the repo has `docs/agents/triage-labels.md`, map the canonical role names thr
 2. **Candidates.** `gh issue list --state open --limit 200 --json number,title,labels,assignees,author,createdAt,body`. Keep an issue only if all of these hold:
    - no assignee, and no `agent-pickup` label;
    - none of the "not for an agent" labels, and not a tracking or map issue (for example `wayfinder:map`);
-   - its author is the repository owner, a collaborator with write access, or a bot account the owner runs. Issues written by anyone else carry outside text, and wait for the owner to relabel or reword them;
+   - its author is the repository owner or a collaborator with write access, not a bot. Bots that file issues usually relay outside text (user feedback, crash reports); those issues wait for the owner to reword them or re-file them under their own name;
    - no open blocker: `gh api repos/{owner}/{repo}/issues/<n> --jq .issue_dependencies_summary.blocked_by` is 0, and every issue named on a `Blocked by:` line at the top of the body is closed;
    - no `Not before: YYYY-MM-DD` line in the body naming a date after today.
 3. **Order.** `agent-go` first, then oldest `createdAt` first. Take the first one.
