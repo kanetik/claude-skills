@@ -64,6 +64,19 @@ try {
     Check 'evening 35% five-hour allows' ($null -eq (Get-QuotaHold -Now $monLate -RateLimits (& $rl 35 ([DateTimeOffset]::new($monLate).AddHours(2).ToUnixTimeSeconds()) 10 $future)))
     Check 'weekly 70% holds' ($null -ne (Get-QuotaHold -Now $mon -RateLimits (& $rl 5 $future 70 $future)))
     Check 'a window past its reset does not hold' ($null -eq (Get-QuotaHold -Now $mon -RateLimits (& $rl 90 $past 10 $future)))
+    # Resolve-Launch: the composed decision pickup.ps1 runs, against a scratch state directory.
+    $state = Join-Path $tmp 'state'
+    $over = (& $rl 40 $future 10 $future) | ConvertTo-Json -Compress
+    New-Item -ItemType Directory -Force -Path $state | Out-Null
+    Set-Content (Join-Path $state 'usage.json') $over
+    Check 'over the cap: no launch' ($null -eq (Resolve-Launch -Now $mon -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
+    Check 'a held nightly writes no stamps' (-not (Test-Path (Join-Path $state 'demo.last-nightly')) -and -not (Test-Path (Join-Path $state 'demo.last-launch')))
+    Remove-Item (Join-Path $state 'usage.json')
+    Check 'no usage file: nightly launches' ((Resolve-Launch -Now $mon -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
+    Check 'the launch stamps the nightly date' ((Get-Content (Join-Path $state 'demo.last-nightly') -Raw).Trim() -eq '2026-10-26')
+    Set-Content (Join-Path $state 'demo.last-launch') ''
+    Check 'an empty launch stamp does not stop the decision' ($null -ne (Resolve-Launch -Now $mon.AddDays(1) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
+    Check 'a second poll within 30 minutes does not launch' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(15) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $yes))
     Check 'a missing window does not hold' ($null -eq (Get-QuotaHold -Now $mon -RateLimits ([pscustomobject]@{ seven_day = [pscustomobject]@{ used_percentage = 10; resets_at = $future } })))
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue

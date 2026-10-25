@@ -13,6 +13,29 @@ function Get-LaunchReason {
     $null
 }
 
+function Resolve-Launch {
+    param(
+        [Parameter(Mandatory)][datetime] $Now,
+        [Parameter(Mandatory)][string] $StateDir,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][timespan] $NightlyAt,
+        [Parameter(Mandatory)][scriptblock] $HasGoIssue
+    )
+    $launchStamp = Join-Path $StateDir "$Name.last-launch"
+    $nightlyStamp = Join-Path $StateDir "$Name.last-nightly"
+    $usageFile = Join-Path $StateDir 'usage.json'
+    $lastLaunch = try { [datetime]::Parse((Get-Content -LiteralPath $launchStamp -Raw -ErrorAction Stop).Trim()) } catch { $null }
+    $lastNightly = try { (Get-Content -LiteralPath $nightlyStamp -Raw -ErrorAction Stop).Trim() } catch { '' }
+    $reason = Get-LaunchReason -Now $Now -NightlyAt $NightlyAt -LastNightlyDate $lastNightly -LastLaunch $lastLaunch -HasGoIssue $HasGoIssue
+    if (-not $reason) { return $null }
+    $rateLimits = if (Test-Path -LiteralPath $usageFile) { try { Get-Content -LiteralPath $usageFile -Raw | ConvertFrom-Json } catch { $null } } else { $null }
+    if (Get-QuotaHold -Now $Now -RateLimits $rateLimits) { return $null }
+    New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
+    Set-Content -LiteralPath $launchStamp -Value ($Now.ToString('o'))
+    if ($reason -eq 'nightly') { Set-Content -LiteralPath $nightlyStamp -Value ($Now.ToString('yyyy-MM-dd')) }
+    $reason
+}
+
 function Get-FiveHourCap([datetime] $Now, [int] $Workday = 30, [int] $Otherwise = 50) {
     $weekday = $Now.DayOfWeek -notin 'Saturday', 'Sunday'
     if ($weekday -and $Now.Hour -ge 1 -and $Now.Hour -lt 18) { $Workday } else { $Otherwise }
