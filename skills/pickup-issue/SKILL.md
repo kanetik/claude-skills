@@ -33,7 +33,7 @@ Requires `gh` (authenticated) and `jq`. One run takes at most one issue.
 | claimed | `agent-pickup` | An agent has taken this issue, or opened this PR. Applied to both |
 | not for an agent | `ready-for-human`, `needs-info`, `wontfix`, `defer` | Skipped |
 
-If the repo has `docs/agents/triage-labels.md`, map the canonical role names through it. Create a missing `agent-go` or `agent-pickup` label with `gh label create` on first use.
+If the repo has `docs/agents/triage-labels.md`, map the canonical role names through it, and treat any other label it says pickup skips as "not for an agent" too. Create a missing `agent-go` or `agent-pickup` label with `gh label create` on first use.
 
 ## 1. Choose
 
