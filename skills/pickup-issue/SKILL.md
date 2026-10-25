@@ -37,7 +37,7 @@ If the repo has `docs/agents/triage-labels.md`, map the canonical role names thr
 
 ## Claims
 
-An issue's **agent PR** is a PR, open or closed, labelled `agent-pickup` whose body starts `Closes #<n>`: `gh pr list --state all --label agent-pickup --search "Closes #<n> in:body"`. Search the body rather than GitHub's linked-issue field, which stays empty for a PR into a non-default branch.
+An issue's **agent PR** is a PR, open or closed, labelled `agent-pickup` whose body's first line is `Closes #<n>`: `gh pr list --state all --label agent-pickup --search 'Closes <n> in:body' --json number,state,mergedAt,createdAt,body --jq '.[] | select(.body | test("^Closes #<n>([^0-9]|$)"))'`. The search narrows the list on GitHub's side and the `test` makes the match exact; match the body rather than GitHub's linked-issue field, which stays empty for a PR into a non-default branch. Where several match (a retry after a rejected attempt), the most recently created one is the issue's agent PR.
 
 An issue is **in flight** while it carries `agent-pickup` and either its agent PR is open or its most recent claim comment (step 2) is under 24 hours old.
 
