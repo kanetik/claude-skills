@@ -29,7 +29,7 @@ try {
 
     if (Get-Command claude -ErrorAction SilentlyContinue) {
         $out = (& $script -RepoDir $repo -DryRun) -join "`n"
-        Check 'launch is a background auto-mode pickup' ($out -match '--bg --permission-mode auto /pickup-issue') $out
+        Check 'launch is a background auto-mode pickup' ($out -match '--bg --permission-mode auto --name demo-repo pickup \(nightly, .+\) /pickup-issue') $out
     } else { 'skip launch case: claude not on PATH' }
 
     $notRepo = Join-Path $tmp 'plain'
@@ -77,6 +77,8 @@ try {
     Set-Content (Join-Path $state 'demo.last-launch') ''
     Check 'an empty launch stamp does not stop the decision' ($null -ne (Resolve-Launch -Now $mon.AddDays(1) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a second poll within 30 minutes does not launch' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(15) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $yes))
+    Check 'session name says which trigger launched it' ((Get-SessionName 'wakey' 'go' ([datetime]'2026-10-25 21:30')) -eq 'wakey pickup (agent-go, Oct 25 21:30)')
+    Check 'session name for a nightly run' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15')) -eq 'wakey pickup (nightly, Oct 26 01:15)')
     Check 'a missing window does not hold' ($null -eq (Get-QuotaHold -Now $mon -RateLimits ([pscustomobject]@{ seven_day = [pscustomobject]@{ used_percentage = 10; resets_at = $future } })))
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
