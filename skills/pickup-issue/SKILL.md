@@ -87,7 +87,7 @@ An issue that turns out to be done already, or obsolete: comment with the eviden
 
 ## 4. Build
 
-Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run.
+Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run. A run's second issue starts from a fresh, up-to-date copy of the base those instructions name, never from the first issue's branch.
 
 The PR:
 - opened as a draft unless the repo says otherwise;
