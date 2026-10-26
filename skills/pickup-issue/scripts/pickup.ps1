@@ -49,8 +49,8 @@ if ($Unregister) {
 }
 
 $claude = Get-Exe 'claude'
-$claudeArgs = @('--bg', '--permission-mode', 'auto', '/pickup-issue')
-if ($DryRun) { "launch in ${RepoDir}: $claude $($claudeArgs -join ' ')"; return }
+$launchArgs = { param($reason) @('--bg', '--permission-mode', 'auto', '--name', (Get-SessionName $name $reason (Get-Date)), '/pickup-issue') }
+if ($DryRun) { "launch in ${RepoDir}: $claude $((& $launchArgs 'nightly') -join ' ')"; return }
 
 $hasGo = {
     Push-Location $RepoDir
@@ -60,6 +60,8 @@ $hasGo = {
         [int]$n -gt 0
     } finally { Pop-Location }
 }
-if (-not (Resolve-Launch -Now (Get-Date) -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo)) { return }
+$reason = Resolve-Launch -Now (Get-Date) -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo
+if (-not $reason) { return }
+$claudeArgs = & $launchArgs $reason
 Push-Location $RepoDir
 try { & $claude @claudeArgs } finally { Pop-Location }

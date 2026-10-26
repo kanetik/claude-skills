@@ -36,6 +36,11 @@ function Resolve-Launch {
     $reason
 }
 
+function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now) {
+    $label = if ($Reason -eq 'go') { 'agent-go' } else { $Reason }
+    "$Name pickup ($label, $($Now.ToString('MMM d HH:mm', [cultureinfo]::InvariantCulture)))"
+}
+
 function Get-FiveHourCap([datetime] $Now, [int] $Workday = 30, [int] $Otherwise = 50) {
     $weekday = $Now.DayOfWeek -notin 'Saturday', 'Sunday'
     if ($weekday -and $Now.Hour -ge 1 -and $Now.Hour -lt 18) { $Workday } else { $Otherwise }
