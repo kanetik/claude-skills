@@ -43,7 +43,7 @@ function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now, $Cho
 }
 
 $chooseOnlyTools = 'Bash,Read,Grep,Glob,Skill'
-$chooseOnlyDenied = 'Bash(git:*) Bash(gh pr:*) Bash(gh label:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue close:*) Bash(gh issue reopen:*) Bash(gh issue create:*) Bash(gh issue delete:*) Bash(gh issue transfer:*) Bash(gh issue lock:*) Bash(gh issue develop:*)'
+$chooseOnlyDenied = 'Bash(git:*) Bash(gh pr create:*) Bash(gh pr edit:*) Bash(gh pr close:*) Bash(gh pr reopen:*) Bash(gh pr merge:*) Bash(gh pr comment:*) Bash(gh pr review:*) Bash(gh pr ready:*) Bash(gh pr lock:*) Bash(gh pr unlock:*) Bash(gh pr revert:*) Bash(gh pr update-branch:*) Bash(gh label:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue close:*) Bash(gh issue reopen:*) Bash(gh issue create:*) Bash(gh issue delete:*) Bash(gh issue transfer:*) Bash(gh issue lock:*) Bash(gh issue unlock:*) Bash(gh issue pin:*) Bash(gh issue unpin:*) Bash(gh issue develop:*)'
 
 function Read-ChosenIssue([string[]] $Lines) {
     $line = $Lines | Where-Object { $_ -match '^\s*PICKUP\s+(none|cleanup|#?\d{1,9}\s+\S.*)\s*$' } | Select-Object -Last 1
