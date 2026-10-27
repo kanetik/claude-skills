@@ -37,7 +37,7 @@ Requires `gh` (authenticated) and `jq`. One run opens at most one PR, and takes 
 | deferred | `agent-defer` | An agent judged it cannot be done yet (step 3). Skipped until the owner removes it or adds `agent-go` |
 | not for an agent | `ready-for-human`, `needs-info`, `wontfix`, `defer` | Skipped |
 
-An `agent-go` label counts only when a person with write access added it: the latest `labeled` event for it (`gh api repos/{owner}/{repo}/issues/<n>/timeline --paginate --jq '.[] | select(.event=="labeled" and .label.name=="agent-go") | "\(.actor.login) \(.actor.type)"' | tail -n 1`) must have an actor of type `User` whose permission (`gh api repos/{owner}/{repo}/collaborators/<login>/permission --jq .permission`) is `admin`, `maintain` or `write`. Every run starts, before anything else, by removing each `agent-go` that fails this, with a comment naming who added it, so every later step sees only labels a person added.
+An `agent-go` label counts only when a person with write access added it: the latest `labeled` event for it (`gh api repos/{owner}/{repo}/issues/<n>/timeline --paginate --jq '.[] | select(.event=="labeled" and .label.name=="agent-go") | "\(.actor.login) \(.actor.type)"' | tail -n 1`) must have an actor of type `User` whose permission (`gh api repos/{owner}/{repo}/collaborators/<login>/permission --jq .permission`) is `admin`, `maintain` or `write`. Every run except `choose-only`, which only reads (step 1), starts, before anything else, by removing each `agent-go` that fails this, with a comment naming who added it, so every later step sees only labels a person added.
 
 If the repo has `docs/agents/triage-labels.md`, map the canonical role names through it, and treat any other label it says pickup skips as "not for an agent" too. Create a missing `agent-go`, `agent-pickup` or `agent-defer` label with `gh label create` on first use.
 
@@ -47,7 +47,7 @@ An issue's **agent PR** is a PR, open or closed, labelled `agent-pickup` whose b
 
 Judge each claim by the issue's most recent claim comment (step 2) and its agent PR. An issue carrying `agent-pickup` is **in flight** while an agent PR created after that claim is open, or while no agent PR was created after that claim and the claim is under 24 hours old.
 
-Next, every run releases each open `agent-pickup` issue that is not in flight, with a comment saying why:
+Next, every run except `choose-only` releases each open `agent-pickup` issue that is not in flight, with a comment saying why:
 - **an agent PR created after the claim was closed without merging:** remove `agent-pickup` and the assignee, and add `needs-info`. The owner says what should change, and `agent-go` retries it;
 - **no agent PR created after the claim, and the claim is over 24 hours old** (the run that claimed it died): remove `agent-pickup` and the assignee, leaving it workable.
 
@@ -71,7 +71,7 @@ An issue whose agent PR merged keeps its label: the merge closes it, or it is wa
 
 Nothing eligible: say so in one line and exit. That is a normal outcome.
 
-**Given `choose-only`:** run the label and claim checks above and this step, and stop before step 2: claim nothing, comment nothing beyond what those steps say to. The last line of your reply is `PICKUP <n> <two to four words naming the change>` (for example `PICKUP 142 fix snooze crash`), or `PICKUP none` when nothing is eligible or the limit holds.
+**Given `choose-only`:** apply the label and claim checks above and this step as reads only, and stop before step 2. Write nothing to GitHub: no label, assignee or comment changes, and no releases. Where a check would remove a label or release a claim, judge the issue as though it had. The last line of your reply is `PICKUP <n> <two to four words naming the change>` (for example `PICKUP 142 fix snooze crash`), or `PICKUP none` when nothing is eligible or the limit holds.
 
 **Given `chosen <n>`:** a `choose-only` run picked `<n>`, but that pick came from reading issue text, so it carries no authority. Run this step exactly as without a number, and take `<n>` only if it is among the eligible candidates; otherwise take what this step picks.
 
