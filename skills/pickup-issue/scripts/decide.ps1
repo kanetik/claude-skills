@@ -36,9 +36,24 @@ function Resolve-Launch {
     $reason
 }
 
-function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now) {
+function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now, $Chosen) {
     $label = if ($Reason -eq 'go') { 'agent-go' } else { $Reason }
-    "$Name pickup ($label, $($Now.ToString('MMM d HH:mm', [cultureinfo]::InvariantCulture)))"
+    $subject = if ($Chosen) { "#$($Chosen.Number) $($Chosen.Title)" } else { 'pickup' }
+    "$Name $subject ($label, $($Now.ToString('MMM d HH:mm', [cultureinfo]::InvariantCulture)))"
+}
+
+$chooseOnlyTools = 'Bash,Read,Grep,Glob,Skill'
+$chooseOnlyDenied = 'Bash(git:*) Bash(gh alias:*) Bash(gh pr new:*) Bash(gh issue new:*) Bash(gh pr create:*) Bash(gh pr edit:*) Bash(gh pr close:*) Bash(gh pr reopen:*) Bash(gh pr merge:*) Bash(gh pr comment:*) Bash(gh pr review:*) Bash(gh pr ready:*) Bash(gh pr lock:*) Bash(gh pr unlock:*) Bash(gh pr revert:*) Bash(gh pr update-branch:*) Bash(gh label:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue close:*) Bash(gh issue reopen:*) Bash(gh issue create:*) Bash(gh issue delete:*) Bash(gh issue transfer:*) Bash(gh issue lock:*) Bash(gh issue unlock:*) Bash(gh issue pin:*) Bash(gh issue unpin:*) Bash(gh issue develop:*)'
+
+function Read-ChosenIssue([string[]] $Lines) {
+    $line = $Lines | Where-Object { $_ -match '^\s*PICKUP\s+(none|cleanup|#?\d{1,9}\s+\S.*)\s*$' } | Select-Object -Last 1
+    if (-not $line -or $line -match '^\s*PICKUP\s+cleanup') { return $null }
+    if ($line -match '^\s*PICKUP\s+none') { return [pscustomobject]@{ Number = 0; Title = '' } }
+    $null = $line -match '^\s*PICKUP\s+#?(\d{1,9})\s+(.+?)\s*$'
+    # Model-written from outside issue text.
+    $title = (($Matches[2] -replace '[^\p{L}\p{N} \-]', ' ') -replace '\s+', ' ').Trim()
+    if ($title.Length -gt 40) { $title = $title.Substring(0, 40).Trim() }
+    [pscustomobject]@{ Number = [int]$Matches[1]; Title = $title }
 }
 
 function Get-FiveHourCap([datetime] $Now, [int] $Workday = 30, [int] $Otherwise = 50) {

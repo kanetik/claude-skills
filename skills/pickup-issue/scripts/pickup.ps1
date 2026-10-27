@@ -33,7 +33,7 @@ if ($Register) {
     $taskArgs = "--headless `"$pwsh`" -NoProfile -NonInteractive -File `"$PSCommandPath`" -RepoDir `"$RepoDir`" -NightlyAt $NightlyAt"
     if ($DryRun) { "register $taskPath${taskName} every $PollMinutes min: $conhost $taskArgs"; return }
     # One task, so Task Scheduler's IgnoreNew is what keeps two launches from ever running at once.
-    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $PollMinutes)
     $action = New-ScheduledTaskAction -Execute $conhost -Argument $taskArgs -WorkingDirectory $RepoDir
     Register-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
@@ -49,7 +49,11 @@ if ($Unregister) {
 }
 
 $claude = Get-Exe 'claude'
-$launchArgs = { param($reason) @('--bg', '--permission-mode', 'auto', '--name', (Get-SessionName $name $reason (Get-Date)), '/pickup-issue') }
+$launchArgs = {
+    param($reason, $chosen)
+    $prompt = if ($chosen) { "/pickup-issue chosen $($chosen.Number)" } else { '/pickup-issue' }
+    @('--bg', '--permission-mode', 'auto', '--name', (Get-SessionName $name $reason (Get-Date) $chosen), $prompt)
+}
 if ($DryRun) { "launch in ${RepoDir}: $claude $((& $launchArgs 'nightly') -join ' ')"; return }
 
 $hasGo = {
@@ -62,6 +66,11 @@ $hasGo = {
 }
 $reason = Resolve-Launch -Now (Get-Date) -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo
 if (-not $reason) { return }
-$claudeArgs = & $launchArgs $reason
 Push-Location $RepoDir
-try { & $claude @claudeArgs } finally { Pop-Location }
+try {
+    # A running session cannot rename itself, so the issue is chosen before launch to put it in the name.
+    $chosen = Read-ChosenIssue (& $claude -p --model haiku --permission-mode auto "--tools=$chooseOnlyTools" "--disallowedTools=$chooseOnlyDenied" '/pickup-issue choose-only' 2>$null)
+    if ($chosen -and $chosen.Number -eq 0) { return }
+    $claudeArgs = & $launchArgs $reason $chosen
+    & $claude @claudeArgs
+} finally { Pop-Location }
