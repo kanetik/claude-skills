@@ -43,7 +43,7 @@ function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now, $Cho
 }
 
 function Read-ChosenIssue([string[]] $Lines) {
-    $line = @($Lines | Where-Object { $_ -match '^\s*PICKUP\s+(none|#?\d+\s+\S.*)\s*$' })[-1]
+    $line = $Lines | Where-Object { $_ -match '^\s*PICKUP\s+(none|#?\d+\s+\S.*)\s*$' } | Select-Object -Last 1
     if (-not $line) { return $null }
     if ($line -match '^\s*PICKUP\s+none') { return [pscustomobject]@{ Number = 0; Title = '' } }
     $null = $line -match '^\s*PICKUP\s+#?(\d+)\s+(.+?)\s*$'

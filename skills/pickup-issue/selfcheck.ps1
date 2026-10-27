@@ -3,6 +3,7 @@
 # Every pickup.ps1 case uses -DryRun, so nothing is registered and no session starts.
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 $script = Join-Path $PSScriptRoot 'scripts/pickup.ps1'
 . (Join-Path $PSScriptRoot 'scripts/decide.ps1')
 $fails = 0
