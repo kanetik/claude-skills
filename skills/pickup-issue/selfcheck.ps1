@@ -79,6 +79,13 @@ try {
     Check 'a second poll within 30 minutes does not launch' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(15) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $yes))
     Check 'session name says which trigger launched it' ((Get-SessionName 'wakey' 'go' ([datetime]'2026-10-25 21:30')) -eq 'wakey pickup (agent-go, Oct 25 21:30)')
     Check 'session name for a nightly run' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15')) -eq 'wakey pickup (nightly, Oct 26 01:15)')
+    $pick = Read-ChosenIssue @('Checked 12 issues.', 'PICKUP #142 Fix snooze crash!')
+    Check 'reads the chosen issue from the last PICKUP line' ($pick.Number -eq 142 -and $pick.Title -eq 'Fix snooze crash') "$pick"
+    Check 'session name carries the chosen issue' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15') $pick) -eq 'wakey #142 Fix snooze crash (nightly, Oct 26 01:15)')
+    Check 'PICKUP none means nothing to launch' ((Read-ChosenIssue @('PICKUP none')).Number -eq 0)
+    Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
+    Check 'no output at all falls back to a plain launch' ($null -eq (Read-ChosenIssue @()))
+    Check 'the title is cut to 40 characters and stripped of quotes and flags' ((Read-ChosenIssue @("PICKUP 7 `"--model`" $('x' * 60)")).Title.Length -le 40 -and (Read-ChosenIssue @('PICKUP 7 "a" `b`')).Title -eq 'a b')
     Check 'a missing window does not hold' ($null -eq (Get-QuotaHold -Now $mon -RateLimits ([pscustomobject]@{ seven_day = [pscustomobject]@{ used_percentage = 10; resets_at = $future } })))
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue

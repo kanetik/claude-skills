@@ -26,7 +26,7 @@ allowed-tools:
 
 # Pick up an issue
 
-Requires `gh` (authenticated) and `jq`. One run opens at most one PR, and takes at most two issues: when the first ends without a PR (needs-info, deferred, already done, or a failed build), go back to step 1 once and take the next. When the second also ends without one, or the run was given an issue number, stop.
+Requires `gh` (authenticated) and `jq`. One run opens at most one PR, and takes at most two issues: when the first ends without a PR (needs-info, deferred, already done, or a failed build), go back to step 1 once and take the next. When the second also ends without one, or the run was given an issue number, stop. A run given `chosen <n>` was not given a number in that sense: it still gets the second try.
 
 ## Labels
 
@@ -71,6 +71,10 @@ An issue whose agent PR merged keeps its label: the merge closes it, or it is wa
 
 Nothing eligible: say so in one line and exit. That is a normal outcome.
 
+**Given `choose-only`:** run the label and claim checks above and this step, and stop before step 2: claim nothing, comment nothing beyond what those steps say to. The last line of your reply is `PICKUP <n> <two to four words naming the change>` (for example `PICKUP 142 fix snooze crash`), or `PICKUP none` when nothing is eligible or the limit holds.
+
+**Given `chosen <n>`:** a `choose-only` run just picked `<n>`. Treat it as a given issue number for this step, then carry on as though step 1 chose it.
+
 ## 2. Claim
 
 Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent-pickup`, removing `agent-go`, `needs-info` and `agent-defer` where present, then comment `Claimed by an automated pickup run.` on the issue. Claiming first is what lets a later run's step 1 skip the issue.
@@ -112,7 +116,7 @@ pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Register -NightlyAt 01:0
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Unregister
 ```
 
-Every 15 minutes it starts `claude --bg --permission-mode auto /pickup-issue` in the checkout, named for the repo, the trigger and the time (`wakey pickup (nightly, Oct 26 01:00)`), when the day's run after `-NightlyAt` has not happened yet, or when an open issue carries `agent-go`; never within 30 minutes of its last launch.
+Every 15 minutes it checks whether the day's run after `-NightlyAt` has not happened yet, or an open issue carries `agent-go`, and never acts within 30 minutes of its last launch. When one is due, a headless `claude -p "/pickup-issue choose-only"` picks the issue, and `claude --bg --permission-mode auto "/pickup-issue chosen <n>"` works it, named for the repo, the issue, the trigger and the time (`wakey #142 fix snooze crash (nightly, Oct 26 01:00)`). With nothing to pick, no session starts. If the choosing pass prints no `PICKUP` line, the launch falls back to a plain `/pickup-issue` named `wakey pickup (nightly, Oct 26 01:00)`. The name stays on the first issue even if the run moves on to a second one.
 
 **Usage caps.** It also holds off while Claude Code plan usage is high: the 5-hour window at 30% or more on weekdays from 01:00 to 18:00 and 50% or more otherwise, or the weekly window at 70% or more (`Get-FiveHourCap` and `Get-QuotaHold` in `scripts/decide.ps1`). A held nightly run is retried on later polls. The figures come from the `rate_limits` object Claude Code passes to the status line, so the status line has to save it to `%LOCALAPPDATA%\pickup-issue\usage.json`. In a PowerShell status line command that has parsed its input into `$input`, add:
 
