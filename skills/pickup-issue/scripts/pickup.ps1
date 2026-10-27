@@ -33,7 +33,7 @@ if ($Register) {
     $taskArgs = "--headless `"$pwsh`" -NoProfile -NonInteractive -File `"$PSCommandPath`" -RepoDir `"$RepoDir`" -NightlyAt $NightlyAt"
     if ($DryRun) { "register $taskPath${taskName} every $PollMinutes min: $conhost $taskArgs"; return }
     # One task, so Task Scheduler's IgnoreNew is what keeps two launches from ever running at once.
-    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $PollMinutes)
     $action = New-ScheduledTaskAction -Execute $conhost -Argument $taskArgs -WorkingDirectory $RepoDir
     Register-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
