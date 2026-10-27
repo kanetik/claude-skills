@@ -84,6 +84,7 @@ try {
     Check 'reads the chosen issue from the last PICKUP line' ($pick.Number -eq 142 -and $pick.Title -eq 'Fix snooze crash') "$pick"
     Check 'session name carries the chosen issue' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15') $pick) -eq 'wakey #142 Fix snooze crash (nightly, Oct 26 01:15)')
     Check 'PICKUP none means nothing to launch' ((Read-ChosenIssue @('PICKUP none')).Number -eq 0)
+    Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
     Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
     Check 'no output at all falls back to a plain launch' ($null -eq (Read-ChosenIssue @()))
     Check 'the title is cut to 40 characters and stripped of quotes and flags' ((Read-ChosenIssue @("PICKUP 7 `"--model`" $('x' * 60)")).Title.Length -le 40 -and (Read-ChosenIssue @('PICKUP 7 "a" `b`')).Title -eq 'a b')
