@@ -69,7 +69,7 @@ if (-not $reason) { return }
 Push-Location $RepoDir
 try {
     # A running session cannot rename itself, so the issue is chosen before launch to put it in the name.
-    $chosen = Read-ChosenIssue (& $claude -p --model haiku --permission-mode auto '/pickup-issue choose-only' 2>$null)
+    $chosen = Read-ChosenIssue (& $claude -p --model haiku --permission-mode auto "--tools=$chooseOnlyTools" "--disallowedTools=$chooseOnlyDenied" '/pickup-issue choose-only' 2>$null)
     if ($chosen -and $chosen.Number -eq 0) { return }
     $claudeArgs = & $launchArgs $reason $chosen
     & $claude @claudeArgs

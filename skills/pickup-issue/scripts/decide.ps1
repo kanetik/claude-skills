@@ -42,11 +42,14 @@ function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now, $Cho
     "$Name $subject ($label, $($Now.ToString('MMM d HH:mm', [cultureinfo]::InvariantCulture)))"
 }
 
+$chooseOnlyTools = 'Bash,Read,Grep,Glob,Skill'
+$chooseOnlyDenied = 'Bash(git:*) Bash(gh pr:*) Bash(gh label:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue close:*) Bash(gh issue reopen:*) Bash(gh issue create:*) Bash(gh issue delete:*) Bash(gh issue transfer:*) Bash(gh issue lock:*) Bash(gh issue develop:*)'
+
 function Read-ChosenIssue([string[]] $Lines) {
-    $line = $Lines | Where-Object { $_ -match '^\s*PICKUP\s+(none|cleanup|#?\d+\s+\S.*)\s*$' } | Select-Object -Last 1
+    $line = $Lines | Where-Object { $_ -match '^\s*PICKUP\s+(none|cleanup|#?\d{1,9}\s+\S.*)\s*$' } | Select-Object -Last 1
     if (-not $line -or $line -match '^\s*PICKUP\s+cleanup') { return $null }
     if ($line -match '^\s*PICKUP\s+none') { return [pscustomobject]@{ Number = 0; Title = '' } }
-    $null = $line -match '^\s*PICKUP\s+#?(\d+)\s+(.+?)\s*$'
+    $null = $line -match '^\s*PICKUP\s+#?(\d{1,9})\s+(.+?)\s*$'
     # Model-written from outside issue text.
     $title = (($Matches[2] -replace '[^\p{L}\p{N} \-]', ' ') -replace '\s+', ' ').Trim()
     if ($title.Length -gt 40) { $title = $title.Substring(0, 40).Trim() }

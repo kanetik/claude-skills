@@ -84,6 +84,12 @@ try {
     Check 'reads the chosen issue from the last PICKUP line' ($pick.Number -eq 142 -and $pick.Title -eq 'Fix snooze crash') "$pick"
     Check 'session name carries the chosen issue' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15') $pick) -eq 'wakey #142 Fix snooze crash (nightly, Oct 26 01:15)')
     Check 'PICKUP none means nothing to launch' ((Read-ChosenIssue @('PICKUP none')).Number -eq 0)
+    Check 'an issue number too large for an int falls back instead of throwing' ($null -eq (Read-ChosenIssue @('PICKUP 99999999999 x')))
+    Check 'the choosing pass gets no editing or PowerShell tools' ($chooseOnlyTools -notmatch 'Edit|Write|PowerShell|Agent')
+    Check 'the choosing pass is denied GitHub writes' ($chooseOnlyDenied -match 'Bash\(gh issue edit:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh label:\*\)' -and $chooseOnlyDenied -match 'Bash\(git:\*\)')
+    # Both flags are variadic; written with a space, they swallow the prompt after them.
+    $launcher = Get-Content -Raw $script
+    Check 'the tool flags use the = form' ($launcher -match '"--tools=\$chooseOnlyTools"' -and $launcher -match '"--disallowedTools=\$chooseOnlyDenied"')
     Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
     Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
     Check 'no output at all falls back to a plain launch' ($null -eq (Read-ChosenIssue @()))
