@@ -86,7 +86,7 @@ try {
     Check 'PICKUP none means nothing to launch' ((Read-ChosenIssue @('PICKUP none')).Number -eq 0)
     Check 'an issue number too large for an int falls back instead of throwing' ($null -eq (Read-ChosenIssue @('PICKUP 99999999999 x')))
     Check 'the choosing pass gets no editing or PowerShell tools' ($chooseOnlyTools -notmatch 'Edit|Write|PowerShell|Agent')
-    Check 'the choosing pass keeps gh pr list for the in-flight check' ($chooseOnlyDenied -notmatch 'Bash\(gh pr:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh pr create:\*\)')
+    Check 'the choosing pass keeps gh pr list for the in-flight check' ($chooseOnlyDenied -notmatch 'Bash\(gh pr:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh pr create:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh pr new:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh alias:\*\)')
     Check 'the choosing pass is denied the gh and git write commands' ($chooseOnlyDenied -match 'Bash\(gh issue edit:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh label:\*\)' -and $chooseOnlyDenied -match 'Bash\(git:\*\)')
     # Both flags are variadic; written with a space, they swallow the prompt after them.
     $launcher = Get-Content -Raw $script
