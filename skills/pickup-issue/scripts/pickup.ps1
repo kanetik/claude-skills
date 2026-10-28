@@ -60,8 +60,17 @@ $hasGo = {
         [int]$n -gt 0
     } finally { Pop-Location }
 }
-$reason = Resolve-Launch -Now (Get-Date) -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo
+$now = Get-Date
+$reason = Resolve-Launch -Now $now -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo
 if (-not $reason) { return }
 $claudeArgs = & $launchArgs $reason
+$sessionName = $claudeArgs[$claudeArgs.IndexOf('--name') + 1]
 Push-Location $RepoDir
-try { & $claude @claudeArgs } finally { Pop-Location }
+try {
+    $out = & $claude @claudeArgs 2>&1 | Out-String
+    $exit = $LASTEXITCODE
+    $started = $exit -eq 0 -and (Test-SessionStarted (& $claude agents --json 2>$null | Out-String) $sessionName)
+} finally { Pop-Location }
+Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason exit=$exit started=$started`n$($out.TrimEnd())`n"
+if (-not $started) { throw "launch of '$sessionName' failed (exit $exit); see $(Join-Path $stateDir "$name.log")" }
+Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason
