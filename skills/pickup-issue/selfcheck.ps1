@@ -73,7 +73,17 @@ try {
     Check 'a held nightly writes no stamps' (-not (Test-Path (Join-Path $state 'demo.last-nightly')) -and -not (Test-Path (Join-Path $state 'demo.last-launch')))
     Remove-Item (Join-Path $state 'usage.json')
     Check 'no usage file: nightly launches' ((Resolve-Launch -Now $mon -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
-    Check 'the launch stamps the nightly date' ((Get-Content (Join-Path $state 'demo.last-nightly') -Raw).Trim() -eq '2026-10-26')
+    Check 'deciding to launch does not mark the nightly done' (-not (Test-Path (Join-Path $state 'demo.last-nightly')))
+    Check 'a nightly whose launch failed is retried after the guard' ((Resolve-Launch -Now $mon.AddMinutes(31) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
+    Complete-Launch -Now $mon -StateDir $state -Name demo -Reason 'go'
+    Check 'a completed agent-go launch does not mark the nightly done' (-not (Test-Path (Join-Path $state 'demo.last-nightly')))
+    Complete-Launch -Now $mon -StateDir $state -Name demo -Reason 'nightly'
+    Check 'a completed nightly launch stamps the date' ((Get-Content (Join-Path $state 'demo.last-nightly') -Raw).Trim() -eq '2026-10-26')
+    Check 'a completed nightly is not repeated the same day' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(62) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
+    $agents = '[{"pid":1,"kind":"interactive","name":"other"},{"id":"ab12","kind":"background","name":"wakey pickup (nightly, Oct 26 01:00)"},{"pid":2,"kind":"interactive"}]'
+    Check 'the launched session is found by name' (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 26 01:00)')
+    Check 'a session that never registered is a failed launch' (-not (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 27 01:00)'))
+    Check 'unreadable agents output is a failed launch' (-not (Test-SessionStarted 'not json' 'x'))
     Set-Content (Join-Path $state 'demo.last-launch') ''
     Check 'an empty launch stamp does not stop the decision' ($null -ne (Resolve-Launch -Now $mon.AddDays(1) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a second poll within 30 minutes does not launch' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(15) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $yes))

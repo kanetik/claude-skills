@@ -112,7 +112,7 @@ pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Register -NightlyAt 01:0
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Unregister
 ```
 
-Every 15 minutes it starts `claude --bg --permission-mode auto /pickup-issue` in the checkout, named for the repo, the trigger and the time (`wakey pickup (nightly, Oct 26 01:00)`), when the day's run after `-NightlyAt` has not happened yet, or when an open issue carries `agent-go`; never within 30 minutes of its last launch.
+Every 15 minutes it starts `claude --bg --permission-mode auto /pickup-issue` in the checkout, named for the repo, the trigger and the time (`wakey pickup (nightly, Oct 26 01:00)`), when the day's run after `-NightlyAt` has not happened yet, or when an open issue carries `agent-go`; never within 30 minutes of its last launch. Each launch appends Claude's output and exit code to `%LOCALAPPDATA%\pickup-issue\<repo>.log`. A launch whose session does not appear in `claude agents --json` fails the task, and a failed nightly run is retried on a later poll.
 
 **Usage caps.** It also holds off while Claude Code plan usage is high: the 5-hour window at 30% or more on weekdays from 01:00 to 18:00 and 50% or more otherwise, or the weekly window at 70% or more (`Get-FiveHourCap` and `Get-QuotaHold` in `scripts/decide.ps1`). A held nightly run is retried on later polls. The figures come from the `rate_limits` object Claude Code passes to the status line, so the status line has to save it to `%LOCALAPPDATA%\pickup-issue\usage.json`. In a PowerShell status line command that has parsed its input into `$input`, add:
 
