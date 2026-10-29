@@ -23,6 +23,7 @@ try {
     $out = (& $script -RepoDir $repo -Register -NightlyAt '03:00' -DryRun) -join "`n"
     Check 'register makes exactly one task, named after the repo folder' (([regex]::Matches($out, 'register ')).Count -eq 1 -and $out -match 'demo-repo pickup') $out
     Check 'the task carries the nightly time' ($out -match '-NightlyAt 03:00') $out
+    Check 'the task is never registered elevated' ((Get-Content $script -Raw) -notmatch 'RunLevel\s+Highest') 'an elevated task runs user-writable scripts with admin rights'
 
     $out = (& $script -RepoDir $repo -Unregister -DryRun) -join "`n"
     Check 'unregister names the task' ($out -match 'demo-repo pickup') $out
@@ -84,6 +85,8 @@ try {
     Check 'the launched session is found by name' (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 26 01:00)')
     Check 'a session that never registered is a failed launch' (-not (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 27 01:00)'))
     Check 'unreadable agents output is a failed launch' (-not (Test-SessionStarted 'not json' 'x'))
+    Check 'an unreachable background service gets a hint' ((Get-LaunchFailureHint "Starting background service…`nCouldn't reach the background service (background service did not become reachable within 45s)") -match 'elevated process')
+    Check 'other launch failures get no hint' ($null -eq (Get-LaunchFailureHint 'Workspace not trusted.'))
     Set-Content (Join-Path $state 'demo.last-launch') ''
     Check 'an empty launch stamp does not stop the decision' ($null -ne (Resolve-Launch -Now $mon.AddDays(1) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a second poll within 30 minutes does not launch' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(15) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $yes))

@@ -105,7 +105,7 @@ One short paragraph per issue taken: the issue, the PR link (or why there is non
 
 ## Unattended runs (Windows)
 
-`scripts/pickup.ps1` (PowerShell 7) registers one Task Scheduler task for a checkout, under the current user:
+`scripts/pickup.ps1` (PowerShell 7) registers one Task Scheduler task for a checkout, under the current user, not elevated:
 
 ```powershell
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Register -NightlyAt 01:00
@@ -121,5 +121,7 @@ if ($input.rate_limits) { $d = Join-Path $env:LOCALAPPDATA 'pickup-issue'; New-I
 ```
 
 The file is only refreshed while some Claude Code session is open. A window whose reset time has passed counts as reset, and with no file at all the launch goes ahead.
+
+**Every launch fails with "Couldn't reach the background service" while an elevated process owns it.** Claude Code runs one background service per user, at the integrity level of whatever started it, and a non-elevated task cannot connect to an elevated one. The service is elevated when an elevated process ran `claude --bg`: a terminal run as administrator, or, on an administrator account, a scheduled task under an S4U principal ("run whether user is logged on or not"), which gets the full administrator token even at `-RunLevel Limited`. Register such a task with `-LogonType Interactive` instead, and stop the elevated service once with `claude daemon stop --any`, from a terminal run as administrator. The failed launch's log entry says when this is the likely cause. Registering this task elevated also works, but it then runs scripts from user-writable folders with administrator rights every 15 minutes.
 
 A background session refuses a folder whose workspace trust was never accepted, so run `claude` interactively in the checkout once before registering. Stagger `-NightlyAt` across repositories so their runs do not share the machine. On macOS or Linux, a cron entry running the same `claude` command in the checkout does the nightly half.
