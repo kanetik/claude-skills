@@ -23,6 +23,9 @@ try {
     $out = (& $script -RepoDir $repo -Register -NightlyAt '03:00' -DryRun) -join "`n"
     Check 'register makes exactly one task, named after the repo folder' (([regex]::Matches($out, 'register ')).Count -eq 1 -and $out -match 'demo-repo pickup') $out
     Check 'the task carries the nightly time' ($out -match '-NightlyAt 03:00') $out
+    Check 'the task runs elevated' ($out -match 'pickup elevated every') $out
+    $src = Get-Content $script -Raw
+    Check 'registration asks for the highest run level' ($src -match 'New-ScheduledTaskPrincipal .*-RunLevel Highest' -and $src -match 'Register-ScheduledTask .*-Principal \$principal') 'pickup.ps1 no longer registers the task elevated'
 
     $out = (& $script -RepoDir $repo -Unregister -DryRun) -join "`n"
     Check 'unregister names the task' ($out -match 'demo-repo pickup') $out

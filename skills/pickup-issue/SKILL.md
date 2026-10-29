@@ -105,7 +105,7 @@ One short paragraph per issue taken: the issue, the PR link (or why there is non
 
 ## Unattended runs (Windows)
 
-`scripts/pickup.ps1` (PowerShell 7) registers one Task Scheduler task for a checkout, under the current user:
+`scripts/pickup.ps1` (PowerShell 7) registers one Task Scheduler task for a checkout, under the current user and elevated, so register from a PowerShell run as administrator. Without elevation the task cannot reach a Claude background service that is already running, and every launch fails with "Couldn't reach the background service".
 
 ```powershell
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Register -NightlyAt 01:00
