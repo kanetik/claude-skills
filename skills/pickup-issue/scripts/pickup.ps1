@@ -71,6 +71,7 @@ try {
     $exit = $LASTEXITCODE
     $started = $exit -eq 0 -and (Test-SessionStarted (& $claude agents --json 2>$null | Out-String) $sessionName)
 } finally { Pop-Location }
-Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason exit=$exit started=$started`n$($out.TrimEnd())`n"
-if (-not $started) { throw "launch of '$sessionName' failed (exit $exit); see $(Join-Path $stateDir "$name.log")" }
+$hint = if (-not $started) { Get-LaunchFailureHint $out }
+Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason exit=$exit started=$started`n$($out.TrimEnd())`n$(if ($hint) { "$hint`n" })"
+if (-not $started) { throw "launch of '$sessionName' failed (exit $exit). $hint See $(Join-Path $stateDir "$name.log")" }
 Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason

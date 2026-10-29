@@ -50,6 +50,10 @@ function Test-SessionStarted([string] $AgentsJson, [string] $SessionName) {
     [bool]($sessions | Where-Object { $_.PSObject.Properties['name'] -and $_.name -eq $SessionName })
 }
 
+function Get-LaunchFailureHint([string] $Output) {
+    if ($Output -match 'reach the background service') { 'An elevated process probably owns the Claude background service; see "Unattended runs" in the pickup-issue SKILL.md.' }
+}
+
 function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now) {
     $label = if ($Reason -eq 'go') { 'agent-go' } else { $Reason }
     "$Name pickup ($label, $($Now.ToString('MMM d HH:mm', [cultureinfo]::InvariantCulture)))"
