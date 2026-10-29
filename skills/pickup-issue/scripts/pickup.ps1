@@ -31,17 +31,12 @@ if ($Register) {
     # conhost --headless: a console program started directly by the task flashes a window on every poll.
     $conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
     $taskArgs = "--headless `"$pwsh`" -NoProfile -NonInteractive -File `"$PSCommandPath`" -RepoDir `"$RepoDir`" -NightlyAt $NightlyAt"
-    if ($DryRun) { "register $taskPath${taskName} elevated every $PollMinutes min: $conhost $taskArgs"; return }
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Registering needs an elevated PowerShell (Run as administrator).'
-    }
-    # Elevated: for an admin user claude's daemon runs at High integrity, and a Medium-integrity client cannot connect to it.
-    $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Highest
+    if ($DryRun) { "register $taskPath${taskName} every $PollMinutes min: $conhost $taskArgs"; return }
     # One task, so Task Scheduler's IgnoreNew is what keeps two launches from ever running at once.
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $PollMinutes)
     $action = New-ScheduledTaskAction -Execute $conhost -Argument $taskArgs -WorkingDirectory $RepoDir
-    Register-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Register-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
     "registered $taskPath$taskName"
     return
 }
