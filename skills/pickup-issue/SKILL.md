@@ -77,7 +77,7 @@ Nothing eligible: say so in one line and exit. That is a normal outcome.
 
 ## 2. Claim
 
-Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent-pickup`, removing `agent-go`, `agent-paused`, `needs-info` and `agent-defer` where present, then comment `Claimed by an automated pickup run.` on the issue. Claiming first is what lets a later run's step 1 skip the issue.
+Before reading any code: `gh issue edit <n> --add-assignee @me --add-label agent-pickup`, removing `agent-go`, `agent-paused`, `needs-info` and `agent-defer` where present and noting which were, then comment `Claimed by an automated pickup run.` on the issue. Claiming first is what lets a later run's step 1 skip the issue.
 
 ## 3. Triage
 
@@ -93,7 +93,7 @@ An issue that turns out to be done already, or obsolete: comment with the eviden
 
 Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run. Every issue after a run's first starts from a fresh, up-to-date copy of the base those instructions name, never from an earlier issue's branch.
 
-**Resuming.** If the issue's latest comment by the authenticated account (`gh api user --jq .login`) containing `<!-- pickup-issue: paused branch=<branch> -->` names a branch that still exists on the remote, build on that branch instead: check it out, merge the latest base into it, and take what is done, what remains and the assumptions so far from that comment. Its assumptions carry into the PR's list.
+**Resuming.** If the issue carried `agent-paused` when step 2 claimed it, and its latest comment by the authenticated account (`gh api user --jq .login`) containing `<!-- pickup-issue: paused branch=<branch> -->` names a branch that still exists on the remote, build on that branch instead: check it out, merge the latest base into it, and take what is done, what remains and the assumptions so far from that comment. Its assumptions carry into the PR's list.
 
 The PR:
 - opened as a draft unless the repo says otherwise;
