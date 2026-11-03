@@ -64,13 +64,40 @@ $hasGo = {
         [int]$n -gt 0
     } finally { Pop-Location }
 }
+$repoState = {
+    $PSNativeCommandUseErrorActionPreference = $true
+    $repo = gh repo view --json nameWithOwner --jq .nameWithOwner
+    $issues = @{}
+    foreach ($q in 'per_page=100&page=1', 'per_page=100&page=2', 'labels=agent-go&per_page=100') {
+        gh api "repos/$repo/issues?state=open&$q" --jq '.[] | select(has("pull_request") | not) | {number, title, body, created_at, author: .user.login, author_type: .user.type, labels: [.labels[].name], assignees: [.assignees[].login], blocked_by: .issue_dependencies_summary.blocked_by}' |
+            ConvertFrom-Json | ForEach-Object { $issues[$_.number] = $_ }
+    }
+    foreach ($i in $issues.Values) {
+        if ($i.labels -contains 'agent-go') {
+            $i | Add-Member agent_go_last_added_by (gh api "repos/$repo/issues/$($i.number)/timeline" --paginate --jq '.[] | select(.event == "labeled" and .label.name == "agent-go") | {login: .actor.login, type: .actor.type}' | Select-Object -Last 1 | ConvertFrom-Json)
+        }
+        if ($i.labels -contains 'agent-pickup') {
+            $i | Add-Member last_claim_comment_at (gh api "repos/$repo/issues/$($i.number)/comments" --paginate --jq '.[] | select(.body | startswith("Claimed by an automated pickup run.")) | .created_at' | Select-Object -Last 1)
+        }
+    }
+    $triage = Join-Path $RepoDir 'docs/agents/triage-labels.md'
+    [ordered]@{
+        repository = $repo
+        today = (Get-Date).ToString('yyyy-MM-dd')
+        collaborators = @(gh api "repos/$repo/collaborators" --paginate --jq '.[] | {login, permission: .role_name}' | ConvertFrom-Json)
+        agent_prs = @(gh pr list --state all --label agent-pickup --limit 200 --json number,state,mergedAt,createdAt,body --jq '.[] | .body |= (split("\n")[0])' | ConvertFrom-Json)
+        triage_labels_md = if (Test-Path -LiteralPath $triage) { Get-Content -LiteralPath $triage -Raw }
+        open_issues = @($issues.Values | Sort-Object number)
+    } | ConvertTo-Json -Depth 6
+}
 $now = Get-Date
 $reason = Resolve-Launch -Now $now -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo
 if (-not $reason) { return }
 Push-Location $RepoDir
 try {
     # A running session cannot rename itself, so the name's issue is picked before launch.
-    $chosen = Read-ChosenIssue (& $claude -p --model haiku --permission-mode auto "--tools=$chooseOnlyTools" "--disallowedTools=$chooseOnlyDenied" '/pickup-issue choose-only' 2>$null)
+    $chooseError = $null
+    $chosen = try { Read-ChosenIssue ((& $repoState) | & $claude -p --model haiku --permission-mode dontAsk '--tools=' '/pickup-issue choose-only' 2>$null) } catch { $chooseError = "choose-only failed: $_"; $null }
     if ($chosen -and $chosen.Number -eq 0) {
         Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason PICKUP none`n"
         Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason
@@ -83,6 +110,6 @@ try {
     $started = $exit -eq 0 -and (Test-SessionStarted (& $claude agents --json 2>$null | Out-String) $sessionName)
 } finally { Pop-Location }
 $hint = if (-not $started) { Get-LaunchFailureHint $out }
-Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason exit=$exit started=$started`n$($out.TrimEnd())`n$(if ($hint) { "$hint`n" })"
+Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason exit=$exit started=$started`n$(if ($chooseError) { "$chooseError`n" })$($out.TrimEnd())`n$(if ($hint) { "$hint`n" })"
 if (-not $started) { throw "launch of '$sessionName' failed (exit $exit). $hint See $(Join-Path $stateDir "$name.log")" }
 Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason

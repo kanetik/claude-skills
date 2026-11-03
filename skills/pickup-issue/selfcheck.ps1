@@ -98,12 +98,13 @@ try {
     Check 'session name carries the chosen issue' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15') $pick) -eq 'wakey #142 Fix snooze crash (nightly, Oct 26 01:15)')
     Check 'PICKUP none means nothing to launch' ((Read-ChosenIssue @('PICKUP none')).Number -eq 0)
     Check 'an issue number too large for an int falls back instead of throwing' ($null -eq (Read-ChosenIssue @('PICKUP 99999999999 x')))
-    Check 'the choosing pass gets no editing or PowerShell tools' ($chooseOnlyTools -notmatch 'Edit|Write|PowerShell|Agent')
-    Check 'the choosing pass keeps gh pr list for the in-flight check' ($chooseOnlyDenied -notmatch 'Bash\(gh pr:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh pr create:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh pr new:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh alias:\*\)')
-    Check 'the choosing pass is denied the gh and git write commands' ($chooseOnlyDenied -match 'Bash\(gh issue edit:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh label:\*\)' -and $chooseOnlyDenied -match 'Bash\(git:\*\)')
-    # Both flags are variadic; written with a space, they swallow the prompt after them.
+    # The choosing pass reads issue text written by other people, so it gets no tool it could be talked into using.
     $launcher = Get-Content -Raw $script
-    Check 'the tool flags use the = form' ($launcher -match '"--tools=\$chooseOnlyTools"' -and $launcher -match '"--disallowedTools=\$chooseOnlyDenied"')
+    $choose = @([regex]::Matches($launcher, '(?m)^.*-p --model haiku.*$').Value)
+    Check 'there is exactly one choosing pass' ($choose.Count -eq 1) ($choose -join "`n")
+    Check 'the choosing pass gets no tools, in the = form so the flag cannot swallow the prompt' ($choose[0] -match " '--tools=' '/pickup-issue choose-only'") $choose[0]
+    Check 'the choosing pass refuses anything not allowed instead of judging it' ($choose[0] -match '--permission-mode dontAsk' -and $choose[0] -notmatch 'auto|bypassPermissions|allowedTools|Bash') $choose[0]
+    Check 'the choosing pass reads the repository state from standard input' ($choose[0] -match '\(& \$repoState\) \| & \$claude') $choose[0]
     Check 'PICKUP none completes the launch, so the nightly is not re-run all night' ($launcher -match '(?s)Number -eq 0\) \{[^}]*Complete-Launch[^}]*return')
     Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
     Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
