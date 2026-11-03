@@ -1,9 +1,10 @@
 #Requires -Version 7
-# Self-check for scripts/pickup.ps1 and scripts/decide.ps1. Run it directly: pwsh selfcheck.ps1
+# Self-check for scripts/pickup.ps1, scripts/quota.ps1 and scripts/decide.ps1. Run it directly: pwsh selfcheck.ps1
 # Every pickup.ps1 case uses -DryRun, so nothing is registered and no session starts.
 
 $ErrorActionPreference = 'Stop'
 $script = Join-Path $PSScriptRoot 'scripts/pickup.ps1'
+$quota = Join-Path $PSScriptRoot 'scripts/quota.ps1'
 . (Join-Path $PSScriptRoot 'scripts/decide.ps1')
 $fails = 0
 function Check([string] $label, [bool] $ok, [string] $detail = '') {
@@ -14,7 +15,7 @@ $tmp = Join-Path ([IO.Path]::GetTempPath()) "pickup-selfcheck-$PID"
 $repo = Join-Path $tmp 'demo-repo'
 New-Item -ItemType Directory -Force -Path (Join-Path $repo '.git') | Out-Null
 try {
-    foreach ($f in $script, (Join-Path $PSScriptRoot 'scripts/decide.ps1')) {
+    foreach ($f in $script, $quota, (Join-Path $PSScriptRoot 'scripts/decide.ps1')) {
         $errs = $null
         [void][System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$null, [ref]$errs)
         Check "parses: $(Split-Path -Leaf $f)" ($errs.Count -eq 0) ($errs -join '; ')
@@ -93,6 +94,21 @@ try {
     Check 'session name says which trigger launched it' ((Get-SessionName 'wakey' 'go' ([datetime]'2026-10-25 21:30')) -eq 'wakey pickup (agent-go, Oct 25 21:30)')
     Check 'session name for a nightly run' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15')) -eq 'wakey pickup (nightly, Oct 26 01:15)')
     Check 'a missing window does not hold' ($null -eq (Get-QuotaHold -Now $mon -RateLimits ([pscustomobject]@{ seven_day = [pscustomobject]@{ used_percentage = 10; resets_at = $future } })))
+
+    $qdir = Join-Path $tmp 'quota'
+    New-Item -ItemType Directory -Force -Path $qdir | Out-Null
+    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
+    Check 'quota: no usage file does not hold' ($LASTEXITCODE -eq 0 -and -not $out) "exit $LASTEXITCODE $out"
+    $soon = [DateTimeOffset]::Now.AddHours(2).ToUnixTimeSeconds()
+    Set-Content (Join-Path $qdir 'usage.json') ((& $rl 99 $soon 10 $soon) | ConvertTo-Json -Compress)
+    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
+    Check 'quota: over the cap exits non-zero and names the window' ($LASTEXITCODE -eq 1 -and "$out" -match 'five_hour at 99%') "exit $LASTEXITCODE $out"
+    Set-Content (Join-Path $qdir 'usage.json') ((& $rl 1 $soon 1 $soon) | ConvertTo-Json -Compress)
+    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
+    Check 'quota: under the cap does not hold' ($LASTEXITCODE -eq 0 -and -not $out) "exit $LASTEXITCODE $out"
+    $named = [regex]::Matches((Get-Content (Join-Path $PSScriptRoot 'SKILL.md') -Raw), 'scripts/(\w+\.ps1)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    Check 'SKILL.md names quota.ps1, and every script it names exists' ('quota.ps1' -in $named -and -not ($named | Where-Object { -not (Test-Path (Join-Path $PSScriptRoot "scripts/$_")) })) ($named -join ', ')
+    Check 'quota and the scheduler read the same state directory' ((Get-Content $script -Raw) -match 'stateDir = Get-PickupStateDir')
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
 }

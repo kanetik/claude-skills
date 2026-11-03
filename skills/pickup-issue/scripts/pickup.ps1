@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $RepoDir '.git'))) { throw "$RepoDir
 $name = Split-Path -Leaf $RepoDir
 $taskPath = '\pickup-issue\'
 $taskName = "$name pickup"
-$stateDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'pickup-issue'
+$stateDir = Get-PickupStateDir
 
 function Get-Exe([string] $cmd) {
     $c = Get-Command $cmd -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1

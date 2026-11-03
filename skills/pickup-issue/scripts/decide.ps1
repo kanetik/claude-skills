@@ -1,3 +1,10 @@
+function Get-PickupStateDir { Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'pickup-issue' }
+
+function Read-RateLimits([string] $StateDir) {
+    $usageFile = Join-Path $StateDir 'usage.json'
+    if (Test-Path -LiteralPath $usageFile) { try { Get-Content -LiteralPath $usageFile -Raw | ConvertFrom-Json } catch { $null } } else { $null }
+}
+
 function Get-LaunchReason {
     param(
         [Parameter(Mandatory)][datetime] $Now,
@@ -23,13 +30,11 @@ function Resolve-Launch {
     )
     $launchStamp = Join-Path $StateDir "$Name.last-launch"
     $nightlyStamp = Join-Path $StateDir "$Name.last-nightly"
-    $usageFile = Join-Path $StateDir 'usage.json'
     $lastLaunch = try { [datetime]::Parse((Get-Content -LiteralPath $launchStamp -Raw -ErrorAction Stop).Trim()) } catch { $null }
     $lastNightly = try { (Get-Content -LiteralPath $nightlyStamp -Raw -ErrorAction Stop).Trim() } catch { '' }
     $reason = Get-LaunchReason -Now $Now -NightlyAt $NightlyAt -LastNightlyDate $lastNightly -LastLaunch $lastLaunch -HasGoIssue $HasGoIssue
     if (-not $reason) { return $null }
-    $rateLimits = if (Test-Path -LiteralPath $usageFile) { try { Get-Content -LiteralPath $usageFile -Raw | ConvertFrom-Json } catch { $null } } else { $null }
-    if (Get-QuotaHold -Now $Now -RateLimits $rateLimits) { return $null }
+    if (Get-QuotaHold -Now $Now -RateLimits (Read-RateLimits $StateDir)) { return $null }
     New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
     Set-Content -LiteralPath $launchStamp -Value ($Now.ToString('o'))
     $reason
