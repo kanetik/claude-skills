@@ -550,3 +550,26 @@ test('opening the pane again leaves out the items already checked off', async ($
   expect(await pane.find({ type: 'Text', text: /second thought$/ })).toBeDefined()
   await pane.unmount()
 })
+
+test('the band hides to its title and a count, closes for the session, and /parking-lot-band brings it back', async ($, on) => {
+  engine(on, () => 'Parked in repo:\n  1. - [ ] 2026-10-03 first thought\n  2. - [ ] 2026-10-04 second thought\n')
+
+  await $.session.start(START)
+  const band = await mountBand($)
+  await band.press({ key: 'band-minimize' })
+  expect(await band.find({ type: 'Text', text: 'first thought' })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: '2 parked  ' })).toBeDefined()
+  await band.press({ key: 'band-minimize' })
+  expect(await band.find({ type: 'Text', text: 'first thought' })).toBeDefined()
+
+  await band.press({ key: 'band-close' })
+  expect(await band.find({ type: 'Text', text: 'Parking lot' })).toBeUndefined()
+  await $.command.run({
+    command: 'parking-lot-band',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: true, columns: 120 },
+  })
+  expect(await band.find({ type: 'Text', text: 'first thought' })).toBeDefined()
+  await band.unmount()
+})
