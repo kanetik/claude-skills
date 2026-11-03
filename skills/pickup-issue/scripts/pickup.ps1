@@ -64,13 +64,25 @@ $hasGo = {
         [int]$n -gt 0
     } finally { Pop-Location }
 }
-$reason = Resolve-Launch -Now (Get-Date) -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo
+$now = Get-Date
+$reason = Resolve-Launch -Now $now -StateDir $stateDir -Name $name -NightlyAt ([timespan]::Parse($NightlyAt)) -HasGoIssue $hasGo
 if (-not $reason) { return }
 Push-Location $RepoDir
 try {
     # A running session cannot rename itself, so the issue is chosen before launch to put it in the name.
     $chosen = Read-ChosenIssue (& $claude -p --model haiku --permission-mode auto "--tools=$chooseOnlyTools" "--disallowedTools=$chooseOnlyDenied" '/pickup-issue choose-only' 2>$null)
-    if ($chosen -and $chosen.Number -eq 0) { return }
+    if ($chosen -and $chosen.Number -eq 0) {
+        Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason PICKUP none`n"
+        Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason
+        return
+    }
     $claudeArgs = & $launchArgs $reason $chosen
-    & $claude @claudeArgs
+    $sessionName = $claudeArgs[$claudeArgs.IndexOf('--name') + 1]
+    $out = & $claude @claudeArgs 2>&1 | Out-String
+    $exit = $LASTEXITCODE
+    $started = $exit -eq 0 -and (Test-SessionStarted (& $claude agents --json 2>$null | Out-String) $sessionName)
 } finally { Pop-Location }
+$hint = if (-not $started) { Get-LaunchFailureHint $out }
+Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason exit=$exit started=$started`n$($out.TrimEnd())`n$(if ($hint) { "$hint`n" })"
+if (-not $started) { throw "launch of '$sessionName' failed (exit $exit). $hint See $(Join-Path $stateDir "$name.log")" }
+Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason

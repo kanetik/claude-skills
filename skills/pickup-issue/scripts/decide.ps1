@@ -32,8 +32,26 @@ function Resolve-Launch {
     if (Get-QuotaHold -Now $Now -RateLimits $rateLimits) { return $null }
     New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
     Set-Content -LiteralPath $launchStamp -Value ($Now.ToString('o'))
-    if ($reason -eq 'nightly') { Set-Content -LiteralPath $nightlyStamp -Value ($Now.ToString('yyyy-MM-dd')) }
     $reason
+}
+
+function Complete-Launch {
+    param(
+        [Parameter(Mandatory)][datetime] $Now,
+        [Parameter(Mandatory)][string] $StateDir,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Reason
+    )
+    if ($Reason -eq 'nightly') { Set-Content -LiteralPath (Join-Path $StateDir "$Name.last-nightly") -Value ($Now.ToString('yyyy-MM-dd')) }
+}
+
+function Test-SessionStarted([string] $AgentsJson, [string] $SessionName) {
+    $sessions = try { @($AgentsJson | ConvertFrom-Json) } catch { @() }
+    [bool]($sessions | Where-Object { $_.PSObject.Properties['name'] -and $_.name -eq $SessionName })
+}
+
+function Get-LaunchFailureHint([string] $Output) {
+    if ($Output -match 'reach the background service') { 'An elevated process probably owns the Claude background service; see "Unattended runs" in the pickup-issue SKILL.md.' }
 }
 
 function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now, $Chosen) {

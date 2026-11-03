@@ -7,8 +7,8 @@ description: |
   someone outside the repo, or labelled as not for an agent, and it triages at
   pickup time instead of requiring a ready label: an issue too vague to build gets
   a specific question and a needs-info label, not a guess, and one that has to
-  wait on something gets agent-defer. If the first issue it takes ends without a
-  PR, it tries one more. One pickup in flight
+  wait on something gets agent-defer. When an issue it takes ends without a PR,
+  it takes the next, until one becomes a PR or none is left. One pickup in flight
   per repository at a time, unless the owner named the issue or labelled it to go
   now. Use when the user says "pick up an issue", "work the backlog",
   "take the next issue", "work issue #N", or invokes /pickup-issue (optionally with
@@ -26,7 +26,7 @@ allowed-tools:
 
 # Pick up an issue
 
-Requires `gh` (authenticated) and `jq`. One run opens at most one PR, and takes at most two issues: when the first ends without a PR (needs-info, deferred, already done, or a failed build), go back to step 1 once and take the next. When the second also ends without one, or the run was given an issue number, stop. A run given `chosen <n>` was not given a number in that sense: it still gets the second try.
+Requires `gh` (authenticated) and `jq`. One run opens at most one PR. When an issue ends without a PR (needs-info, deferred, already done, or a failed build), go back to step 1 and take the next, until an issue becomes a PR or step 1 finds nothing eligible. Each of those endings leaves the issue ineligible, so no issue is taken twice. A run given an issue number stops after that issue. A run given `chosen <n>` was not given a number in that sense: it keeps taking the next.
 
 ## Labels
 
@@ -91,7 +91,7 @@ An issue that turns out to be done already, or obsolete: comment with the eviden
 
 ## 4. Build
 
-Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run. A run's second issue starts from a fresh, up-to-date copy of the base those instructions name, never from the first issue's branch.
+Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run. Every issue after a run's first starts from a fresh, up-to-date copy of the base those instructions name, never from an earlier issue's branch.
 
 The PR:
 - opened as a draft unless the repo says otherwise;
@@ -109,14 +109,14 @@ One short paragraph per issue taken: the issue, the PR link (or why there is non
 
 ## Unattended runs (Windows)
 
-`scripts/pickup.ps1` (PowerShell 7) registers one Task Scheduler task for a checkout, under the current user:
+`scripts/pickup.ps1` (PowerShell 7) registers one Task Scheduler task for a checkout, under the current user, not elevated:
 
 ```powershell
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Register -NightlyAt 01:00
 pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Unregister
 ```
 
-Every 15 minutes it checks whether the day's run after `-NightlyAt` has not happened yet, or an open issue carries `agent-go`, and never acts within 30 minutes of its last launch. When one is due, a headless `claude -p --model haiku "/pickup-issue choose-only"` picks the issue, and `claude --bg --permission-mode auto "/pickup-issue chosen <n>"` works it, named for the repo, the issue, the trigger and the time (`wakey #142 fix snooze crash (nightly, Oct 26 01:00)`). With nothing to pick and nothing to clean up, no session starts. If the choosing pass prints `PICKUP cleanup` or no readable `PICKUP` line, the launch falls back to a plain `/pickup-issue` named `wakey pickup (nightly, Oct 26 01:00)`. The name stays on the first issue even if the run moves on to a second one.
+Every 15 minutes it checks whether the day's run after `-NightlyAt` has not happened yet, or an open issue carries `agent-go`, and never acts within 30 minutes of its last launch. When one is due, a headless `claude -p --model haiku "/pickup-issue choose-only"` picks the issue, and `claude --bg --permission-mode auto "/pickup-issue chosen <n>"` works it, named for the repo, the issue, the trigger and the time (`wakey #142 fix snooze crash (nightly, Oct 26 01:00)`). With nothing to pick and nothing to clean up, no session starts, and that counts as the day's nightly run. If the choosing pass prints `PICKUP cleanup` or no readable `PICKUP` line, the launch falls back to a plain `/pickup-issue` named `wakey pickup (nightly, Oct 26 01:00)`. The name stays on the first issue even if the run moves on to another. Each launch appends Claude's output and exit code to `%LOCALAPPDATA%\pickup-issue\<repo>.log`. A launch whose session does not appear in `claude agents --json` fails the task, and a failed nightly run is retried on a later poll.
 
 **Usage caps.** It also holds off while Claude Code plan usage is high: the 5-hour window at 30% or more on weekdays from 01:00 to 18:00 and 50% or more otherwise, or the weekly window at 70% or more (`Get-FiveHourCap` and `Get-QuotaHold` in `scripts/decide.ps1`). A held nightly run is retried on later polls. The figures come from the `rate_limits` object Claude Code passes to the status line, so the status line has to save it to `%LOCALAPPDATA%\pickup-issue\usage.json`. In a PowerShell status line command that has parsed its input into `$input`, add:
 
@@ -125,5 +125,7 @@ if ($input.rate_limits) { $d = Join-Path $env:LOCALAPPDATA 'pickup-issue'; New-I
 ```
 
 The file is only refreshed while some Claude Code session is open. A window whose reset time has passed counts as reset, and with no file at all the launch goes ahead.
+
+**Every launch fails with "Couldn't reach the background service" while an elevated process owns it.** Claude Code runs one background service per user, at the integrity level of whatever started it, and a non-elevated task cannot connect to an elevated one. The service is elevated when an elevated process ran `claude --bg`: a terminal run as administrator, or, on an administrator account, a scheduled task under an S4U principal ("run whether user is logged on or not"), which gets the full administrator token even at `-RunLevel Limited`. Register such a task with `-LogonType Interactive` instead, and stop the elevated service once with `claude daemon stop --any`, from a terminal run as administrator. The failed launch's log entry says when this is the likely cause. Registering this task elevated also works, but it then runs scripts from user-writable folders with administrator rights every 15 minutes.
 
 A background session refuses a folder whose workspace trust was never accepted, so run `claude` interactively in the checkout once before registering. Stagger `-NightlyAt` across repositories so their runs do not share the machine. On macOS or Linux, a cron entry running the same `claude` command in the checkout does the nightly half.

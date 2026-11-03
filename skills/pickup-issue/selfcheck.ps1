@@ -24,6 +24,7 @@ try {
     $out = (& $script -RepoDir $repo -Register -NightlyAt '03:00' -DryRun) -join "`n"
     Check 'register makes exactly one task, named after the repo folder' (([regex]::Matches($out, 'register ')).Count -eq 1 -and $out -match 'demo-repo pickup') $out
     Check 'the task carries the nightly time' ($out -match '-NightlyAt 03:00') $out
+    Check 'the task is never registered elevated' ((Get-Content $script -Raw) -notmatch 'RunLevel\s+Highest') 'an elevated task runs user-writable scripts with admin rights'
 
     $out = (& $script -RepoDir $repo -Unregister -DryRun) -join "`n"
     Check 'unregister names the task' ($out -match 'demo-repo pickup') $out
@@ -74,7 +75,19 @@ try {
     Check 'a held nightly writes no stamps' (-not (Test-Path (Join-Path $state 'demo.last-nightly')) -and -not (Test-Path (Join-Path $state 'demo.last-launch')))
     Remove-Item (Join-Path $state 'usage.json')
     Check 'no usage file: nightly launches' ((Resolve-Launch -Now $mon -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
-    Check 'the launch stamps the nightly date' ((Get-Content (Join-Path $state 'demo.last-nightly') -Raw).Trim() -eq '2026-10-26')
+    Check 'deciding to launch does not mark the nightly done' (-not (Test-Path (Join-Path $state 'demo.last-nightly')))
+    Check 'a nightly whose launch failed is retried after the guard' ((Resolve-Launch -Now $mon.AddMinutes(31) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
+    Complete-Launch -Now $mon -StateDir $state -Name demo -Reason 'go'
+    Check 'a completed agent-go launch does not mark the nightly done' (-not (Test-Path (Join-Path $state 'demo.last-nightly')))
+    Complete-Launch -Now $mon -StateDir $state -Name demo -Reason 'nightly'
+    Check 'a completed nightly launch stamps the date' ((Get-Content (Join-Path $state 'demo.last-nightly') -Raw).Trim() -eq '2026-10-26')
+    Check 'a completed nightly is not repeated the same day' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(62) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
+    $agents = '[{"pid":1,"kind":"interactive","name":"other"},{"id":"ab12","kind":"background","name":"wakey pickup (nightly, Oct 26 01:00)"},{"pid":2,"kind":"interactive"}]'
+    Check 'the launched session is found by name' (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 26 01:00)')
+    Check 'a session that never registered is a failed launch' (-not (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 27 01:00)'))
+    Check 'unreadable agents output is a failed launch' (-not (Test-SessionStarted 'not json' 'x'))
+    Check 'an unreachable background service gets a hint' ((Get-LaunchFailureHint "Starting background service…`nCouldn't reach the background service (background service did not become reachable within 45s)") -match 'elevated process')
+    Check 'other launch failures get no hint' ($null -eq (Get-LaunchFailureHint 'Workspace not trusted.'))
     Set-Content (Join-Path $state 'demo.last-launch') ''
     Check 'an empty launch stamp does not stop the decision' ($null -ne (Resolve-Launch -Now $mon.AddDays(1) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a second poll within 30 minutes does not launch' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(15) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $yes))
@@ -91,6 +104,7 @@ try {
     # Both flags are variadic; written with a space, they swallow the prompt after them.
     $launcher = Get-Content -Raw $script
     Check 'the tool flags use the = form' ($launcher -match '"--tools=\$chooseOnlyTools"' -and $launcher -match '"--disallowedTools=\$chooseOnlyDenied"')
+    Check 'PICKUP none completes the launch, so the nightly is not re-run all night' ($launcher -match '(?s)Number -eq 0\) \{[^}]*Complete-Launch[^}]*return')
     Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
     Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
     Check 'no output at all falls back to a plain launch' ($null -eq (Read-ChosenIssue @()))
