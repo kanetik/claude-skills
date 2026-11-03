@@ -83,7 +83,8 @@ $repoState = {
     $triage = Join-Path $RepoDir 'docs/agents/triage-labels.md'
     [ordered]@{
         repository = $repo
-        today = (Get-Date).ToString('yyyy-MM-dd')
+        today = (Get-Date).ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
+        now_utc = (Get-Date).ToUniversalTime().ToString('o')
         collaborators = @(gh api "repos/$repo/collaborators" --paginate --jq '.[] | {login, permission: .role_name}' | ConvertFrom-Json)
         agent_prs = @(gh pr list --state all --label agent-pickup --limit 200 --json number,state,mergedAt,createdAt,body --jq '.[] | .body |= (split("\n")[0])' | ConvertFrom-Json)
         triage_labels_md = if (Test-Path -LiteralPath $triage) { Get-Content -LiteralPath $triage -Raw }
