@@ -1,11 +1,7 @@
 function Get-PickupStateDir { Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'pickup-issue' }
 
-$usageMaxAge = [TimeSpan]::FromMinutes(15)
-
-function Read-RateLimits([string] $StateDir, [datetime] $Now, [timespan] $MaxAge = $usageMaxAge) {
-    $usageFile = Get-Item -LiteralPath (Join-Path $StateDir 'usage.json') -ErrorAction SilentlyContinue
-    if (-not $usageFile -or $usageFile.LastWriteTime -lt $Now - $MaxAge) { return $null }
-    try { Get-Content -LiteralPath $usageFile.FullName -Raw | ConvertFrom-Json } catch { $null }
+function Read-RateLimits([string] $StateDir) {
+    try { Get-Content -LiteralPath (Join-Path $StateDir 'usage.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { $null }
 }
 
 function Get-LaunchReason {
@@ -37,7 +33,7 @@ function Resolve-Launch {
     $lastNightly = try { (Get-Content -LiteralPath $nightlyStamp -Raw -ErrorAction Stop).Trim() } catch { '' }
     $reason = Get-LaunchReason -Now $Now -NightlyAt $NightlyAt -LastNightlyDate $lastNightly -LastLaunch $lastLaunch -HasGoIssue $HasGoIssue
     if (-not $reason) { return $null }
-    if (Get-QuotaHold -Now $Now -RateLimits (Read-RateLimits $StateDir $Now)) { return $null }
+    if (Get-QuotaHold -Now $Now -RateLimits (Read-RateLimits $StateDir)) { return $null }
     New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
     Set-Content -LiteralPath $launchStamp -Value ($Now.ToString('o'))
     $reason
@@ -67,9 +63,6 @@ function Get-SessionName([string] $Name, [string] $Reason, [datetime] $Now, $Cho
     $subject = if ($Chosen) { "#$($Chosen.Number) $($Chosen.Title)" } else { 'pickup' }
     "$Name $subject ($label, $($Now.ToString('MMM d HH:mm', [cultureinfo]::InvariantCulture)))"
 }
-
-$chooseOnlyTools = 'Bash,Read,Grep,Glob,Skill'
-$chooseOnlyDenied = 'Bash(git:*) Bash(gh alias:*) Bash(gh pr new:*) Bash(gh issue new:*) Bash(gh pr create:*) Bash(gh pr edit:*) Bash(gh pr close:*) Bash(gh pr reopen:*) Bash(gh pr merge:*) Bash(gh pr comment:*) Bash(gh pr review:*) Bash(gh pr ready:*) Bash(gh pr lock:*) Bash(gh pr unlock:*) Bash(gh pr revert:*) Bash(gh pr update-branch:*) Bash(gh label:*) Bash(gh issue edit:*) Bash(gh issue comment:*) Bash(gh issue close:*) Bash(gh issue reopen:*) Bash(gh issue create:*) Bash(gh issue delete:*) Bash(gh issue transfer:*) Bash(gh issue lock:*) Bash(gh issue unlock:*) Bash(gh issue pin:*) Bash(gh issue unpin:*) Bash(gh issue develop:*)'
 
 function Read-ChosenIssue([string[]] $Lines) {
     $line = $Lines | Where-Object { $_ -match '^\s*PICKUP\s+(none|cleanup|#?\d{1,9}\s+\S.*)\s*$' } | Select-Object -Last 1

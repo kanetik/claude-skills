@@ -72,14 +72,13 @@ try {
     $over = (& $rl 40 $future 10 $future) | ConvertTo-Json -Compress
     New-Item -ItemType Directory -Force -Path $state | Out-Null
     Set-Content (Join-Path $state 'usage.json') $over
-    (Get-Item (Join-Path $state 'usage.json')).LastWriteTime = $mon.AddMinutes(-14)
-    Check 'a usage file written 14 minutes ago is a reading' ($null -ne (Read-RateLimits $state $mon))
-    Check 'a usage file written 16 minutes ago is no reading' ($null -eq (Read-RateLimits $state $mon.AddMinutes(2)))
-    $stale = Join-Path $tmp 'stale'
-    New-Item -ItemType Directory -Force -Path $stale | Out-Null
-    Set-Content (Join-Path $stale 'usage.json') $over
-    (Get-Item (Join-Path $stale 'usage.json')).LastWriteTime = $mon.AddHours(-8)
-    Check 'a stale reading over the cap does not hold the launch' ((Resolve-Launch -Now $mon -StateDir $stale -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
+    $old = Join-Path $tmp 'old'
+    New-Item -ItemType Directory -Force -Path $old | Out-Null
+    Set-Content (Join-Path $old 'usage.json') $over
+    (Get-Item (Join-Path $old 'usage.json')).LastWriteTime = $mon.AddHours(-8)
+    Check 'an old reading over the cap still holds the launch until its window resets' ($null -eq (Resolve-Launch -Now $mon -StateDir $old -Name demo -NightlyAt $at -HasGoIssue $no))
+    Set-Content (Join-Path $old 'usage.json') ((& $rl 40 $past 10 $future) | ConvertTo-Json -Compress)
+    Check 'an old reading whose over-cap window has reset does not hold' ((Resolve-Launch -Now $mon -StateDir $old -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
     Check 'over the cap: no launch' ($null -eq (Resolve-Launch -Now $mon -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a held nightly writes no stamps' (-not (Test-Path (Join-Path $state 'demo.last-nightly')) -and -not (Test-Path (Join-Path $state 'demo.last-launch')))
     Remove-Item (Join-Path $state 'usage.json')
@@ -107,14 +106,21 @@ try {
     Check 'session name carries the chosen issue' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15') $pick) -eq 'wakey #142 Fix snooze crash (nightly, Oct 26 01:15)')
     Check 'PICKUP none means nothing to launch' ((Read-ChosenIssue @('PICKUP none')).Number -eq 0)
     Check 'an issue number too large for an int falls back instead of throwing' ($null -eq (Read-ChosenIssue @('PICKUP 99999999999 x')))
-    Check 'the choosing pass gets no editing or PowerShell tools' ($chooseOnlyTools -notmatch 'Edit|Write|PowerShell|Agent')
-    Check 'the choosing pass keeps gh pr list for the in-flight check' ($chooseOnlyDenied -notmatch 'Bash\(gh pr:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh pr create:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh pr new:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh alias:\*\)')
-    Check 'the choosing pass is denied the gh and git write commands' ($chooseOnlyDenied -match 'Bash\(gh issue edit:\*\)' -and $chooseOnlyDenied -match 'Bash\(gh label:\*\)' -and $chooseOnlyDenied -match 'Bash\(git:\*\)')
-    # Both flags are variadic; written with a space, they swallow the prompt after them.
+    # The choosing pass reads issue text written by other people, so it gets no tool it could be talked into using.
     $launcher = Get-Content -Raw $script
-    Check 'the tool flags use the = form' ($launcher -match '"--tools=\$chooseOnlyTools"' -and $launcher -match '"--disallowedTools=\$chooseOnlyDenied"')
+    $choose = @([regex]::Matches($launcher, '(?m)^.*-p --model haiku.*$').Value)
+    Check 'there is exactly one choosing pass' ($choose.Count -eq 1) ($choose -join "`n")
+    Check 'the choosing pass gets no tools, in the = form so the flag cannot swallow the prompt' ($choose[0] -match " '--tools=' '/pickup-issue choose-only'") $choose[0]
+    Check 'the choosing pass loads no MCP server, which --tools= does not cover' ($choose[0] -match '--strict-mcp-config' -and $choose[0] -notmatch '--mcp-config') $choose[0]
+    Check 'the choosing pass refuses anything not allowed instead of judging it' ($choose[0] -match '--permission-mode dontAsk' -and $choose[0] -notmatch 'auto|bypassPermissions|allowedTools|Bash') $choose[0]
+    Check 'the state carries the time, which the 24-hour claim rule needs and a tool-less pass cannot look up' ($launcher -match "now_utc = \(Get-Date\)\.ToUniversalTime\(\)\.ToString\('o'\)")
+    Check 'the date handed to the pass is Gregorian ISO whatever the culture' ($launcher -match "today = \(Get-Date\)\.ToString\('yyyy-MM-dd', \[cultureinfo\]::InvariantCulture\)")
+    Check 'a choosing pass that exits nonzero is logged, not silently replaced by a plain launch' ($launcher -match '(?m)^.*-p --model haiku.*\r?\n\s*if \(-not \$chooseError -and \$LASTEXITCODE\) \{ \$chooseError = [^}]*; \$chosen = \$null \}')
+    Check 'an agent PR with no body does not fail the state fetch' ($launcher -match [regex]::Escape('.body |= ((. // "") | split'))
+    Check 'the choosing pass reads the repository state from standard input' ($choose[0] -match '\(& \$repoState\) \| & \$claude') $choose[0]
     Check 'PICKUP none completes the launch, so the nightly is not re-run all night' ($launcher -match '(?s)Number -eq 0\) \{[^}]*Complete-Launch[^}]*return')
-    Check 'a paused review makes the choosing pass print PICKUP cleanup' ((Get-Content (Join-Path $PSScriptRoot 'SKILL.md') -Raw) -match 'labelled both `agent-pickup` and `agent-paused`, the last line is `PICKUP cleanup` or `PICKUP <n>`, never `PICKUP none`')
+    Check 'a paused review makes the choosing pass print PICKUP cleanup' ((Get-Content (Join-Path $PSScriptRoot 'SKILL.md') -Raw) -match 'open agent PR is labelled `agent-paused`, the last line is `PICKUP cleanup` or `PICKUP <n>`, never `PICKUP none`')
+    Check 'the choosing pass is handed the agent PRs'' labels, so it can see a paused review' ($launcher -match 'body,labels --jq')
     Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
     Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
     Check 'no output at all falls back to a plain launch' ($null -eq (Read-ChosenIssue @()))
@@ -127,10 +133,7 @@ try {
     Check 'quota: no usage file does not hold, and says usage was not checked' ($LASTEXITCODE -eq 0 -and "$out" -match 'usage not checked') "exit $LASTEXITCODE $out"
     $soon = [DateTimeOffset]::Now.AddHours(2).ToUnixTimeSeconds()
     Set-Content (Join-Path $qdir 'usage.json') ((& $rl 99 $soon 10 $soon) | ConvertTo-Json -Compress)
-    (Get-Item (Join-Path $qdir 'usage.json')).LastWriteTime = (Get-Date).AddMinutes(-16)
-    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
-    Check 'quota: a stale reading over the cap does not hold, and says usage was not checked' ($LASTEXITCODE -eq 0 -and "$out" -match 'usage not checked: .* 15 minutes') "exit $LASTEXITCODE $out"
-    Set-Content (Join-Path $qdir 'usage.json') ((& $rl 99 $soon 10 $soon) | ConvertTo-Json -Compress)
+    (Get-Item (Join-Path $qdir 'usage.json')).LastWriteTime = (Get-Date).AddHours(-8)
     $out = & pwsh -NoProfile -File $quota -StateDir $qdir
     Check 'quota: over the cap exits non-zero and names the window' ($LASTEXITCODE -eq 1 -and "$out" -match 'five_hour at 99%') "exit $LASTEXITCODE $out"
     Set-Content (Join-Path $qdir 'usage.json') ((& $rl 1 $soon 1 $soon) | ConvertTo-Json -Compress)
