@@ -69,7 +69,7 @@ $reason = Resolve-Launch -Now $now -StateDir $stateDir -Name $name -NightlyAt ([
 if (-not $reason) { return }
 Push-Location $RepoDir
 try {
-    # A running session cannot rename itself, so the issue is chosen before launch to put it in the name.
+    # A running session cannot rename itself, so the name's issue is picked before launch.
     $chosen = Read-ChosenIssue (& $claude -p --model haiku --permission-mode auto "--tools=$chooseOnlyTools" "--disallowedTools=$chooseOnlyDenied" '/pickup-issue choose-only' 2>$null)
     if ($chosen -and $chosen.Number -eq 0) {
         Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason PICKUP none`n"
