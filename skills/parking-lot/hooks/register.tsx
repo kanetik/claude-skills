@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren } from 'claude-code'
-import type { ParkingLotChecked } from '../types'
+import type { BandView, ParkingLotChecked } from '../types'
 
 const PANE = 'parking-lot'
 const NOTHING = 'Nothing parked.'
@@ -9,6 +9,7 @@ const listing = atom({ plugin: 'parking-lot', key: 'listing' } as const, '')
 const expanded = atom({ plugin: 'parking-lot', key: 'expanded' } as const, [])
 const checked = atom({ plugin: 'parking-lot', key: 'checked' } as const, [])
 const shellPath = atom({ plugin: 'parking-lot', key: 'shell' } as const, '')
+const bandView = atom({ plugin: 'parking-lot', key: 'band' } as const, 'open')
 
 type Item = {
   id: string
@@ -243,7 +244,7 @@ function idWidth(all: Row[]) {
   return Math.max(0, ...all.map(row => ('id' in row && row.handled === undefined ? row.id.length : 0)))
 }
 
-function card(ui: Ui, isDesktop: boolean, children: RenderChildren) {
+function card(ui: Ui, isDesktop: boolean, children: RenderChildren, controls?: RenderChildren) {
   const { Box, Text } = ui
   return (
     <Box
@@ -253,11 +254,38 @@ function card(ui: Ui, isDesktop: boolean, children: RenderChildren) {
       paddingX={isDesktop ? 2 : 1}
       paddingY={isDesktop ? 1 : 0}
     >
-      <Text bold>Parking lot</Text>
-      <Text dimColor>Check an item off to mark it done.</Text>
+      <Box flexDirection="row">
+        <Box flexGrow={1}>
+          <Text bold>Parking lot</Text>
+        </Box>
+        {controls}
+      </Box>
+      {children !== undefined && <Text dimColor>Check an item off to mark it done.</Text>}
       {children}
     </Box>
   )
+}
+
+function bandControls(ui: Ui, $: EngineInterface, view: BandView, count: number) {
+  const { Button, Text } = ui
+  const set = (to: BandView) => update($, bandView, () => to)
+  return [
+    view === 'minimized' && <Text dimColor>{`${count} parked  `}</Text>,
+    <Button key="band-minimize" plain dimColor onPress={() => set(view === 'minimized' ? 'open' : 'minimized')}>
+      {view === 'minimized' ? ' ▸ show' : ' – hide'}
+    </Button>,
+    <Button
+      key="band-close"
+      plain
+      dimColor
+      onPress={async () => {
+        await set('closed')
+        $.ui.toast('Parking lot band closed for this session. /parking-lot-band brings it back.')
+      }}
+    >
+      {' ✕ close'}
+    </Button>,
+  ]
 }
 
 function itemOf(text: string, done: ParkingLotChecked, element: string) {
@@ -270,6 +298,10 @@ export const register: Register = on => {
     await $.command.register({
       name: 'parking-lot-pane',
       description: 'Show the parking lot in a pane',
+    })
+    await $.command.register({
+      name: 'parking-lot-band',
+      description: 'Show the parking lot band above the prompt again',
     })
     await refresh($)
 
@@ -284,6 +316,13 @@ export const register: Register = on => {
     await $.ui.open({ id: PANE, title: 'Parking lot' })
 
     return { text: 'Parking lot pane opened.' }
+  })
+
+  on('command.run', { command: 'parking-lot-band' }, async $ => {
+    await update($, bandView, () => 'open')
+    await refresh($)
+
+    return { text: 'Parking lot band shown.' }
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -313,10 +352,13 @@ export const register: Register = on => {
     const all = shownRows(text, await read($, checked))
     const shown = all.filter(row => !('id' in row) || !isWaiting(row))
     const isEmpty = all.some(row => 'id' in row) ? !shown.some(row => 'id' in row) : text === NOTHING
-    if (e.props.hasSurvey || text === '' || isEmpty) return next(e)
+    const view = await read($, bandView)
+    if (e.props.hasSurvey || text === '' || isEmpty || view === 'closed') return next(e)
     const open = await read($, expanded)
     const ui = $.ui.resolve(e)
     const { Box, Button, Text } = ui
+    const controls = bandControls(ui, $, view, shown.filter(row => 'id' in row && !isChecked(row)).length)
+    if (view === 'minimized') return card(ui, e.surface === 'desktop', undefined, controls)
     const width = idWidth(shown)
     const toggle = (id: string) =>
       update($, expanded, ids => (ids.includes(id) ? ids.filter(one => one !== id) : [...ids, id]))
@@ -354,6 +396,7 @@ export const register: Register = on => {
           </Box>
         )
       }),
+      controls,
     )
   })
 

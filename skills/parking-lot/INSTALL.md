@@ -76,7 +76,8 @@ full path to `sh.exe`.
 ## The band and the pane
 
 The folder is also a Claude Code mod (`.claude-plugin/` and `hooks/` here): it
-lists what is parked in a band above the prompt (collapse it with its `[-]`),
+lists what is parked in a band above the prompt (its `hide` and `close` buttons
+shrink or remove it, and `/parking-lot-band` brings it back),
 leaving out reminders whose date or tag has not arrived; `/parking-lot-pane` opens the
 whole list in a side pane; checking an item off there marks it
 done; and opening or merging a PR with `gh` shows a toast
