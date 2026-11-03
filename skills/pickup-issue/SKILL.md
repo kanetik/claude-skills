@@ -87,6 +87,11 @@ An issue that turns out to be done already, or obsolete: comment with the eviden
 
 ## 4. Build
 
+Before changing anything, write this summary in your own output, then go on without waiting for a reply:
+- the issue: number and title;
+- the problem it solves;
+- the change you will make.
+
 Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run. Every issue after a run's first starts from a fresh, up-to-date copy of the base those instructions name, never from an earlier issue's branch.
 
 The PR:
