@@ -7,8 +7,8 @@ description: |
   someone outside the repo, or labelled as not for an agent, and it triages at
   pickup time instead of requiring a ready label: an issue too vague to build gets
   a specific question and a needs-info label, not a guess, and one that has to
-  wait on something gets agent-defer. If the first issue it takes ends without a
-  PR, it tries one more. One pickup in flight
+  wait on something gets agent-defer. When an issue it takes ends without a PR,
+  it takes the next, until one becomes a PR or none is left. One pickup in flight
   per repository at a time, unless the owner named the issue or labelled it to go
   now. Use when the user says "pick up an issue", "work the backlog",
   "take the next issue", "work issue #N", or invokes /pickup-issue (optionally with
@@ -26,7 +26,7 @@ allowed-tools:
 
 # Pick up an issue
 
-Requires `gh` (authenticated) and `jq`. One run opens at most one PR, and takes at most two issues: when the first ends without a PR (needs-info, deferred, already done, or a failed build), go back to step 1 once and take the next. When the second also ends without one, or the run was given an issue number, stop.
+Requires `gh` (authenticated) and `jq`. One run opens at most one PR. When an issue ends without a PR (needs-info, deferred, already done, or a failed build), go back to step 1 and take the next, until an issue becomes a PR or step 1 finds nothing eligible. Each of those endings leaves the issue ineligible, so no issue is taken twice. A run given an issue number stops after that issue.
 
 ## Labels
 
@@ -87,7 +87,7 @@ An issue that turns out to be done already, or obsolete: comment with the eviden
 
 ## 4. Build
 
-Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run. A run's second issue starts from a fresh, up-to-date copy of the base those instructions name, never from the first issue's branch.
+Follow the repository's own instructions (`CLAUDE.md`, `AGENTS.md`) for branching, worktrees, validation and PR conventions. They override anything here. In particular, run whatever "validate before a PR" step the repo defines, and say in the PR body if any part of it could not run. Every issue after a run's first starts from a fresh, up-to-date copy of the base those instructions name, never from an earlier issue's branch.
 
 The PR:
 - opened as a draft unless the repo says otherwise;
