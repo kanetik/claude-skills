@@ -86,7 +86,7 @@ $repoState = {
         today = (Get-Date).ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
         now_utc = (Get-Date).ToUniversalTime().ToString('o')
         collaborators = @(gh api "repos/$repo/collaborators" --paginate --jq '.[] | {login, permission: .role_name}' | ConvertFrom-Json)
-        agent_prs = @(gh pr list --state all --label agent-pickup --limit 200 --json number,state,mergedAt,createdAt,body --jq '.[] | .body |= (split("\n")[0])' | ConvertFrom-Json)
+        agent_prs = @(gh pr list --state all --label agent-pickup --limit 200 --json number,state,mergedAt,createdAt,body --jq '.[] | .body |= ((. // "") | split("\n")[0])' | ConvertFrom-Json)
         triage_labels_md = if (Test-Path -LiteralPath $triage) { Get-Content -LiteralPath $triage -Raw }
         open_issues = @($issues.Values | Sort-Object number)
     } | ConvertTo-Json -Depth 6
@@ -99,6 +99,7 @@ try {
     # A running session cannot rename itself, so the name's issue is picked before launch.
     $chooseError = $null
     $chosen = try { Read-ChosenIssue ((& $repoState) | & $claude -p --model haiku --permission-mode dontAsk --strict-mcp-config '--tools=' '/pickup-issue choose-only' 2>$null) } catch { $chooseError = "choose-only failed: $_"; $null }
+    if (-not $chooseError -and $LASTEXITCODE) { $chooseError = "choose-only exited $LASTEXITCODE"; $chosen = $null }
     if ($chosen -and $chosen.Number -eq 0) {
         Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason PICKUP none`n"
         Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason

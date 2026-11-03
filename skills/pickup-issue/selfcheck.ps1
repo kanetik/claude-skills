@@ -107,6 +107,8 @@ try {
     Check 'the choosing pass refuses anything not allowed instead of judging it' ($choose[0] -match '--permission-mode dontAsk' -and $choose[0] -notmatch 'auto|bypassPermissions|allowedTools|Bash') $choose[0]
     Check 'the state carries the time, which the 24-hour claim rule needs and a tool-less pass cannot look up' ($launcher -match "now_utc = \(Get-Date\)\.ToUniversalTime\(\)\.ToString\('o'\)")
     Check 'the date handed to the pass is Gregorian ISO whatever the culture' ($launcher -match "today = \(Get-Date\)\.ToString\('yyyy-MM-dd', \[cultureinfo\]::InvariantCulture\)")
+    Check 'a choosing pass that exits nonzero is logged, not silently replaced by a plain launch' ($launcher -match '(?m)^.*-p --model haiku.*\r?\n\s*if \(-not \$chooseError -and \$LASTEXITCODE\) \{ \$chooseError = [^}]*; \$chosen = \$null \}')
+    Check 'an agent PR with no body does not fail the state fetch' ($launcher -match [regex]::Escape('.body |= ((. // "") | split'))
     Check 'the choosing pass reads the repository state from standard input' ($choose[0] -match '\(& \$repoState\) \| & \$claude') $choose[0]
     Check 'PICKUP none completes the launch, so the nightly is not re-run all night' ($launcher -match '(?s)Number -eq 0\) \{[^}]*Complete-Launch[^}]*return')
     Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
