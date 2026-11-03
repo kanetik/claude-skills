@@ -72,6 +72,14 @@ try {
     $over = (& $rl 40 $future 10 $future) | ConvertTo-Json -Compress
     New-Item -ItemType Directory -Force -Path $state | Out-Null
     Set-Content (Join-Path $state 'usage.json') $over
+    (Get-Item (Join-Path $state 'usage.json')).LastWriteTime = $mon.AddMinutes(-14)
+    Check 'a usage file written 14 minutes ago is a reading' ($null -ne (Read-RateLimits $state $mon))
+    Check 'a usage file written 16 minutes ago is no reading' ($null -eq (Read-RateLimits $state $mon.AddMinutes(2)))
+    $stale = Join-Path $tmp 'stale'
+    New-Item -ItemType Directory -Force -Path $stale | Out-Null
+    Set-Content (Join-Path $stale 'usage.json') $over
+    (Get-Item (Join-Path $stale 'usage.json')).LastWriteTime = $mon.AddHours(-8)
+    Check 'a stale reading over the cap does not hold the launch' ((Resolve-Launch -Now $mon -StateDir $stale -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
     Check 'over the cap: no launch' ($null -eq (Resolve-Launch -Now $mon -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a held nightly writes no stamps' (-not (Test-Path (Join-Path $state 'demo.last-nightly')) -and -not (Test-Path (Join-Path $state 'demo.last-launch')))
     Remove-Item (Join-Path $state 'usage.json')
@@ -115,8 +123,12 @@ try {
     $qdir = Join-Path $tmp 'quota'
     New-Item -ItemType Directory -Force -Path $qdir | Out-Null
     $out = & pwsh -NoProfile -File $quota -StateDir $qdir
-    Check 'quota: no usage file does not hold' ($LASTEXITCODE -eq 0 -and -not $out) "exit $LASTEXITCODE $out"
+    Check 'quota: no usage file does not hold, and says usage was not checked' ($LASTEXITCODE -eq 0 -and "$out" -match 'usage not checked') "exit $LASTEXITCODE $out"
     $soon = [DateTimeOffset]::Now.AddHours(2).ToUnixTimeSeconds()
+    Set-Content (Join-Path $qdir 'usage.json') ((& $rl 99 $soon 10 $soon) | ConvertTo-Json -Compress)
+    (Get-Item (Join-Path $qdir 'usage.json')).LastWriteTime = (Get-Date).AddMinutes(-16)
+    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
+    Check 'quota: a stale reading over the cap does not hold, and says usage was not checked' ($LASTEXITCODE -eq 0 -and "$out" -match 'usage not checked: .* 15 minutes') "exit $LASTEXITCODE $out"
     Set-Content (Join-Path $qdir 'usage.json') ((& $rl 99 $soon 10 $soon) | ConvertTo-Json -Compress)
     $out = & pwsh -NoProfile -File $quota -StateDir $qdir
     Check 'quota: over the cap exits non-zero and names the window' ($LASTEXITCODE -eq 1 -and "$out" -match 'five_hour at 99%') "exit $LASTEXITCODE $out"

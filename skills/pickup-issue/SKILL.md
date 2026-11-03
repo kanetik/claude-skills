@@ -116,7 +116,7 @@ If the build fails in a way you cannot resolve, push what you have to the branch
 
 ## Usage checkpoints
 
-A run not given an issue number checks plan usage at each checkpoint below with `pwsh -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/quota.ps1"` (where `${CLAUDE_SKILL_DIR}` is empty, use the folder this file is in). It prints the window over its cap and exits non-zero when usage is high, by the caps in **Usage caps** below. With no `pwsh` or no `usage.json`, nothing holds. Usage is checked only at checkpoints: between two of them the work always goes on to the next.
+A run not given an issue number, which includes a `chosen <n>` run, checks plan usage at each checkpoint below with `pwsh -NoProfile -File "${CLAUDE_SKILL_DIR}/scripts/quota.ps1"` (where `${CLAUDE_SKILL_DIR}` is empty, use the folder this file is in). It prints the window over its cap and exits non-zero when usage is high, by the caps in **Usage caps** below. A `usage.json` last written more than 15 minutes ago is no reading: with no reading, or no `pwsh`, nothing holds, the work goes on, and the report (step 5) says usage was not checked. Usage is checked only at checkpoints: between two of them the work always goes on to the next.
 
 | Checkpoint | When usage is high |
 |---|---|
@@ -133,7 +133,7 @@ A run not given an issue number checks plan usage at each checkpoint below with 
 
 ## 5. Report
 
-One short paragraph per issue taken: the issue, the PR link (or why there is none, including a pause), and anything the owner has to do. Then the same **Assumptions and decisions** list the PR carries.
+One short paragraph per issue taken: the issue, the PR link (or why there is none, including a pause), and anything the owner has to do. Then the same **Assumptions and decisions** list the PR carries. If any checkpoint had no reading, say that usage was not checked.
 
 ## Unattended runs (Windows)
 
@@ -146,13 +146,14 @@ pwsh -File scripts/pickup.ps1 -RepoDir C:\path\to\repo -Unregister
 
 Every 15 minutes it checks whether the day's run after `-NightlyAt` has not happened yet, or an open issue carries `agent-go`, and never acts within 30 minutes of its last launch. When one is due, a headless `claude -p --model haiku "/pickup-issue choose-only"` picks an issue to name the session, and `claude --bg --permission-mode auto "/pickup-issue chosen <n>"` starts the run, named for the repo, the issue, the trigger and the time (`wakey #142 fix snooze crash (nightly, Oct 26 01:00)`). With nothing to pick and nothing to clean up, no session starts, and that counts as the day's nightly run. If the choosing pass prints `PICKUP cleanup` or no readable `PICKUP` line, the launch falls back to a plain `/pickup-issue` named `wakey pickup (nightly, Oct 26 01:00)`. The name is the choosing pass's pick: the run works what step 1 picks, which can be a different issue, and the name does not change when the run moves on to another. Each launch appends Claude's output and exit code to `%LOCALAPPDATA%\pickup-issue\<repo>.log`. A launch whose session does not appear in `claude agents --json` fails the task, and a failed nightly run is retried on a later poll.
 
-**Usage caps.** It also holds off while Claude Code plan usage is high: the 5-hour window at 30% or more on weekdays from 01:00 to 18:00 and 50% or more otherwise, or the weekly window at 70% or more (`Get-FiveHourCap` and `Get-QuotaHold` in `scripts/decide.ps1`). A held nightly run is retried on later polls, and the same caps pause a running pickup (Usage checkpoints). The figures come from the `rate_limits` object Claude Code passes to the status line, so the status line has to save it to `%LOCALAPPDATA%\pickup-issue\usage.json`. In a PowerShell status line command that has parsed its input into `$input`, add:
+**Usage caps.** It also holds off while Claude Code plan usage is high: the 5-hour window at 30% or more on weekdays from 01:00 to 18:00 and 50% or more otherwise, or the weekly window at 70% or more (`Get-FiveHourCap` and `Get-QuotaHold` in `scripts/decide.ps1`). A held nightly run is retried on later polls, and the same caps pause a running pickup (Usage checkpoints). The figures come from the `rate_limits` object Claude Code passes to the status line, so the status line has to save it to `%LOCALAPPDATA%\pickup-issue\usage.json`. Put these lines in a status line script file, after whatever your status line prints, and set the status line command to `pwsh -NoProfile -File` with the file's path in forward slashes (`C:/Users/me/statusline.ps1`), since Git Bash drops unquoted backslashes:
 
 ```powershell
-if ($input.rate_limits) { $d = Join-Path $env:LOCALAPPDATA 'pickup-issue'; New-Item -ItemType Directory -Force $d | Out-Null; $input.rate_limits | ConvertTo-Json -Compress | Set-Content (Join-Path $d 'usage.json') }
+$data = [Console]::In.ReadToEnd() | ConvertFrom-Json
+if ($data.rate_limits) { $d = Join-Path $env:LOCALAPPDATA 'pickup-issue'; New-Item -ItemType Directory -Force $d | Out-Null; $data.rate_limits | ConvertTo-Json -Compress | Set-Content (Join-Path $d 'usage.json') }
 ```
 
-The file is only refreshed while some Claude Code session is open. A window whose reset time has passed counts as reset, and with no file at all the launch goes ahead.
+`rate_limits` is sent only for a Claude.ai subscription login. The file only updates while an interactive Claude Code session is open: background sessions do not run the status line. A window whose reset time has passed counts as reset, and a file last written more than 15 minutes ago, or no file, does not hold the launch.
 
 **Every launch fails with "Couldn't reach the background service" while an elevated process owns it.** Claude Code runs one background service per user, at the integrity level of whatever started it, and a non-elevated task cannot connect to an elevated one. The service is elevated when an elevated process ran `claude --bg`: a terminal run as administrator, or, on an administrator account, a scheduled task under an S4U principal ("run whether user is logged on or not"), which gets the full administrator token even at `-RunLevel Limited`. Register such a task with `-LogonType Interactive` instead, and stop the elevated service once with `claude daemon stop --any`, from a terminal run as administrator. The failed launch's log entry says when this is the likely cause. Registering this task elevated also works, but it then runs scripts from user-writable folders with administrator rights every 15 minutes.
 
