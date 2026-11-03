@@ -103,6 +103,7 @@ try {
     $choose = @([regex]::Matches($launcher, '(?m)^.*-p --model haiku.*$').Value)
     Check 'there is exactly one choosing pass' ($choose.Count -eq 1) ($choose -join "`n")
     Check 'the choosing pass gets no tools, in the = form so the flag cannot swallow the prompt' ($choose[0] -match " '--tools=' '/pickup-issue choose-only'") $choose[0]
+    Check 'the choosing pass loads no MCP server, which --tools= does not cover' ($choose[0] -match '--strict-mcp-config' -and $choose[0] -notmatch '--mcp-config') $choose[0]
     Check 'the choosing pass refuses anything not allowed instead of judging it' ($choose[0] -match '--permission-mode dontAsk' -and $choose[0] -notmatch 'auto|bypassPermissions|allowedTools|Bash') $choose[0]
     Check 'the choosing pass reads the repository state from standard input' ($choose[0] -match '\(& \$repoState\) \| & \$claude') $choose[0]
     Check 'PICKUP none completes the launch, so the nightly is not re-run all night' ($launcher -match '(?s)Number -eq 0\) \{[^}]*Complete-Launch[^}]*return')

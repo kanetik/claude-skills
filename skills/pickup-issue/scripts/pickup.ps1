@@ -97,7 +97,7 @@ Push-Location $RepoDir
 try {
     # A running session cannot rename itself, so the name's issue is picked before launch.
     $chooseError = $null
-    $chosen = try { Read-ChosenIssue ((& $repoState) | & $claude -p --model haiku --permission-mode dontAsk '--tools=' '/pickup-issue choose-only' 2>$null) } catch { $chooseError = "choose-only failed: $_"; $null }
+    $chosen = try { Read-ChosenIssue ((& $repoState) | & $claude -p --model haiku --permission-mode dontAsk --strict-mcp-config '--tools=' '/pickup-issue choose-only' 2>$null) } catch { $chooseError = "choose-only failed: $_"; $null }
     if ($chosen -and $chosen.Number -eq 0) {
         Add-Content -LiteralPath (Join-Path $stateDir "$name.log") -Value "$($now.ToString('o')) $reason PICKUP none`n"
         Complete-Launch -Now $now -StateDir $stateDir -Name $name -Reason $reason
