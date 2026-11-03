@@ -114,6 +114,7 @@ try {
     $launcher = Get-Content -Raw $script
     Check 'the tool flags use the = form' ($launcher -match '"--tools=\$chooseOnlyTools"' -and $launcher -match '"--disallowedTools=\$chooseOnlyDenied"')
     Check 'PICKUP none completes the launch, so the nightly is not re-run all night' ($launcher -match '(?s)Number -eq 0\) \{[^}]*Complete-Launch[^}]*return')
+    Check 'a paused review makes the choosing pass print PICKUP cleanup' ((Get-Content (Join-Path $PSScriptRoot 'SKILL.md') -Raw) -match 'labelled both `agent-pickup` and `agent-paused`, the last line is `PICKUP cleanup` or `PICKUP <n>`, never `PICKUP none`')
     Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
     Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
     Check 'no output at all falls back to a plain launch' ($null -eq (Read-ChosenIssue @()))
