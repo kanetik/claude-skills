@@ -1,10 +1,11 @@
 #Requires -Version 7
-# Self-check for scripts/pickup.ps1 and scripts/decide.ps1. Run it directly: pwsh selfcheck.ps1
+# Self-check for scripts/pickup.ps1, scripts/quota.ps1 and scripts/decide.ps1. Run it directly: pwsh selfcheck.ps1
 # Every pickup.ps1 case uses -DryRun, so nothing is registered and no session starts.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $script = Join-Path $PSScriptRoot 'scripts/pickup.ps1'
+$quota = Join-Path $PSScriptRoot 'scripts/quota.ps1'
 . (Join-Path $PSScriptRoot 'scripts/decide.ps1')
 $fails = 0
 function Check([string] $label, [bool] $ok, [string] $detail = '') {
@@ -15,7 +16,7 @@ $tmp = Join-Path ([IO.Path]::GetTempPath()) "pickup-selfcheck-$PID"
 $repo = Join-Path $tmp 'demo-repo'
 New-Item -ItemType Directory -Force -Path (Join-Path $repo '.git') | Out-Null
 try {
-    foreach ($f in $script, (Join-Path $PSScriptRoot 'scripts/decide.ps1')) {
+    foreach ($f in $script, $quota, (Join-Path $PSScriptRoot 'scripts/decide.ps1')) {
         $errs = $null
         [void][System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$null, [ref]$errs)
         Check "parses: $(Split-Path -Leaf $f)" ($errs.Count -eq 0) ($errs -join '; ')
@@ -71,6 +72,13 @@ try {
     $over = (& $rl 40 $future 10 $future) | ConvertTo-Json -Compress
     New-Item -ItemType Directory -Force -Path $state | Out-Null
     Set-Content (Join-Path $state 'usage.json') $over
+    $old = Join-Path $tmp 'old'
+    New-Item -ItemType Directory -Force -Path $old | Out-Null
+    Set-Content (Join-Path $old 'usage.json') $over
+    (Get-Item (Join-Path $old 'usage.json')).LastWriteTime = $mon.AddHours(-8)
+    Check 'an old reading over the cap still holds the launch until its window resets' ($null -eq (Resolve-Launch -Now $mon -StateDir $old -Name demo -NightlyAt $at -HasGoIssue $no))
+    Set-Content (Join-Path $old 'usage.json') ((& $rl 40 $past 10 $future) | ConvertTo-Json -Compress)
+    Check 'an old reading whose over-cap window has reset does not hold' ((Resolve-Launch -Now $mon -StateDir $old -Name demo -NightlyAt $at -HasGoIssue $no) -eq 'nightly')
     Check 'over the cap: no launch' ($null -eq (Resolve-Launch -Now $mon -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a held nightly writes no stamps' (-not (Test-Path (Join-Path $state 'demo.last-nightly')) -and -not (Test-Path (Join-Path $state 'demo.last-launch')))
     Remove-Item (Join-Path $state 'usage.json')
@@ -111,11 +119,29 @@ try {
     Check 'an agent PR with no body does not fail the state fetch' ($launcher -match [regex]::Escape('.body |= ((. // "") | split'))
     Check 'the choosing pass reads the repository state from standard input' ($choose[0] -match '\(& \$repoState\) \| & \$claude') $choose[0]
     Check 'PICKUP none completes the launch, so the nightly is not re-run all night' ($launcher -match '(?s)Number -eq 0\) \{[^}]*Complete-Launch[^}]*return')
+    Check 'a paused review makes the choosing pass print PICKUP cleanup' ((Get-Content (Join-Path $PSScriptRoot 'SKILL.md') -Raw) -match 'open agent PR is labelled `agent-paused`, the last line is `PICKUP cleanup` or `PICKUP <n>`, never `PICKUP none`')
+    Check 'the choosing pass is handed the agent PRs'' labels, so it can see a paused review' ($launcher -match 'body,labels --jq')
     Check 'PICKUP cleanup falls back to a plain launch' ($null -eq (Read-ChosenIssue @('PICKUP none', 'PICKUP cleanup')))
     Check 'no PICKUP line falls back to a plain launch' ($null -eq (Read-ChosenIssue @('error: something broke')))
     Check 'no output at all falls back to a plain launch' ($null -eq (Read-ChosenIssue @()))
     Check 'the title is cut to 40 characters and stripped of quotes and flags' ((Read-ChosenIssue @("PICKUP 7 `"--model`" $('x' * 60)")).Title.Length -le 40 -and (Read-ChosenIssue @('PICKUP 7 "a" `b`')).Title -eq 'a b')
     Check 'a missing window does not hold' ($null -eq (Get-QuotaHold -Now $mon -RateLimits ([pscustomobject]@{ seven_day = [pscustomobject]@{ used_percentage = 10; resets_at = $future } })))
+
+    $qdir = Join-Path $tmp 'quota'
+    New-Item -ItemType Directory -Force -Path $qdir | Out-Null
+    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
+    Check 'quota: no usage file does not hold, and says usage was not checked' ($LASTEXITCODE -eq 0 -and "$out" -match 'usage not checked') "exit $LASTEXITCODE $out"
+    $soon = [DateTimeOffset]::Now.AddHours(2).ToUnixTimeSeconds()
+    Set-Content (Join-Path $qdir 'usage.json') ((& $rl 99 $soon 10 $soon) | ConvertTo-Json -Compress)
+    (Get-Item (Join-Path $qdir 'usage.json')).LastWriteTime = (Get-Date).AddHours(-8)
+    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
+    Check 'quota: over the cap exits non-zero and names the window' ($LASTEXITCODE -eq 1 -and "$out" -match 'five_hour at 99%') "exit $LASTEXITCODE $out"
+    Set-Content (Join-Path $qdir 'usage.json') ((& $rl 1 $soon 1 $soon) | ConvertTo-Json -Compress)
+    $out = & pwsh -NoProfile -File $quota -StateDir $qdir
+    Check 'quota: under the cap does not hold' ($LASTEXITCODE -eq 0 -and -not $out) "exit $LASTEXITCODE $out"
+    $named = [regex]::Matches((Get-Content (Join-Path $PSScriptRoot 'SKILL.md') -Raw), 'scripts/(\w+\.ps1)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    Check 'SKILL.md names quota.ps1, and every script it names exists' ('quota.ps1' -in $named -and -not ($named | Where-Object { -not (Test-Path (Join-Path $PSScriptRoot "scripts/$_")) })) ($named -join ', ')
+    Check 'quota and the scheduler read the same state directory' ((Get-Content $script -Raw) -match 'stateDir = Get-PickupStateDir')
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
 }

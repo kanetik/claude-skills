@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $RepoDir '.git'))) { throw "$RepoDir
 $name = Split-Path -Leaf $RepoDir
 $taskPath = '\pickup-issue\'
 $taskName = "$name pickup"
-$stateDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'pickup-issue'
+$stateDir = Get-PickupStateDir
 
 function Get-Exe([string] $cmd) {
     $c = Get-Command $cmd -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -86,7 +86,7 @@ $repoState = {
         today = (Get-Date).ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
         now_utc = (Get-Date).ToUniversalTime().ToString('o')
         collaborators = @(gh api "repos/$repo/collaborators" --paginate --jq '.[] | {login, permission: .role_name}' | ConvertFrom-Json)
-        agent_prs = @(gh pr list --state all --label agent-pickup --limit 200 --json number,state,mergedAt,createdAt,body --jq '.[] | .body |= ((. // "") | split("\n")[0])' | ConvertFrom-Json)
+        agent_prs = @(gh pr list --state all --label agent-pickup --limit 200 --json number,state,mergedAt,createdAt,body,labels --jq '.[] | .body |= ((. // "") | split("\n")[0]) | .labels |= map(.name)' | ConvertFrom-Json)
         triage_labels_md = if (Test-Path -LiteralPath $triage) { Get-Content -LiteralPath $triage -Raw }
         open_issues = @($issues.Values | Sort-Object number)
     } | ConvertTo-Json -Depth 6
