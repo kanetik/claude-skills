@@ -10,8 +10,8 @@ description: |
   wait on something gets agent-defer. When an issue it takes ends without a PR,
   it takes the next, until one becomes a PR or none is left. One pickup in flight
   per repository at a time, unless the owner named the issue or labelled it to go
-  now. When plan usage gets high it pauses at a clean point, noting on the issue
-  where it stopped, and a later run continues from there. Use when the user says
+  now. When plan usage gets high it pauses at a clean point, and a later run
+  continues from there. Use when the user says
   "pick up an issue", "work the backlog", "take the next issue", "work issue #N",
   or invokes /pickup-issue (optionally with an issue number); scheduled runs
   launch it headless.
