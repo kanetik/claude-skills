@@ -62,7 +62,7 @@ An issue whose agent PR merged keeps its label: the merge closes it, or it is wa
 
 **Otherwise:**
 
-1. **Paused reviews.** For each open PR labelled both `agent-pickup` and `agent-paused`: remove `agent-paused` and run `/pr-review-loop` on it to convergence, with the review checkpoints (Usage checkpoints). Then go on.
+1. **Paused reviews.** For each open PR labelled both `agent-pickup` and `agent-paused`: remove `agent-paused` and run `/pr-review-loop` on it to convergence, with the review checkpoints (Usage checkpoints), recording its owner calls as step 4 says. Then go on.
 2. **Limit.** While any issue is in flight, the only candidates are open issues labelled `agent-go`. If there are none, stop, report what holds the limit, and exit.
 3. **Candidates.** `gh issue list --state open --limit 200 --json number,title,labels,assignees,author,createdAt,body`, plus the same query with `--label agent-go` so no `agent-go` issue falls outside the 200. Keep an issue only if all of these hold:
    - no assignee, and no `agent-pickup` label;
@@ -110,7 +110,7 @@ The PR:
 - labelled `agent-pickup`;
 - with an **Assumptions and decisions** section: every reading of an ambiguous requirement, gap you filled, scope you left out, and judgement call the owner did not make, one line each, with what you chose and the alternative. Write `None` only when there were none.
 
-Then start the repo's PR review flow. Where `/pr-review-loop` is available, invoke it on the new PR and run it to convergence. A review finding is decided the way step 3 fills a gap: where one answer is clear and uncontroversial, take it and keep going, and stop for the owner only where none is. When the loop ends, add each decision it made in place of asking (its summary lists them as owner calls) to the PR's **Assumptions and decisions**, with a link to its thread.
+Then start the repo's PR review flow. Where `/pr-review-loop` is available, invoke it on the new PR and run it to convergence. A review finding is decided the way step 3 fills a gap: where one answer is clear and uncontroversial, take it and keep going, and stop for the owner only where none is. Whenever a loop this skill runs ends, here or on a review step 1 resumes, add each decision it made in place of asking (its summary lists them as owner calls) to the PR's **Assumptions and decisions**, with a link to its thread, or to its dispositions comment where it has none.
 
 If the build fails in a way you cannot resolve, push what you have to the branch, comment on the issue with what blocked you and a link to the branch, add `ready-for-human`, and remove `agent-pickup` and your assignee.
 
