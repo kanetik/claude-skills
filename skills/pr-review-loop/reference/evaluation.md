@@ -80,7 +80,7 @@ Not "did the diff touch this line" — is it part of the job this change came to
 | Yes | Yes | **No — real, not worth the round** | — | `Acknowledge-no-change`, reply saying it is right and what leaving it costs |
 | Yes | No — correct, not a problem | — | — | `Acknowledge-no-change` |
 | No | — | — | — | `Reject-with-explanation` |
-| — | Uncertain, security/auth, architectural, or blocking-and-you-think-immaterial | — | — | `Ask-user` |
+| — | Uncertain, security/auth, architectural, or blocking-and-you-think-immaterial, with no clear answer (the owner-call test, below) | — | — | `Ask-user` |
 
 **`Acknowledge-no-change` covers two different claims and the reply must say which.** *"You are right and this is not a problem"* and *"you are right, it is a problem, and it is not worth a round"* are both closes-without-change, but the second is a decision to ship a known defect and the summary counts them separately. Never write the second as the first.
 
@@ -100,7 +100,11 @@ Not "did the diff touch this line" — is it part of the job this change came to
 
 **`Acknowledge-no-change` is not available at a blocking severity.** A `CRITICAL` or `HIGH` is a real problem by definition, so it ends at fixed, `Create-issue-and-close` (only if genuinely unrelated), `Reject-with-explanation` on the merits, or `Ask-user`. The course is a licence to stop polishing, not a licence to converge by agreeing with everything.
 
-**Default to `Ask-user` for:** security/auth-adjacent changes; relatedness boundary calls; conflicting reviewer asks; big-impact architectural feedback; a fix whose cost to own looks ridiculous.
+**Look twice before deciding:** security/auth-adjacent changes; relatedness boundary calls; conflicting reviewer asks; big-impact architectural feedback; a fix whose cost to own looks ridiculous.
+
+**`Ask-user` is for a decision you cannot make, not one you would rather not.** Every route to it in this skill, including those categories and a second closure verdict short of `closed`, first asks: is there one answer a competent engineer on this project would take without much argument? Usually it is the safer one: fix the security finding, keep the PR inside what the issue or intent asked for, side with whichever conflicting reviewer the code or the issue already agrees with, revert rather than patch. Where there is, take that course as an **owner call** and keep going. `Ask-user` is left for the rest: no answer clearly better, or one that accepts a risk or changes the deal, such as leaving a security or data-loss finding unfixed, shipping a blocking finding you judge immaterial, changing what the PR delivers, an architectural direction the code does not already set, or anything outward-facing or hard to undo.
+
+**An owner call is recorded on the PR.** Its reply, or its dispositions entry where it has no thread, says what you decided, the alternative, and why, and carries the normal disposition marker with a second line, `<!-- pr-review-loop: owner-call -->`. The final summary lists every one (SKILL.md, "Final summary report").
 
 ## Minor findings are batched or acknowledged, never fixed in the round
 
@@ -228,7 +232,7 @@ Same surfaces, same lenses, same courses. Four things about its shape change how
 
 Phrase the no-op test as "did HEAD move", never as "was it a `Fix-*`": already-fixed carries a `fixed` marker and moves nothing, so the course-name form leaves a round of already-fixed dispositions unable to converge. Non-blocking observations go through the same three questions as anything else ("Is the problem real, is it worth acting on, and is it ours?") — a real, related problem is fixed here whatever its severity; a correct observation that names no problem is acknowledged and closed. Every one still gets a reply and a resolved thread, because the record is what stops it coming back. They just don't hold the loop open. Don't invert this into "low severity, ignore": the severity is that skill's blast-radius judgement about the project, and your judgement may rate an item higher than it did. It cuts the other way too — a `MEDIUM` you reply to as `fixed` and leave present comes straight back.
 - **A finding linked to an earlier thread is evidence.** Skeptic links a finding to its own earlier thread on the same defect — or, for a threadless one, to its entry in a dispositions comment — and to a Copilot thread; where that Copilot thread's latest disposition is `fixed`, it also tags the finding `unfixed`, a severity higher. Linked to a thread you marked `fixed`, or tagged `unfixed`, it is the loop's characteristic failure caught red-handed: re-open the question the earlier fix was answering rather than patching the new instance ("Writing the fix without causing the next finding", above). Linked to a thread you rejected or acknowledged, an independent reviewer found it anyway: re-examine your rationale rather than restate it, and where it still holds, answer again — on the new thread, or in this round's dispositions comment for a threadless one. That changes no code.
-- **`Ask-user` is unchanged and still the default** for security/auth, scope boundaries and architectural calls. A finding arriving with a confident severity attached is not extra authority to act unilaterally.
+- **`Ask-user` follows the same owner-call test** for security/auth, scope boundaries and architectural calls. A finding arriving with a confident severity attached is not extra authority to act unilaterally.
 
 ## Triaging the first pass — Copilot
 

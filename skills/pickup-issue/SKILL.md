@@ -110,7 +110,7 @@ The PR:
 - labelled `agent-pickup`;
 - with an **Assumptions and decisions** section: every reading of an ambiguous requirement, gap you filled, scope you left out, and judgement call the owner did not make, one line each, with what you chose and the alternative. Write `None` only when there were none.
 
-Then start the repo's PR review flow. Where `/pr-review-loop` is available, invoke it on the new PR and run it to convergence.
+Then start the repo's PR review flow. Where `/pr-review-loop` is available, invoke it on the new PR and run it to convergence. A review finding is decided the way step 3 fills a gap: where one answer is clear and uncontroversial, take it and keep going, and stop for the owner only where none is. When the loop ends, add each decision it made in place of asking (its summary lists them as owner calls) to the PR's **Assumptions and decisions**, with a link to its thread.
 
 If the build fails in a way you cannot resolve, push what you have to the branch, comment on the issue with what blocked you and a link to the branch, add `ready-for-human`, and remove `agent-pickup` and your assignee.
 
@@ -133,7 +133,7 @@ A run not given an issue number, which includes a `chosen <n>` run, checks plan 
 
 ## 5. Report
 
-One short paragraph per issue taken: the issue, the PR link (or why there is none, including a pause), and anything the owner has to do. Then the same **Assumptions and decisions** list the PR carries. If any checkpoint had no reading, say that usage was not checked.
+One short paragraph per issue taken: the issue, the PR link (or why there is none, including a pause), and anything the owner has to do. Then the same **Assumptions and decisions** list the PR carries, review decisions included. If any checkpoint had no reading, say that usage was not checked.
 
 ## Unattended runs (Windows)
 
