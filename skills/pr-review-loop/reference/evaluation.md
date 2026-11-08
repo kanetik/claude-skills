@@ -242,7 +242,7 @@ Copilot reviews once per PR (SKILL.md step 4, "The first pass") and never comes 
 - **Reply without a mention** (`reference/mechanics.md`), and resolve, exactly as for any thread. Never re-request Copilot.
 - **A fixed Copilot thread is not resolved until the closure check says `closed`.** The check runs after the round's fix commit (`reference/mechanics.md`, "The closure check"). Post its verdict and evidence as the thread reply:
   - `closed` → the reply is your disposition reply plus the evidence, stamped `disposition=fixed`; resolve.
-  - `partial` or `not-addressed` → reply with the verdict and evidence, **no disposition marker**, and leave the thread open. It is an undecided finding again: it holds convergence until decided (SKILL.md step 4, "The first pass"), and the next round triages it like any other and fixes what is left. A second verdict short of `closed` on the same thread goes to the user (`Ask-user`) rather than a third fix.
+  - `partial` or `not-addressed` → reply with the verdict and evidence, **no disposition marker**, and leave the thread open. It is an undecided finding again: it holds convergence until decided (SKILL.md step 4, "The first pass"), and the next round triages it like any other and fixes what is left. A second verdict short of `closed` on the same thread gets no third fix: where one answer is clear, take it as an owner call; otherwise it goes to the user (`Ask-user`).
 
 Fixes for Copilot comments go through the round like any other fix: the pre-push check, the commit, the push, and the reviewer's delta read of the result.
 
