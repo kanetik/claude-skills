@@ -90,20 +90,20 @@ try {
     Complete-Launch -Now $mon -StateDir $state -Name demo -Reason 'nightly'
     Check 'a completed nightly launch stamps the date' ((Get-Content (Join-Path $state 'demo.last-nightly') -Raw).Trim() -eq '2026-10-26')
     Check 'a completed nightly is not repeated the same day' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(62) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
-    $agents = '[{"pid":1,"kind":"interactive","name":"other"},{"id":"ab12","kind":"background","name":"wakey pickup (nightly, Oct 26 01:00)"},{"pid":2,"kind":"interactive"}]'
-    Check 'the launched session is found by name' (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 26 01:00)')
-    Check 'a session that never registered is a failed launch' (-not (Test-SessionStarted $agents 'wakey pickup (nightly, Oct 27 01:00)'))
+    $agents = '[{"pid":1,"kind":"interactive","name":"other"},{"id":"ab12","kind":"background","name":"app pickup (nightly, Oct 26 01:00)"},{"pid":2,"kind":"interactive"}]'
+    Check 'the launched session is found by name' (Test-SessionStarted $agents 'app pickup (nightly, Oct 26 01:00)')
+    Check 'a session that never registered is a failed launch' (-not (Test-SessionStarted $agents 'app pickup (nightly, Oct 27 01:00)'))
     Check 'unreadable agents output is a failed launch' (-not (Test-SessionStarted 'not json' 'x'))
     Check 'an unreachable background service gets a hint' ((Get-LaunchFailureHint "Starting background service…`nCouldn't reach the background service (background service did not become reachable within 45s)") -match 'elevated process')
     Check 'other launch failures get no hint' ($null -eq (Get-LaunchFailureHint 'Workspace not trusted.'))
     Set-Content (Join-Path $state 'demo.last-launch') ''
     Check 'an empty launch stamp does not stop the decision' ($null -ne (Resolve-Launch -Now $mon.AddDays(1) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $no))
     Check 'a second poll within 30 minutes does not launch' ($null -eq (Resolve-Launch -Now $mon.AddMinutes(15) -StateDir $state -Name demo -NightlyAt $at -HasGoIssue $yes))
-    Check 'session name says which trigger launched it' ((Get-SessionName 'wakey' 'go' ([datetime]'2026-10-25 21:30')) -eq 'wakey pickup (agent-go, Oct 25 21:30)')
-    Check 'session name for a nightly run' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15')) -eq 'wakey pickup (nightly, Oct 26 01:15)')
-    $pick = Read-ChosenIssue @('Checked 12 issues.', 'PICKUP #142 Fix snooze crash!')
-    Check 'reads the chosen issue from the last PICKUP line' ($pick.Number -eq 142 -and $pick.Title -eq 'Fix snooze crash') "$pick"
-    Check 'session name carries the chosen issue' ((Get-SessionName 'wakey' 'nightly' ([datetime]'2026-10-26 01:15') $pick) -eq 'wakey #142 Fix snooze crash (nightly, Oct 26 01:15)')
+    Check 'session name says which trigger launched it' ((Get-SessionName 'app' 'go' ([datetime]'2026-10-25 21:30')) -eq 'app pickup (agent-go, Oct 25 21:30)')
+    Check 'session name for a nightly run' ((Get-SessionName 'app' 'nightly' ([datetime]'2026-10-26 01:15')) -eq 'app pickup (nightly, Oct 26 01:15)')
+    $pick = Read-ChosenIssue @('Checked 12 issues.', 'PICKUP #142 fix crash on resume!')
+    Check 'reads the chosen issue from the last PICKUP line' ($pick.Number -eq 142 -and $pick.Title -eq 'fix crash on resume') "$pick"
+    Check 'session name carries the chosen issue' ((Get-SessionName 'app' 'nightly' ([datetime]'2026-10-26 01:15') $pick) -eq 'app #142 fix crash on resume (nightly, Oct 26 01:15)')
     Check 'PICKUP none means nothing to launch' ((Read-ChosenIssue @('PICKUP none')).Number -eq 0)
     Check 'an issue number too large for an int falls back instead of throwing' ($null -eq (Read-ChosenIssue @('PICKUP 99999999999 x')))
     # The choosing pass reads issue text written by other people, so it gets no tool it could be talked into using.

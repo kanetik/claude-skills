@@ -22,7 +22,7 @@ allowed-tools:
 
 Generate the English source for Play Store release notes — pull commits, draft
 bullets, get approval, write the source-locale file. **This skill stops there.**
-Locale translation is the `translate` skill's job; this skill hands off.
+Locale translation is the `translate-content` skill's job; this skill hands off.
 
 ## When to use this skill
 
@@ -114,16 +114,16 @@ After approval:
 
 1. Resolve the source-locale path: substitute the `(default)` locale into
    `{output_dir}/{file_pattern}`. Examples:
-   - Wakey: `playstore/whatsnew/whatsnew-en-US`
-   - ART: `app/src/main/play/release-notes/en-US/default.txt`
+   - Flat layout: `playstore/whatsnew/whatsnew-en-US`
+   - Subdir layout: `app/src/main/play/release-notes/en-US/default.txt`
 2. Write the approved English text to that path. Overwrite if it exists.
 3. Create parent directories if needed (e.g., for the subdir layout, mkdir
    the locale folder).
 
 **Do not translate.** Do not write any other locale's file. That's the
-`translate` skill's responsibility.
+`translate-content` skill's responsibility.
 
-## Step 6: Hand off to /translate
+## Step 6: Hand off to /translate-content
 
 Print:
 
