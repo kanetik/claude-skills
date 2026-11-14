@@ -107,13 +107,13 @@ test('rows are checklist items labelled with the id done takes, without dash or 
 })
 
 test('a collapsed row fits the band width, so it never wraps onto a second line', async ($, on) => {
-  engine(on, () => `Parked (user):\n  u1. - [ ] 2026-10-01 (from wakey) ${'x'.repeat(300)}\n`)
+  engine(on, () => `Parked (user):\n  u1. - [ ] 2026-10-01 (from myapp) ${'x'.repeat(300)}\n`)
 
   await $.session.start(START)
   const band = await mountBand($)
   const body = await band.find({ type: 'Text', text: /x…$/ })
   expect(body).toBeDefined()
-  expect('││ ▢  u1: from wakey  ▸'.length + (body?.text.length ?? 999)).toBeLessThanOrEqual(BAND_PROPS.bodyColumns)
+  expect('││ ▢  u1: from myapp  ▸'.length + (body?.text.length ?? 999)).toBeLessThanOrEqual(BAND_PROPS.bodyColumns)
   await band.unmount()
 })
 
