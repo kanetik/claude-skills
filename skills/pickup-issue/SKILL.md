@@ -67,7 +67,7 @@ An issue whose agent PR merged keeps its label: the merge closes it, or it is wa
 
 **Otherwise:**
 
-1. **Paused reviews.** For each open PR labelled both `agent-pickup` and `agent-paused`: remove `agent-paused` and run `/pr-review-loop` on its URL, plus `repo <checkout>` for a checkout at its head wherever that is not the working directory, to convergence (where no checkout holds the branch, first make one: `git -C <path> fetch` it, then `git -C <path> worktree add` it), with the review checkpoints (Usage checkpoints), recording its owner calls as step 4 says. Then go on.
+1. **Paused reviews.** For each open PR labelled both `agent-pickup` and `agent-paused`: remove `agent-paused` and run `/pr-review-loop` on its URL, plus `repo <checkout>` for a checkout holding its branch (pr-review-loop's Preconditions test) wherever that is not the working directory, to convergence (where no checkout holds the branch, first make one: `git -C <path> fetch` it, then `git -C <path> worktree add` it), with the review checkpoints (Usage checkpoints), recording its owner calls as step 4 says. Then go on.
 2. **Limit.** While any issue is in flight, the only candidates are open issues labelled `agent-go`. If there are none, stop, report what holds the limit, and exit.
 3. **Candidates.** `gh issue list -R <owner>/<name> --state open --limit 200 --json number,title,labels,assignees,author,createdAt,body`, plus the same query with `--label agent-go` so no `agent-go` issue falls outside the 200. Keep an issue only if all of these hold:
    - no assignee, and no `agent-pickup` label;
