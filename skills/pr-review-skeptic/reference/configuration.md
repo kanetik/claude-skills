@@ -59,6 +59,7 @@ Parse from the invocation, overriding config for that run:
 | Phrasing | Effect |
 |---|---|
 | a PR number, URL, or `owner/repo#num` | Sets the target PR. |
+| "repo `<path>`" | A local checkout of the PR's repo: resolves the PR from its branch when none is named, and is used as `$REPO` instead of cloning ([`mechanics.md`](mechanics.md)). |
 | "don't post" / "just tell me" | Report in the terminal, post nothing. |
 | "show me first" | `confirm_before_posting: true`. |
 | "include medium" / "everything blocks" | Extends `blocking_severities`. |

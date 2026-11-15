@@ -11,8 +11,8 @@ description: >-
   was not question-shaped; shown in the terminal otherwise. Use when the user asks for a second
   opinion or an independent skeptical review of a PR, or asks whether a PR is
   really ready to merge. Requires an existing PR; accepts a PR number, URL, or
-  owner/repo#num, and modifiers like "don't post", "one reviewer", or
-  "include medium".
+  owner/repo#num, and modifiers like "don't post", "one reviewer",
+  "include medium", or "repo <path>" naming a local checkout to work from.
 allowed-tools:
   - Bash
   - Read
@@ -84,7 +84,7 @@ No PR found and none named → say so and stop. This skill reviews a pull reques
 
 Reviewers read the code at the PR's head, and several of them read it at once, so every run happens in a **staged worktree** at that commit rather than in your own checkout ([`reference/mechanics.md`](reference/mechanics.md)):
 
-1. Resolve the PR's own repository. For a cross-repo PR that isn't cloned locally, `gh repo clone` it into the temp directory first — same-named files in the repo you happen to be standing in are not the code under review.
+1. Resolve the PR's own repository, and its local checkout: one the invocation names (`repo <path>`), else the working directory where it is that repo. For a PR with neither, `gh repo clone` it into the temp directory first — same-named files in the repo you happen to be standing in are not the code under review.
 2. Fetch the head from that repository and add a temporary `git worktree` at it.
 3. The worktree comes down at stage 9.
 
@@ -339,7 +339,7 @@ Where the review was posted, say the findings are on the PR, and say how many la
 
 Taking it up **re-runs stage 1's staging and nothing else** — carrying `$REVIEWED` across unchanged, since the point of the checks is to notice the head has moved away from what was reviewed. Order matters: **re-read `state` and the current head *before* re-staging**, per "Is this still the right commit?".
 
-One wrinkle on the cross-repo path: `$REPO` was the temp clone, and teardown deleted it, so the force-push test — which is `git -C "$REPO" …` — would run in a repository that no longer exists and exit 128 on every call. A missing `$REPO` is not the same as an unresolvable sha, and treating it as one posts at an orphaned `$REVIEWED` and 422s twice. So **re-clone first where the PR is cross-repo** (a bare clone with no worktree is enough for the fetch and `--is-ancestor`), then run the checks, then stage or skip staging as they direct. Then re-stage at `$REVIEWED`, write the payload files again from the draft already shown, re-validate the anchors against the diff at `$REVIEWED`, and post — through all three placement tiers, so the previewed threads land as threads.
+One wrinkle on the cross-repo path: `$REPO` was the temp clone, and teardown deleted it, so the force-push test — which is `git -C "$REPO" …` — would run in a repository that no longer exists and exit 128 on every call. A missing `$REPO` is not the same as an unresolvable sha, and treating it as one posts at an orphaned `$REVIEWED` and 422s twice. So **re-clone first where `$REPO` was the temp clone** (a bare clone with no worktree is enough for the fetch and `--is-ancestor`), then run the checks, then stage or skip staging as they direct. Then re-stage at `$REVIEWED`, write the payload files again from the draft already shown, re-validate the anchors against the diff at `$REVIEWED`, and post — through all three placement tiers, so the previewed threads land as threads.
 
 Checking first is what makes the force-push case survivable. Teardown deleted `refs/prskeptic/<num>`, so re-staging re-fetches `pull/<num>/head` — which after a force-push is a *different* commit, leaving `$REVIEWED` unresolvable: `cat-file -e` and `worktree add` both fail, and the skill's own force-push answer sits behind a step that cannot complete. So on a force-push, **skip the worktree and ref work** and go straight to the body-only post against the current head. There are no anchors to re-validate, because none survive a force-push.
 

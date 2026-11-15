@@ -97,7 +97,7 @@ Part of what is needed is **already published by the reviewed repo, on the runs 
 bundled defaults  <  ~/.claude/pr-review-loop.config.yml (optional)  <  <orchestrator-repo>/.github/pr-review-loop.config.yml (project)
 ```
 
-Bundled defaults are always present (the self-sufficient baseline). User-level is optional and additive — read it *if it exists*; if it doesn't, that's fine, never require it. Project `.github/pr-review-loop.config.yml` in the orchestrator repo (the working directory's repo) wins. **Merge is per-key**, not whole-file replace — a project file setting only `max_iterations` inherits the rest from below. The merged config applies to ALL PRs in the run, including cross-repo ones (they don't pull config from their own repos).
+Bundled defaults are always present (the self-sufficient baseline). User-level is optional and additive — read it *if it exists*; if it doesn't, that's fine, never require it. Project `.github/pr-review-loop.config.yml` in the orchestrator repo (SKILL.md "Preconditions"), read from that repo's local checkout, wins. **Merge is per-key**, not whole-file replace — a project file setting only `max_iterations` inherits the rest from below. The merged config applies to ALL PRs in the run, including cross-repo ones (they don't pull config from their own repos).
 
 ## Retired keys
 
@@ -123,12 +123,13 @@ Parse intent; don't require precise syntax:
 - "without codex" / "skip the skeptic" → narrow `reviewers` for this run. "no copilot" / "skip the first pass" → empty `first_pass_reviewers` for this run. Only changes who the loop *engages*; a reviewer that shows up via auto-trigger is still evaluated. **If the narrowing leaves the list empty, stop and say so** — don't run a loop with nobody in it (above).
 - "just fix what's there" / "one pass" → triage what is already on the PR and stop: steps 1, 5, 6, 7, then **push without step 8's re-engagement**, and no wait, no step 4, no return to step 3. Step 8's two halves come apart here deliberately, and only the push runs. It makes no convergence judgement, so it reports its own outcome — *one pass; triaged what was already on the PR, no reviewer engaged, nothing has reviewed the new HEAD* — and never one of step 4's five, least of all *converged*. Re-engaging reviewers and then terminating would be worse than either: they post findings onto a PR this run has already stopped triaging, and the next run reads them as unresolved feedback of unknown provenance.
 - A PR number, URL, or cross-repo reference → target specific PR(s) instead of auto-detecting.
+- "repo <path>" → the local checkout to work in, for the repo at that path (SKILL.md "Preconditions").
 
 Build command is not configured — detect the project's verify command at the commit step.
 
 ## Project-level *procedural* overrides (separate from config)
 
-If the orchestrator repo has its own PR-review instructions that **contradict** this skill, defer to the project — assume the override is intentional. Check: `./.github/PR_REVIEW_LOOP.md`, `./CLAUDE.md` (PR-review section), `./AGENTS.md` (PR-review section), `./.cursorrules`, `./.claude/commands/pr-review-loop.md` / `./.claude/skills/pr-review-loop/`. Classify each difference:
+If the orchestrator repo has its own PR-review instructions that **contradict** this skill, defer to the project — assume the override is intentional. Check, relative to the orchestrator repo's local checkout: `./.github/PR_REVIEW_LOOP.md`, `./CLAUDE.md` (PR-review section), `./AGENTS.md` (PR-review section), `./.cursorrules`, `./.claude/commands/pr-review-loop.md` / `./.claude/skills/pr-review-loop/`. Classify each difference:
 
 - **Contradiction** = procedural disagreement (reply templates, escalation rules, rubric, resolve criteria). **Project wins.**
 - **Addition** = non-contradicting delta (project build command, an extra lint rule, a preferred reply style). **Apply both.** (Reviewer selection is config, not a procedural addition.)

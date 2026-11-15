@@ -19,6 +19,8 @@ A session whose working directory is a linked worktree may be isolated to it, re
 
 ## Resolve the PR
 
+Where a `repo <path>` modifier names a checkout, run these against it — `git -C <path>`, and `--repo` set to its `origin`'s owner/repo — rather than the working directory.
+
 ```bash
 branch=$(git branch --show-current)
 gh pr list --head "$branch" --json number,title,url        # named branch
@@ -124,9 +126,10 @@ mkdir -p "<tmp>" && : > "<tmp>/run.lock"     # sits here too, and holds review t
 # Cross-repo PR with no local clone at hand -- get one, and work from it.
 gh repo clone <owner>/<repo> "<tmp>/repo-<num>"
 
-# $REPO is the checkout every git call below runs against: the current checkout for a PR in
-# its repo -- the session's own worktree where that is a linked one, see "Running from inside
-# a git worktree" -- else the clone above. Teardown happens many turns later, in another
+# $REPO is the checkout every git call below runs against: a checkout of the PR's repo the
+# invocation names (`repo <path>`); else the current checkout for a PR in its repo -- the
+# session's own worktree where that is a linked one, see "Running from inside a git
+# worktree" -- else the clone above. Teardown happens many turns later, in another
 # shell -- point it at the wrong repo and the fetch plants refs/prskeptic/* and a worktree
 # registration in the user's own repository, where nothing ever reclaims them.
 REPO=<current-checkout-or-tmp-clone>

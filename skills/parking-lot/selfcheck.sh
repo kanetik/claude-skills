@@ -756,6 +756,71 @@ run reopen "$handled" "- [ ] $(date +%Y-%m-%d) plain thing" > /dev/null 2>&1 &&
 grep -q -x -F -- "$handled" "$rstore" && ok "a refused reopen leaves the handled line alone" ||
   no "a refused reopen leaves the handled line alone" "$(cat "$rstore")"
 
+# --- --repo -----------------------------------------------------------------
+
+rcfg="$tmp/repocfg"
+other="$tmp/otherrepo"
+mkdir -p "$other"
+git -C "$other" init -q
+git -C "$other" -c user.email=t@example.com -c user.name=Test commit -q --allow-empty -m seed
+git -C "$other" tag v9
+inrepo() { (cd "$repo" && CLAUDE_CONFIG_DIR="$rcfg" sh "$PL" "$@"); }
+inother() { (cd "$other" && CLAUDE_CONFIG_DIR="$rcfg" sh "$PL" "$@"); }
+
+check "--repo names the store of that repository" "$(inrepo path --repo "$other")" "$(inother path)"
+inrepo add --repo "$other" --tag v9 "tagged elsewhere" > /dev/null
+inother list | grep -q 'tagged elsewhere' && ok "add --repo parks into that repository's store" ||
+  no "add --repo parks into that repository's store" "$(inother list)"
+inrepo list | grep -q 'tagged elsewhere' && no "add --repo leaves the working directory's store alone" "$(inrepo list)" ||
+  ok "add --repo leaves the working directory's store alone"
+inrepo list --repo "$other" | grep -q -F '(when: tag v9) tagged elsewhere' &&
+  ok "--repo checks a reminder's tag against that repository's tags" ||
+  no "--repo checks a reminder's tag against that repository's tags" "$(inrepo list --repo "$other")"
+inrepo show --repo "$other" | grep -q 'Parked in otherrepo' && ok "show --repo names that repository" ||
+  no "show --repo names that repository" "$(inrepo show --repo "$other")"
+inrepo add --user --repo "$other" "user from other" > /dev/null
+inrepo list --user | grep -q '(from otherrepo) user from other' && ok "add --user --repo tags the item with that repository" ||
+  no "add --user --repo tags the item with that repository" "$(inrepo list --user)"
+inrepo list --repo "$tmp/no-such-dir" > /dev/null 2>&1 && no "--repo refuses a path that does not exist" "it succeeded" ||
+  ok "--repo refuses a path that does not exist"
+inrepo list --repo > /dev/null 2>&1 && no "--repo refuses a missing path" "it succeeded" ||
+  ok "--repo refuses a missing path"
+
+# --- PARKING_LOT_SCAN_DIR ---------------------------------------------------
+
+scfg="$tmp/scancfg"
+scan="$tmp/scan"
+mkdir -p "$scan/alpha" "$scan/beta" "$scan/plain-folder"
+for r in alpha beta; do
+  git -C "$scan/$r" init -q
+  git -C "$scan/$r" -c user.email=t@example.com -c user.name=Test commit -q --allow-empty -m seed
+done
+git -C "$scan/alpha" tag r1
+CLAUDE_CONFIG_DIR="$scfg" sh "$PL" add --repo "$scan/alpha" --tag r1 "alpha due" > /dev/null
+CLAUDE_CONFIG_DIR="$scfg" sh "$PL" add --repo "$scan/beta" --tag r1 "beta waiting" > /dev/null
+CLAUDE_CONFIG_DIR="$scfg" sh "$PL" add --repo "$scan/beta" "beta plain" > /dev/null
+outside_scan="$tmp/outside-scan"
+mkdir -p "$outside_scan"
+
+out=$(cd "$outside_scan" && CLAUDE_CONFIG_DIR="$scfg" sh "$PL" show)
+check "unset PARKING_LOT_SCAN_DIR leaves show unchanged" "$out" "Nothing parked, via the /parking-lot skill."
+out=$(cd "$outside_scan" && CLAUDE_CONFIG_DIR="$scfg" PARKING_LOT_SCAN_DIR="$scan" sh "$PL" show)
+case "$out" in
+  *"Parked in alpha (1 open):"*"alpha due"*) ok "the scan dir shows a child repository's store, labelled" ;;
+  *) no "the scan dir shows a child repository's store, labelled" "$out" ;;
+esac
+case "$out" in
+  *"Parked in beta (1 open):"*"beta plain"*"1 more waiting"*) ok "the scan dir checks each child's tags against its own repository" ;;
+  *) no "the scan dir checks each child's tags against its own repository" "$out" ;;
+esac
+out=$(cd "$scan/alpha" && CLAUDE_CONFIG_DIR="$scfg" PARKING_LOT_SCAN_DIR="$scan" sh "$PL" show)
+check "the scan dir does not repeat the working directory's store" "$(printf '%s\n' "$out" | grep -c 'Parked in alpha')" "1"
+out=$(cd "$outside_scan" && CLAUDE_CONFIG_DIR="$scfg" PARKING_LOT_SCAN_DIR="$scan" sh "$PL" hook)
+case "$out" in
+  *'Parked in alpha'*'Parked in beta'*) ok "hook carries the scan dir's stores" ;;
+  *) no "hook carries the scan dir's stores" "$out" ;;
+esac
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
   printf 'all checks passed\n'
