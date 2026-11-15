@@ -70,8 +70,8 @@ max_iterations: 10              # backstop -- reaching it means something went w
 # requirement off, and a small PR reaches the equality on its own long before this applies.
 whole_change_taper: 1
 
-# On a CONVERGED run only, and on a PR in the ORCHESTRATOR repo only, take the PR out of
-# draft (`gh pr ready`). Off by default because changing a PR's draft state is outward-facing
+# On a CONVERGED run only, and only on a PR whose own repo opted in (see below), take the PR
+# out of draft (`gh pr ready`). Off by default because changing a PR's draft state is outward-facing
 # -- it notifies reviewers, and where the repo requires reviews it changes what can merge --
 # so it is opted into rather than assumed. No other terminal state touches the draft state:
 # a paused run has a question outstanding, a capped one is the opposite of ready, and an
