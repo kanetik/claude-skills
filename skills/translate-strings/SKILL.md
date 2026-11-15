@@ -81,7 +81,13 @@ translates them fresh in every locale.
 
 Source: typically `app/src/main/res/values/strings.xml` (Android standard).
 Other module roots possible (`*/src/main/res/values/strings.xml`). Caller
-should provide the path; if not, glob for it and disambiguate.
+should provide the path; if not, glob for it and disambiguate — under the
+local repo path the caller names, or the current working directory if none.
+
+The repo the work targets is the source file's own repo:
+`git -C {dir of source file} rev-parse --show-toplevel`. Repo-level files
+below (`CLAUDE.md`, `.claude/translate-strings.config.md`) are read from
+that root.
 
 Targets: sibling folders matching `values-*/strings.xml`. **Exclude
 non-locale qualifiers:**
@@ -95,8 +101,8 @@ non-locale qualifiers:**
 
 Anything else is a locale.
 
-Exclude paths under `/build/`, `/node_modules/`, or `.claude/worktrees/`
-(unless the current working directory is one).
+Exclude paths under `/build/` or `/node_modules/`, and any worktree copy
+under `.claude/worktrees/` other than the one the source file lives in.
 
 ## Translation rule (the conservative default)
 
@@ -165,8 +171,8 @@ sentence in isolation risks breaking those ties.
   existing translations before deciding.
 - **URLs, package names, code identifiers** inside strings stay
   untranslated.
-- For project-specific brand-name lists, check the repo's `CLAUDE.md` or
-  `.claude/translate-strings.config.md`.
+- For project-specific brand-name lists, check `CLAUDE.md` or
+  `.claude/translate-strings.config.md` at the source file's repo root.
 
 ## Locale-specific guidance
 

@@ -9,8 +9,9 @@ description: |
   remote, without asking, unless a running Claude Code session is using it, or
   it is the base or head of open PRs (checked with gh where available). Refuses to
   delete anything holding uncommitted work, and asks rather than guessing
-  wherever git cannot prove the work survived. Use when the user says a PR was
-  merged, or
+  wherever git cannot prove the work survived. Takes an optional path to a local
+  checkout, for a repo other than the session's working directory. Use when the
+  user says a PR was merged, or
   says "clean up branches", "clean up worktrees", "remove stale branches", "back
   to main", or invokes /post-merge-cleanup.
 allowed-tools:
@@ -43,6 +44,21 @@ not a restriction. Report it explicitly if it is *not* among the branches
 cleaned up, since that usually means something unexpected happened at merge
 time.
 
+## The repo the work targets
+
+Call it `<repo>`, and take the first of these that applies:
+
+1. **A path the user passed** naming a local checkout (or any worktree of one).
+2. **A local path the request already names**, such as the worktree the merged
+   branch was checked out in.
+3. **The session's working directory** — `git rev-parse --show-toplevel`.
+
+Step 1 turns `<repo>` into `<main>`, the main checkout's path, and every later
+`git` command runs as `git -C <main>` or `git -C <worktree-path>`. The only
+bare ones are step 1's checks of where the session itself stands: a bare
+command run from a session started in some other repository sweeps that one
+instead.
+
 ## Requirements
 
 `git`, version 2.31 or newer. Two things need it, and 2.31 is where both landed:
@@ -61,13 +77,22 @@ inside it, and the session's working directory is very often the worktree that
 is about to be deleted.
 
 ```bash
-git worktree list --porcelain
+git -C <repo> worktree list --porcelain
 ```
 
-The first `worktree ` line in that output is the main checkout — the one with
-the real `.git` directory. Every later entry is a linked worktree.
+The first `worktree ` line in that output is the main checkout, `<main>` — the
+one with the real `.git` directory. Every later entry is a linked worktree.
 
-Move the session there:
+**Is the session standing in this repo at all?** Compare the session's own
+`git rev-parse --path-format=absolute --git-common-dir` (bare: it asks about
+the session's directory) with `git -C <main> rev-parse
+--path-format=absolute --git-common-dir`. If the first fails or names a
+different directory, the session started outside the repo and stands in
+nothing step 7 will remove: leave it where it is and go to step 2. When
+`<repo>` came from the working directory they always match, and the rest of
+this step applies as written.
+
+Move the session to `<main>`:
 
 - If your harness provides an `ExitWorktree` tool (Claude Code does), try it
   first, asking it to **keep** the worktree rather than remove it. Removal is
@@ -79,7 +104,8 @@ Move the session there:
 That second clause is not a formality: such a tool typically only knows about
 worktrees the *current session* created and does nothing for one it did not —
 the ordinary case here, since the worktree is usually the merged PR's session's
-rather than this one's. A no-op reports no error, so check where you landed:
+rather than this one's. A no-op reports no error, so check where you landed,
+with a bare call since it is the session's location in question:
 
 ```bash
 git rev-parse --path-format=absolute --git-dir --git-common-dir
@@ -118,21 +144,21 @@ If the repo has no linked worktrees at all, this step is a no-op — carry on.
 `upstream` alongside it, and a remote can simply be named something else.
 
 ```bash
-git remote
+git -C <main> remote
 ```
 
 - **Nothing printed** → the repo has no remote. Skip step 3 and the pull in step
   4; there is nothing to prune against and nothing to pull.
 - **Exactly one** → that is `<remote>`.
 - **More than one** → take the one the checked-out branch tracks, via
-  `git config --get branch.<current-branch>.remote`. Where that is unset or the
+  `git -C <main> config --get branch.<current-branch>.remote`. Where that is unset or the
   checkout is detached, fall back to `origin` if it is among them, and otherwise
   ask the user which to use.
 
 Then the default branch:
 
 ```bash
-git symbolic-ref --quiet --short refs/remotes/<remote>/HEAD
+git -C <main> symbolic-ref --quiet --short refs/remotes/<remote>/HEAD
 ```
 
 That prints e.g. `<remote>/main`; the default branch is the part after the
@@ -161,7 +187,7 @@ no remote means no upstreams to have gone — so `--merged` is the only evidence
 **Then confirm the ref resolves:**
 
 ```bash
-git rev-parse --verify <default-ref>
+git -C <main> rev-parse --verify <default-ref>
 ```
 
 This catches what resolving the remote does not: a stale
@@ -173,7 +199,7 @@ middle of classification. Fail here instead, naming the ref you tried.
 ## Step 3: Prune remote-tracking refs
 
 ```bash
-git fetch --prune <remote>
+git -C <main> fetch --prune <remote>
 ```
 
 This is what marks branches `[gone]`. Without it the whole sweep silently finds
@@ -197,7 +223,7 @@ only the default branch, which is what it is for.
 **Already on the default branch?** Then there is no switch and no gate. Pull:
 
 ```bash
-git pull --ff-only
+git -C <main> pull --ff-only
 ```
 
 Do not gate this on a clean tree. `git pull --ff-only` fast-forwards a dirty tree
@@ -209,7 +235,7 @@ modified file that had nothing to do with the incoming commits.
 **Otherwise** the switch needs a gate, so check the tree first:
 
 ```bash
-git status --porcelain --untracked-files=no
+git -C <main> status --porcelain --untracked-files=no
 ```
 
 **Any output means do not switch**, and do not pull either — `git pull` acts on
@@ -227,8 +253,8 @@ ordinary tree state to be defeated by.
 Clean, so:
 
 ```bash
-git switch <default-branch>
-git pull --ff-only
+git -C <main> switch <default-branch>
+git -C <main> pull --ff-only
 ```
 
 **Neither command stops the run when it fails.** Report what happened, carry on
@@ -258,8 +284,8 @@ updated default branch. Both go in the report.
 ## Step 5: Classify every local branch
 
 ```bash
-git for-each-ref --format="%(refname:short)|%(upstream:track)|%(upstream:short)" refs/heads/
-git branch --merged <default-ref> --format="%(refname:short)"
+git -C <main> for-each-ref --format="%(refname:short)|%(upstream:track)|%(upstream:short)" refs/heads/
+git -C <main> branch --merged <default-ref> --format="%(refname:short)"
 ```
 
 `<default-ref>` is the ref step 2 defined, not the checked-out branch and not
@@ -303,7 +329,7 @@ branch goes and the remote one stays.
 into `<default-ref>` and that no local branch tracks or shares a name with:
 
 ```bash
-git branch -r --merged <default-ref> --format="%(refname)"
+git -C <main> branch -r --merged <default-ref> --format="%(refname)"
 ```
 
 Keep the `refs/remotes/<remote>/` entries, drop `<remote>/HEAD` and
@@ -326,7 +352,7 @@ branch's name on the remote, without the `<remote>/` prefix (for bucket B, its
 upstream's name, which can differ from the local one). Where `gh` is available:
 
 ```bash
-git remote get-url <remote>
+git -C <main> remote get-url <remote>
 gh pr list --repo <that url> --base <name> --state open --json number --jq length
 gh pr list --repo <that url> --head <name> --state open --json number --jq length
 ```
@@ -344,10 +370,10 @@ passed.
 
 **Where `gh` is missing or any of those calls fails**, fall back to the shape such a base
 usually has, a tip that never left the default branch's first-parent line. Take
-the full sha with `git rev-parse <remote>/<name>`, then look for it in:
+the full sha with `git -C <main> rev-parse <remote>/<name>`, then look for it in:
 
 ```bash
-git rev-list --first-parent <default-ref>
+git -C <main> rev-list --first-parent <default-ref>
 ```
 
 Found → it goes to step 7's batched question rather than being deleted. A
@@ -387,7 +413,7 @@ comparison and do not delete on a hunch — report it and let the user decide.
 First, clear out worktree entries whose directory no longer exists:
 
 ```bash
-git worktree prune -v 2>&1
+git -C <main> worktree prune -v 2>&1
 ```
 
 This runs here, before anything reads a worktree, because the status check below
@@ -417,7 +443,7 @@ So for each branch the sweep proposes to delete, decide first whether its
 worktree directory is still there, and keep that distinct from a check that
 failed:
 
-- **Path does not exist** → `git worktree unlock <worktree-path>`, then `git
+- **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then `git -C <main>
   worktree prune -v 2>&1`. Skip the status check, and treat none of it as a
   failure. Both flags for the same reasons as above: its stderr output is what
   the report is built from.
@@ -509,7 +535,9 @@ pid is this session's (`$CLAUDE_PID`, or the `pid` of this session's registry
 entry). This test needs no registry, so it runs even where the registry cannot
 be read, though not where either variable is empty (above). A lock it matches
 is `keep`,
-never a question.
+never a question. A session started outside the repo never matches by `cwd`, so
+a worktree it creates there is recognised as in use only if created locked
+that way: `git -C <repo> worktree add --lock --reason "pid <its pid>" …`.
 
 A reused pid can make a dead session look alive. That keeps a branch it could
 have deleted, which is the safe direction, so nothing more is checked.
@@ -525,7 +553,7 @@ Then, for **every** branch about to be deleted, in either bucket, list the
 commits it holds that the default branch does not:
 
 ```bash
-git log <default-ref>..<branch> --oneline
+git -C <main> log <default-ref>..<branch> --oneline
 ```
 
 **This is the skill's containment oracle, and it is the only one.** Empty means
@@ -540,7 +568,7 @@ bucket:
   work that never merged at all. **Git cannot tell these apart, and neither can
   this skill.** Carry the list to step 7, which asks.
 
-The remote copy gets the same check, `git log <default-ref>..<remote>/<name>
+The remote copy gets the same check, `git -C <main> log <default-ref>..<remote>/<name>
 --oneline`, for every bucket R branch and every bucket B branch with a remote
 branch (step 5), since someone may have pushed to it. Non-empty → keep the branch,
 local and remote, and report it.
@@ -622,7 +650,7 @@ Worktree first, since a branch checked out in a worktree cannot be deleted while
 that worktree exists:
 
 ```bash
-git worktree remove <worktree-path>
+git -C <main> worktree remove <worktree-path>
 ```
 
 No `--force`. Three failures are expected here and only the last is a problem:
@@ -666,7 +694,7 @@ So split on whether the lock is demonstrably **yours**:
 
 - **This session created it, and the harness says so.** Where the worktree-exit
   tool in step 1 reported leaving *this* worktree **and** this session created
-  it, the lock is yours and you have already left. `git worktree unlock <path>`,
+  it, the lock is yours and you have already left. `git -C <main> worktree unlock <path>`,
   then remove.
 
   Both halves are needed, and the second is the one that gets dropped. A session
@@ -680,7 +708,7 @@ So split on whether the lock is demonstrably **yours**:
   Where you cannot tell, you cannot tell: take one of the bullets below.
 - **Step 6 read the session registry.** A branch in use never reaches `delete`,
   so no running session is in this worktree and the lock guards nothing a clean,
-  fully decided worktree still needs. `git worktree unlock <path>`, then remove.
+  fully decided worktree still needs. `git -C <main> worktree unlock <path>`, then remove.
   No question.
 - **Everything else** — the registry could not be read, so a lock naming another
   session may be a live one. Show the user the path and the lock reason verbatim
@@ -702,7 +730,7 @@ question only arises for worktrees already established as clean.
 Then the branch:
 
 ```bash
-git branch -D <branch>
+git -C <main> branch -D <branch>
 ```
 
 **`-D`, deliberately, and only for a branch pass 1 put in the `delete` set.** It
@@ -723,11 +751,11 @@ Then the remote branch, for every branch in the `delete` set from bucket R, and
 from bucket B where it has a remote branch (step 5):
 
 ```bash
-git push --force-with-lease=<name>:<sha> <remote> --delete <name>
+git -C <main> push --force-with-lease=<name>:<sha> <remote> --delete <name>
 ```
 
 `<name>` is the branch name on the remote, without the `<remote>/` prefix, and
-`<sha>` is `git rev-parse <remote>/<name>` as step 3 fetched it, so the delete is
+`<sha>` is `git -C <main> rev-parse <remote>/<name>` as step 3 fetched it, so the delete is
 refused with `(stale info)` if anyone pushed since step 6 checked it. Any failure
 — that one, a protected branch, missing push rights — leaves the remote branch
 in place: report what git said and carry on. Record the sha here too.

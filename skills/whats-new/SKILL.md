@@ -29,9 +29,15 @@ Locale translation is the `translate-content` skill's job; this skill hands off.
 User says: "write what's new", "draft release notes", "playstore copy",
 "whatsnew", "/whats-new", or invokes ahead of cutting a release.
 
-## Step 0: Read the per-repo config
+## Step 0: Resolve the repo and read its config
 
-Look for `.claude/whats-new.config.md` in the repo root. Required keys:
+The repo the work targets is the local repo path the user names, if any;
+otherwise the current working directory. Take its root with
+`git -C {path} rev-parse --show-toplevel` and call it `{repo}`. Every git
+command below runs as `git -C {repo} ...`, and every path below (the config,
+`output_dir`) is relative to `{repo}`.
+
+Look for `.claude/whats-new.config.md` in `{repo}`. Required keys:
 
 | Key | Purpose | Example |
 |---|---|---|
@@ -70,16 +76,16 @@ These apply to every project — config doesn't override them:
 Per `since_ref_rule`. Examples:
 
 - "last non-beta tag in `x.y.z`":
-  `git tag --list '[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1`
+  `git -C {repo} tag --list '[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1`
 - "last numeric version-code tag":
-  `git tag --sort=-version:refname | grep -E '^[0-9]+$' | head -n1`
+  `git -C {repo} tag --sort=-version:refname | grep -E '^[0-9]+$' | head -n1`
 - "last entry in CHANGELOG.md": parse the file accordingly.
 
 ## Step 2: Gather commits since that ref
 
 ```
-git log {ref}..HEAD --no-merges --pretty='%h %s'
-git log {ref}..HEAD --merges --pretty='%h %s'   # squash/merge PR titles
+git -C {repo} log {ref}..HEAD --no-merges --pretty='%h %s'
+git -C {repo} log {ref}..HEAD --merges --pretty='%h %s'   # squash/merge PR titles
 ```
 
 For merge-heavy workflows, prefer PR titles from merge commit subjects.
@@ -113,7 +119,7 @@ it", "approve").
 After approval:
 
 1. Resolve the source-locale path: substitute the `(default)` locale into
-   `{output_dir}/{file_pattern}`. Examples:
+   `{repo}/{output_dir}/{file_pattern}`. Examples (relative to `{repo}`):
    - Flat layout: `playstore/whatsnew/whatsnew-en-US`
    - Subdir layout: `app/src/main/play/release-notes/en-US/default.txt`
 2. Write the approved English text to that path. Overwrite if it exists.
@@ -130,9 +136,12 @@ Print:
 ```
 ✓ Wrote {source path} ({char count} chars)
 
-Next: run `/translate-content` to propagate to the other locales.
+Next: run `/translate-content {source path}` to propagate to the other locales.
 These are release notes: 500 characters per locale.
 ```
+
+`{source path}` is the absolute path just written, so `/translate-content`
+resolves the same repo from it wherever the session started.
 
 The limit goes in the handoff because `whats-new.config.md` has no
 `char_limit` key, so a `/translate-content` run reading that config finds

@@ -14,7 +14,12 @@
 #   parking-lot.sh hook
 #   parking-lot.sh path [--user]
 #
+# Every command takes --repo <path> to act on that repository instead of the
+# one the working directory is in.
+#
 # `show` always exits 0: a broken store must never stop a session starting.
+# PARKING_LOT_SCAN_DIR, when set, adds to `show` and `hook` the store of each
+# git repository directly inside that folder.
 
 set -u
 
@@ -23,6 +28,7 @@ umask 077
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SHOW_REPO_MAX="${PARKING_LOT_SHOW_REPO_MAX:-7}"
 SHOW_USER_MAX="${PARKING_LOT_SHOW_USER_MAX:-3}"
+repo_dir=.
 
 die() {
   printf 'parking-lot: %s\n' "$1" >&2
@@ -37,7 +43,7 @@ mangle() {
 # Keyed on the main repository root, never the worktree or working directory,
 # and with no fallback for git < 2.31: see docs/adr/0003.
 repo_root() {
-  d=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  d=$(git -C "$repo_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   [ -n "$d" ] || return 1
   case "$d" in
     */.git) d=${d%/.git} ;;
@@ -53,7 +59,7 @@ no_repo_reason() {
     printf '%s' "git is not installed, and a repository-scoped store needs it -- use --user instead"
     return 0
   fi
-  if err=$(git rev-parse --git-dir 2>&1); then
+  if err=$(git -C "$repo_dir" rev-parse --git-dir 2>&1); then
     printf '%s' "git 2.31 or newer is required for a repository-scoped store (it needs --path-format) -- upgrade git, or use --user"
     return 0
   fi
@@ -110,7 +116,7 @@ ranked_entries() {
   [ -f "$1" ] || return 0
   present=" "
   if grep -q '(when: tag ' "$1" 2>/dev/null; then
-    present=" $(git tag -l 2>/dev/null | tr '\n' ' ')"
+    present=" $(git -C "$repo_dir" tag -l 2>/dev/null | tr '\n' ' ')"
   fi
   awk -v today="$(date +%Y%m%d)" -v present="$present" '
     !/^- \[[ ~]\] / { next }
@@ -338,6 +344,24 @@ cmd_show() {
     out="$out$(digest_section "$store" "Parked in $(repo_name)" "$SHOW_REPO_MAX" "parking-lot.sh list")"
   fi
 
+  if [ -n "${PARKING_LOT_SCAN_DIR:-}" ]; then
+    seen=" $store "
+    for child in "${PARKING_LOT_SCAN_DIR%/}"/*/; do
+      [ -e "${child}.git" ] || continue
+      child=${child%/}
+      s=$(repo_dir=$child; store_path repo 2>/dev/null) || continue
+      # Worktrees of one repository share a store; the working directory's is already shown.
+      case "$seen" in *" $s "*) continue ;; esac
+      seen="$seen$s "
+      if [ -e "$s" ] && { [ ! -f "$s" ] || [ ! -r "$s" ]; }; then
+        note="${note:+$note
+}parking-lot: repository store unreachable -- $s cannot be read"
+      elif [ -f "$s" ]; then
+        out="$out$(repo_dir=$child; digest_section "$s" "Parked in $(repo_name)" "$SHOW_REPO_MAX" "parking-lot.sh list --repo $child")"
+      fi
+    done
+  fi
+
   ustore=$(store_path user)
   if [ -e "$ustore" ] && { [ ! -f "$ustore" ] || [ ! -r "$ustore" ]; }; then
     note="${note:+$note
@@ -387,7 +411,7 @@ cmd_hook() {
 
 # --- arguments --------------------------------------------------------------
 
-[ $# -gt 0 ] || die "usage: parking-lot.sh add|list|done|reopen|plain|maybe|show|hook|path [--user] [args]"
+[ $# -gt 0 ] || die "usage: parking-lot.sh add|list|done|reopen|plain|maybe|show|hook|path [--user] [--repo <path>] [args]"
 cmd=$1
 shift
 
@@ -402,6 +426,7 @@ if [ "$cmd" = add ]; then
       --) shift; break ;;
       --user) scope=user; shift ;;
       --all) scope=all; shift ;;
+      --repo) [ $# -ge 2 ] || die "--repo takes a repository path"; repo_dir=$2; shift 2 ;;
       --next | --on | --tag)
         [ -z "$when" ] || die "use only one of --next, --on, --tag"
         case "$1:${2:-}" in
@@ -423,14 +448,19 @@ else
   remaining=$#
   i=0
   endflags=0
+  wantrepo=0
   while [ "$i" -lt "$remaining" ]; do
     a=$1
     shift
-    if [ "$endflags" -eq 1 ]; then
+    if [ "$wantrepo" -eq 1 ]; then
+      repo_dir=$a
+      wantrepo=0
+    elif [ "$endflags" -eq 1 ]; then
       set -- "$@" "$a"
     else
       case "$a" in
         --) endflags=1 ;;
+        --repo) wantrepo=1 ;;
         --user) scope=user ;;
         --all) scope=all ;;
         --*) die "unknown flag '$a' -- put -- before it if it is text" ;;
@@ -439,7 +469,10 @@ else
     fi
     i=$((i + 1))
   done
+  [ "$wantrepo" -eq 0 ] || die "--repo takes a repository path"
 fi
+
+[ -n "$repo_dir" ] && [ -d "$repo_dir" ] || die "--repo takes a local repository path, got '$repo_dir'"
 
 if [ "$scope" = all ] && [ "$cmd" != list ]; then
   die "--all is only for 'list' -- use --user, or no flag for this repository"

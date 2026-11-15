@@ -59,7 +59,11 @@ For Android XML string resources (key-by-key UI labels), use
 
 Skill reads the source text and looks up `.claude/translate-content.config.md`
 (or `.claude/whats-new.config.md` if that's the project convention) for
-target locales, output path pattern, and char limit.
+target locales, output path pattern, and char limit. Config and its paths
+resolve against the repo the work targets: the local repo path the caller
+names, if any; otherwise the source file's own repo
+(`git -C {dir of source file} rev-parse --show-toplevel`); otherwise the
+current working directory.
 
 **2. Source file path + explicit target list** (no config, ad-hoc)
 
@@ -169,8 +173,8 @@ Apply those conventions so a series of releases reads consistently.
   for established features and concepts. Don't invent new translations
   for terms that have prior renderings elsewhere in the project.
 - **URLs, prices, hashtags, code identifiers** — never translate.
-- For project-specific brand-name lists, check the repo's `CLAUDE.md` or
-  the per-repo translate-content config notes.
+- For project-specific brand-name lists, check the target repo's `CLAUDE.md`
+  or the per-repo translate-content config notes.
 
 ## Locale-specific guidance
 

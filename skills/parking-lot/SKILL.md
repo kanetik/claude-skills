@@ -90,9 +90,10 @@ band, counted on one line as waiting. It still appears in `list`, marked
 ## Commands
 
 Run the bundled script as `sh "${CLAUDE_SKILL_DIR}/parking-lot.sh" <command>`.
-`${CLAUDE_SKILL_DIR}` resolves to this skill's folder; the working directory at
-run time is the project root, not this folder. Every command except `show`
-acts on this repository's store, or on the user store with `--user`.
+`${CLAUDE_SKILL_DIR}` resolves to this skill's folder, not the working
+directory. Every command except `show` acts on the store of the repository the
+working directory is in, or on the user store with `--user`. Every command also
+takes `--repo <path>`, naming a local repository to act on instead.
 
 | Command | What it does |
 |---|---|
@@ -133,10 +134,13 @@ prefixes user items with `u`, and `u2` means `done --user 2`.
 
 ## Choosing the scope
 
-Default to the repository store. Use `--user` when the thought is not about the
-repository the session is in — the case where an idea about project B surfaces
-while working in project A. That is the fragmenting case this skill exists for,
-and it has nowhere else to go.
+Default to the repository store. When the session's work targets a repository
+other than the working directory — the session started in a folder above it,
+say — pass `--repo <path>` to that repository on every command, `list` and
+`done` included, so the item lands in, and is numbered from, its store. Use
+`--user` when the thought is not about the repository being worked on — the
+case where an idea about project B surfaces while working in project A. That is
+the fragmenting case this skill exists for, and it has nowhere else to go.
 
 When it is genuinely ambiguous, park it against the repository. A
 repository-scoped item is seen more often, and being seen is the point.
@@ -160,6 +164,14 @@ screen when something is parked or a store cannot be read. **The context copy
 always prints** — `Nothing parked, via the /parking-lot skill.` when both
 stores are empty, and a line naming the reason where a store cannot be read —
 so its presence is what says the hook ran.
+
+The digest covers the working directory's repository and the user store. A
+user who starts sessions in a folder holding several repositories can opt in to
+seeing theirs too: set `PARKING_LOT_SCAN_DIR` to that folder, in the `env`
+block of `settings.json` (`"env": {"PARKING_LOT_SCAN_DIR": "/path/to/folder"}`).
+The digest then adds the store of each git repository directly inside it,
+labelled with the repository's name, with each `--tag` reminder checked against
+that repository's own tags. Unset, nothing changes.
 
 Installed as part of the plugin, the hook is already declared and there is
 nothing to set up. Installed by symlink or copy into `~/.claude/skills/`, it
