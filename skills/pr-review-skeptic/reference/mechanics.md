@@ -19,7 +19,7 @@ A session whose working directory is a linked worktree may be isolated to it, re
 
 ## Resolve the PR
 
-Where a `repo <path>` modifier names a checkout, run these against it — `git -C <path>`, and `--repo` set to its `origin`'s owner/repo — rather than the working directory.
+Where a `repo <path>` modifier names a checkout, run these against it — `git -C <path>`, and `--repo` set to gh's own resolution for that checkout (`gh repo view --json nameWithOwner` with the checkout as its working directory), not its `origin`, which in a fork clone is the fork — rather than the working directory.
 
 ```bash
 branch=$(git branch --show-current)

@@ -151,7 +151,7 @@ git -C <main> remote
   4; there is nothing to prune against and nothing to pull.
 - **Exactly one** → that is `<remote>`.
 - **More than one** → take the one the checked-out branch tracks, via
-  `git config --get branch.<current-branch>.remote`. Where that is unset or the
+  `git -C <main> config --get branch.<current-branch>.remote`. Where that is unset or the
   checkout is detached, fall back to `origin` if it is among them, and otherwise
   ask the user which to use.
 
@@ -370,7 +370,7 @@ passed.
 
 **Where `gh` is missing or any of those calls fails**, fall back to the shape such a base
 usually has, a tip that never left the default branch's first-parent line. Take
-the full sha with `git rev-parse <remote>/<name>`, then look for it in:
+the full sha with `git -C <main> rev-parse <remote>/<name>`, then look for it in:
 
 ```bash
 git -C <main> rev-list --first-parent <default-ref>
@@ -443,7 +443,7 @@ So for each branch the sweep proposes to delete, decide first whether its
 worktree directory is still there, and keep that distinct from a check that
 failed:
 
-- **Path does not exist** → `git worktree unlock <worktree-path>`, then `git
+- **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then `git -C <main>
   worktree prune -v 2>&1`. Skip the status check, and treat none of it as a
   failure. Both flags for the same reasons as above: its stderr output is what
   the report is built from.
@@ -568,7 +568,7 @@ bucket:
   work that never merged at all. **Git cannot tell these apart, and neither can
   this skill.** Carry the list to step 7, which asks.
 
-The remote copy gets the same check, `git log <default-ref>..<remote>/<name>
+The remote copy gets the same check, `git -C <main> log <default-ref>..<remote>/<name>
 --oneline`, for every bucket R branch and every bucket B branch with a remote
 branch (step 5), since someone may have pushed to it. Non-empty → keep the branch,
 local and remote, and report it.
@@ -694,7 +694,7 @@ So split on whether the lock is demonstrably **yours**:
 
 - **This session created it, and the harness says so.** Where the worktree-exit
   tool in step 1 reported leaving *this* worktree **and** this session created
-  it, the lock is yours and you have already left. `git worktree unlock <path>`,
+  it, the lock is yours and you have already left. `git -C <main> worktree unlock <path>`,
   then remove.
 
   Both halves are needed, and the second is the one that gets dropped. A session
@@ -708,7 +708,7 @@ So split on whether the lock is demonstrably **yours**:
   Where you cannot tell, you cannot tell: take one of the bullets below.
 - **Step 6 read the session registry.** A branch in use never reaches `delete`,
   so no running session is in this worktree and the lock guards nothing a clean,
-  fully decided worktree still needs. `git worktree unlock <path>`, then remove.
+  fully decided worktree still needs. `git -C <main> worktree unlock <path>`, then remove.
   No question.
 - **Everything else** — the registry could not be read, so a lock naming another
   session may be a live one. Show the user the path and the lock reason verbatim
@@ -755,7 +755,7 @@ git -C <main> push --force-with-lease=<name>:<sha> <remote> --delete <name>
 ```
 
 `<name>` is the branch name on the remote, without the `<remote>/` prefix, and
-`<sha>` is `git rev-parse <remote>/<name>` as step 3 fetched it, so the delete is
+`<sha>` is `git -C <main> rev-parse <remote>/<name>` as step 3 fetched it, so the delete is
 refused with `(stale info)` if anyone pushed since step 6 checked it. Any failure
 — that one, a protected branch, missing push rights — leaves the remote branch
 in place: report what git said and carry on. Record the sha here too.

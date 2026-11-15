@@ -23,7 +23,7 @@ For each operation use the best tier your environment supports. Columns denote *
 | Update PR description | `gh pr edit <num> --body-file <path>` | github MCP `update_pull_request` | — |
 | Create follow-up issue (unrelated work only) | `gh issue create --title ... --body-file <path> --label follow-up-from-pr-review` | github MCP `create_issue` | — |
 | Push commits | `git -C <checkout> push` | — | — |
-| Take a converged PR out of draft | `gh pr ready <num>`, guarded on `gh pr view <num> --json isDraft` (SKILL.md step 4 — terminal state 1 only, orchestrator-repo PRs only, and only where `mark_ready_on_convergence` is on) | — | — |
+| Take a converged PR out of draft | `gh pr ready <num>`, guarded on `gh pr view <num> --json isDraft` (SKILL.md step 4 — terminal state 1 only, PRs whose repo opted in only, and only where `mark_ready_on_convergence` is on) | — | — |
 
 Defer committing to the host (`commit-commands:commit` skill if installed; else plain `git -C <checkout> commit`) and loop scheduling to the host scheduler.
 
@@ -209,7 +209,7 @@ Read the base ref, not the working tree and not the PR head: that is the ref the
 
 ### Invoking it
 
-Invoke the `pr-review-skeptic` skill with the PR reference and nothing more — `#<num>`, a URL, or `<owner>/<repo>#<num>` for a PR outside the working directory's repo — plus `repo <checkout>` where the checkout is not the working directory, which is a path rather than an account of the change. Then follow that skill's procedure as written, in particular its **Context discipline** section: the reviewer brief is filled by substitution from project config and the diff, and no summary of the change, its purpose, or its rationale goes into it or into any answer to a reviewer's question. The purpose reaches its reviewers from the PR record — a linked issue, the intent comment Preconditions posts, or the PR description — never from you. You are the worst-placed caller for that rule — you may have written the code, and by round five you are also carrying every finding the earlier rounds settled — which is exactly why it's a hard guardrail there.
+Invoke the `pr-review-skeptic` skill with the PR reference and nothing more — `#<num>`, a URL, or `<owner>/<repo>#<num>` for a PR outside the working directory's repo, and always the URL or `<owner>/<repo>#<num>` where `repo <checkout>` goes with it — plus `repo <checkout>` where the checkout is not the working directory, which is a path rather than an account of the change. Then follow that skill's procedure as written, in particular its **Context discipline** section: the reviewer brief is filled by substitution from project config and the diff, and no summary of the change, its purpose, or its rationale goes into it or into any answer to a reviewer's question. The purpose reaches its reviewers from the PR record — a linked issue, the intent comment Preconditions posts, or the PR description — never from you. You are the worst-placed caller for that rule — you may have written the code, and by round five you are also carrying every finding the earlier rounds settled — which is exactly why it's a hard guardrail there.
 
 Two of that skill's rules matter to you as caller and are not yours to override:
 
