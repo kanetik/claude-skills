@@ -75,6 +75,19 @@ repo_name() {
   printf '%s' "${r##*/}"
 }
 
+# A store may be a symlink into another checkout, which shares one parking lot
+# between machines. Rewrites go to the link's target: renaming a temp file over
+# the link itself would replace it with a regular file, and the store would
+# silently stop being shared.
+follow_links() {
+  f=$1
+  while [ -L "$f" ]; do
+    t=$(readlink "$f") || break
+    case "$t" in /*) f=$t ;; *) f=$(dirname "$f")/$t ;; esac
+  done
+  printf '%s' "$f"
+}
+
 store_path() {
   if [ "${1:-repo}" = user ]; then
     dir=$CLAUDE_HOME
@@ -272,6 +285,7 @@ cmd_mark() {
 
   # ENVIRON, not -v: awk processes escapes in a -v value. Only an item already
   # marked ~ loses a reason, and only the last one: the separator is ordinary prose.
+  store=$(follow_links "$store")
   tmp="${store}.tmp.$$"
   PARKING_LOT_WHY="$why" awk -v ln="$lineno" -v mark="$mark" '
     BEGIN { why = ENVIRON["PARKING_LOT_WHY"]; sep = " -- possibly handled by " }
@@ -321,6 +335,7 @@ cmd_reopen() {
   [ -n "$store" ] || die "$(no_repo_reason)"
   lineno=$(grep -n -x -F -- "$2" "$store" 2>/dev/null | tail -n 1 | cut -d: -f1)
   [ -n "$lineno" ] || die "no handled item matches that line"
+  store=$(follow_links "$store")
   tmp="${store}.tmp.$$"
   PARKING_LOT_LINE="$restore" awk -v ln="$lineno" 'NR == ln { print ENVIRON["PARKING_LOT_LINE"]; next } { print }' "$store" > "$tmp" ||
     die "could not rewrite $store"
