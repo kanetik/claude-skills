@@ -821,6 +821,32 @@ case "$out" in
   *) no "hook carries the scan dir's stores" "$out" ;;
 esac
 
+# --- a symlinked store ------------------------------------------------------
+
+# A store linked to a file in another checkout (one parking lot shared between
+# machines) must still be that link after done and reopen rewrite it;
+# otherwise the store silently stops being shared.
+lrepo="$tmp/linkedrepo"
+mkdir -p "$lrepo" && git -C "$lrepo" init -q
+lrun() { (cd "$lrepo" && sh "$PL" "$@"); }
+lstore=$(lrun path)
+mkdir -p "$(dirname "$lstore")" "$tmp/shared"
+printf '# Parking lot (linkedrepo)\n\n' > "$tmp/shared/lot.md"
+if (MSYS=winsymlinks:nativestrict; export MSYS; ln -s "$tmp/shared/lot.md" "$lstore") 2>/dev/null && [ -L "$lstore" ]; then
+  lrun add "linked one" > /dev/null
+  lrun add "linked two" > /dev/null
+  lbefore=$(lrun list | sed -n 's/^  1\. //p')
+  lhandled=$(lrun done 1)
+  [ -L "$lstore" ] && ok "done keeps a symlinked store a symlink" || no "done keeps a symlinked store a symlink" "replaced by a regular file"
+  grep -q -F -- '- [x] ' "$tmp/shared/lot.md" && ok "done writes through the link to its target" ||
+    no "done writes through the link to its target" "$(cat "$tmp/shared/lot.md")"
+  lrun reopen "$lhandled" "$lbefore" > /dev/null
+  [ -L "$lstore" ] && ok "reopen keeps a symlinked store a symlink" || no "reopen keeps a symlinked store a symlink" "replaced by a regular file"
+  check "reopen writes through the link to its target" "$(grep -c -F -- '- [ ] ' "$tmp/shared/lot.md")" "2"
+else
+  ok "symlinked store (skipped: this platform cannot create a symlink here)"
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
   printf 'all checks passed\n'
