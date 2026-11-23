@@ -5,6 +5,9 @@ description: |
   back to the main checkout, prunes remote-tracking refs, fast-forwards the
   default branch, then removes the worktrees, local branches and remote
   branches the merge made stale, clearing stale worktree entries in its path.
+  A clean detached worktree whose commit is already in the default branch, and
+  that no running session uses, is removed too; one holding commits found
+  nowhere else is asked about.
   A branch merged into the default branch is deleted, locally and on the
   remote, without asking, unless a running Claude Code session is using it, or
   it is the base or head of open PRs (checked with gh where available). A
@@ -386,6 +389,15 @@ is the head of an open PR: this fallback is weaker than the `gh` check.
 A bucket B branch that was never pushed has no remote branch to protect, so the
 check does not apply to it.
 
+**Bucket W — detached worktrees.** Every linked worktree in `git -C <main>
+worktree list --porcelain` whose entry carries `detached` rather than a
+`branch` line: a review checkout, a test of a PR's head, a session's scratch
+tree. No branch names it, so nothing above ever reaches it, and without this
+bucket such worktrees pile up for ever. Its candidate is the worktree alone,
+and its tip is the entry's `HEAD` sha. Step 6 checks it like the worktree of a
+branch about to go, and step 7 removes it where those checks prove nothing is
+lost. A `bare` entry, and the main checkout, are never in it.
+
 **Bucket C — everything else.** Leave alone, silently.
 
 **Two branches never go in bucket A or B**, and both exclusions are needed:
@@ -491,7 +503,7 @@ alternative gets wrong:
   than one it avoids. Say so in the report if a prune removed anything.
 
 Then, for every branch about to be deleted whose worktree directory is still
-there, check it before touching it:
+there, and every bucket W worktree, check it before touching it:
 
 ```bash
 git -C <worktree-path> status --porcelain
@@ -509,6 +521,9 @@ worktree exists nowhere else.
 
 Ignored files are not checked and not asked about: a worktree that is otherwise
 deletable goes with everything in it, ignored or not.
+
+A bucket W worktree with any output is skipped the same way: kept, and reported
+with its path.
 
 ### Running sessions
 
@@ -542,6 +557,9 @@ is `keep`,
 never a question. A session started outside the repo never matches by `cwd`, so
 a worktree it creates there is recognised as in use only if created locked
 that way: `git -C <repo> worktree add --lock --reason "pid <its pid>" …`.
+
+A bucket W worktree is in use on exactly the same tests, `cwd` or a lock naming
+a running pid, and is kept the same way.
 
 A reused pid can make a dead session look alive. That keeps a branch it could
 have deleted, which is the safe direction, so nothing more is checked.
@@ -596,6 +614,16 @@ A PR merged into some other base, such as an integration branch, does not
 count either, since its work may not have reached the default branch yet. Do
 not compare trees or patch-ids instead (step 5's squash-merge gap): the exact
 head sha is the only proof this check accepts.
+
+A bucket W worktree gets the same question about its tip:
+
+```bash
+git -C <main> merge-base --is-ancestor <HEAD sha> <default-ref>
+```
+
+Exit `0` means its commit is already in the default branch, so removing the
+worktree loses nothing. Anything else means the commit may exist only there,
+and step 7 asks.
 
 The remote copy gets the same check, `git -C <main> log <default-ref>..<remote>/<name>
 --oneline`, for every bucket R branch and every bucket B branch with a remote
@@ -662,13 +690,19 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
 - **Bucket R, containment empty, and step 5's open-PR check passed** → `delete`
   from the remote, no question.
   Non-empty → `keep` and report.
+- **Bucket W, tip contained (step 6)** → `delete` the worktree, no question.
+  Where step 6 could not read the session registry, **ask** instead, as for
+  bucket B: nothing then says the worktree is not in use.
+- **Bucket W, tip not contained** → **ask**, showing its path and its tip's
+  `git -C <main> log --oneline -5 <HEAD sha>`. Removing it can drop commits
+  that exist nowhere else.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
 branches, the bucket B and R branches step 5's first-parent fallback caught, any
 bucket B branches
-that reached the ask because the registry could not be read, and any **locked
-worktree belonging to a branch in this candidate
-set** whose lock the rule below says to ask about. Not the branches the bullets
+that reached the ask because the registry could not be read, the bucket W
+worktrees that reached the ask, and any **locked worktree belonging to a branch
+in this candidate set, or in bucket W,** whose lock the rule below says to ask about. Not the branches the bullets
 above already sorted — those are decided, not open.
 Three of each costs one question, not nine. **Do not ask per branch** — that
 trains the user to say yes without reading, which costs exactly the case the
@@ -711,6 +745,9 @@ No `--force`. Three failures are expected here and only the last is a problem:
 
 Step 6 already established the worktree is clean, so `--force` buys nothing here
 that is not already covered.
+
+A bucket W worktree takes the same removal and the same lock rule, and has no
+branch to delete afterwards.
 
 ### Locked worktrees
 
@@ -807,7 +844,7 @@ State plainly what happened:
   a squash-merge proven by a merged PR, that PR's number
 - Remote branches deleted, with the sha of each, and any remote delete that
   failed with what git said
-- Worktrees removed
+- Worktrees removed, naming the detached (bucket W) ones as such
 - **Worktree entries pruned**, from step 6's `git worktree prune -v 2>&1` output —
   separately from the line above, because these are entries whose directory was
   already gone rather than worktrees this run removed, the prune is repo-wide so
