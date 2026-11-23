@@ -396,7 +396,8 @@ tree. No branch names it, so nothing above ever reaches it, and without this
 bucket such worktrees pile up for ever. Its candidate is the worktree alone,
 and its tip is the entry's `HEAD` sha. Step 6 checks it like the worktree of a
 branch about to go, and step 7 removes it where those checks prove nothing is
-lost. A `bare` entry, and the main checkout, are never in it.
+lost. A `bare` entry, the main checkout, and a detached entry whose
+directory does not exist are never in it (step 6 handles the last).
 
 **Bucket C — everything else.** Leave alone, silently.
 
@@ -426,11 +427,18 @@ step 6's merged-PR check, and it applies only in bucket A.
 
 ## Step 6: Check for uncommitted work
 
-First, clear out worktree entries whose directory no longer exists:
+First, save `git -C <main> worktree list --porcelain`, then clear out worktree
+entries whose directory no longer exists:
 
 ```bash
 git -C <main> worktree prune -v 2>&1
 ```
+
+A detached entry's admin directory is the only ref to its commit, so a prune
+can leave that commit dangling. Compare the saved listing with a fresh one: each
+detached entry that is gone goes in the step 8 report with its path and the
+`HEAD` sha from the saved listing, which is what recovers the commit
+(`git branch <name> <sha>`) before gc does.
 
 This runs here, before anything reads a worktree, because the status check below
 would otherwise run `git -C` against a path that does not exist — which fails,
@@ -455,8 +463,8 @@ stop its administrative files being pruned, so a *locked* entry whose directory
 is gone survives it — and agent tooling locks the worktrees it creates (step 7),
 so that is the common flavour here rather than an exotic one.
 
-So for each branch the sweep proposes to delete, and each bucket W worktree,
-decide first whether its worktree directory is still there, and keep that distinct from a check that
+So for each branch the sweep proposes to delete, decide first whether its
+worktree directory is still there, and keep that distinct from a check that
 failed:
 
 - **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then `git -C <main>
@@ -465,7 +473,7 @@ failed:
   the report is built from.
 - **Path exists** → run the check below.
 
-Four things about that first bullet, each of which a plausible-looking
+Three things about that first bullet, each of which a plausible-looking
 alternative gets wrong:
 
 - **Test existence by probing the path** — `test -d "<worktree-path>"`, or
@@ -483,11 +491,8 @@ alternative gets wrong:
 - **Unlocking here is exempt from step 7's ask-before-unlocking rule.** That rule
   protects a working directory someone else may be using; here the directory is
   gone and the lock guards nothing, so the question would have one sensible
-  answer. The exemption is this case only — step 7's unlocking stays scoped to
-  the branches in the candidate set and bucket W.
-- **A bucket W worktree handled here is finished.** Its directory is gone and
-  its entry pruned, so there is nothing left to remove: report it among the
-  pruned entries and leave it out of step 7.
+  answer. The exemption is this case only, and for branches only — step 7's
+  unlocking stays scoped to the branches in the candidate set and bucket W.
 
   **The plain prune above is repo-wide and cannot be scoped**, and that is worth
   stating honestly rather than justifying away. `git worktree prune` takes no
@@ -505,8 +510,18 @@ alternative gets wrong:
   prune and git offers no scoped form, so this is a cost the skill accepts rather
   than one it avoids. Say so in the report if a prune removed anything.
 
+**A detached entry whose directory does not exist is never unlocked**, and is
+not in bucket W. Probe each detached entry's path the same way as a branch's
+(`test -d`, or `Test-Path`), since a locked one prints exactly like a live one.
+A branch's commits survive on the branch; a detached entry's only ref is the
+entry itself, and a missing path can be an unmounted drive or share, which is
+what a lock is for. So a locked one that survived the prune above is left
+exactly as it is and reported with its path, its lock reason and its `HEAD`
+sha.
+
 Then, for every branch about to be deleted whose worktree directory is still
-there, and every bucket W worktree, check it before touching it:
+there, and every bucket W worktree (whose directory exists, by definition),
+check it before touching it:
 
 ```bash
 git -C <worktree-path> status --porcelain
@@ -851,11 +866,13 @@ State plainly what happened:
   a squash-merge proven by a merged PR, that PR's number
 - Remote branches deleted, with the sha of each, and any remote delete that
   failed with what git said
-- Worktrees removed, naming the detached (bucket W) ones as such
+- Worktrees removed, naming the detached (bucket W) ones as such, each with
+  the sha it was on
 - **Worktree entries pruned**, from step 6's `git worktree prune -v 2>&1` output —
   separately from the line above, because these are entries whose directory was
   already gone rather than worktrees this run removed, the prune is repo-wide so
   some may belong to branches the sweep never considered, and it is irreversible.
+  A detached entry among them carries its path and the `HEAD` sha step 6 saved.
   Silence here is the normal case and needs no line at all
 - Anything kept, and why — uncommitted work (with the path), a failed `worktree
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
@@ -863,8 +880,9 @@ State plainly what happened:
   lacks, a branch in use by a running session or a lock naming a running pid, a
   base or head of open PRs, a never-diverged branch the user chose to keep, a
   branch excluded because it was
-  checked out, and a detached (bucket W) worktree kept for uncommitted work, a
-  running session, or the user's answer
+  checked out, a detached (bucket W) worktree kept for uncommitted work, a
+  running session, or the user's answer, and a locked detached entry whose
+  directory is missing, with its path, lock reason and `HEAD` sha
 - Where the session is now
 
 If nothing needed cleaning, say that in one line. A repo that was already clean
