@@ -1,0 +1,7 @@
+# Project config for the pr-review-loop skill. Read from the PR's base ref, so it
+# takes effect for other branches only once committed to main.
+
+# Opts this repo in to the loop taking a converged PR out of draft. The loop does
+# this only when every reviewer is satisfied, and never for a paused, capped or
+# unreviewed run.
+mark_ready_on_convergence: true
