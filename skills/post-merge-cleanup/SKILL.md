@@ -7,7 +7,9 @@ description: |
   branches the merge made stale, clearing stale worktree entries in its path.
   A branch merged into the default branch is deleted, locally and on the
   remote, without asking, unless a running Claude Code session is using it, or
-  it is the base or head of open PRs (checked with gh where available). Refuses to
+  it is the base or head of open PRs (checked with gh where available). A
+  squash-merged branch is deleted unasked too where gh shows a merged PR into
+  the default branch whose head is exactly the branch's tip. Refuses to
   delete anything holding uncommitted work, and asks rather than guessing
   wherever git cannot prove the work survived. Takes an optional path to a local
   checkout, for a repo other than the session's working directory. Use when the
@@ -66,8 +68,8 @@ step 1's `git rev-parse --path-format`, and the `locked` annotation in `git
 worktree list --porcelain` that steps 6 and 7 read. (The same release added
 `prunable`, which this skill deliberately does not rely on — step 6 says why.)
 Push rights on the remote, for step 7's remote deletes. `gh` is optional: step
-5 uses it to spare the bases and heads of open PRs, and falls back to a weaker test
-without it. No `jq`, and no network access beyond what `git fetch`, `git push
+5 uses it to spare the bases and heads of open PRs, and step 6 to prove a
+squash-merge; without it step 5 falls back to a weaker test and step 6 asks. No `jq`, and no network access beyond what `git fetch`, `git push
 --delete` and `gh` need.
 
 ## Step 1: Find the main checkout and leave any worktree
@@ -407,6 +409,8 @@ which is why step 3 matters so much.
 If a branch looks merged to the user but shows up in neither bucket, say so and
 leave it. Do not try to prove equivalence with `git cherry` or patch-id
 comparison and do not delete on a hunch — report it and let the user decide.
+The one proof of a squash-merge this skill accepts is the forge's own record,
+step 6's merged-PR check, and it applies only in bucket A.
 
 ## Step 6: Check for uncommitted work
 
@@ -556,7 +560,7 @@ commits it holds that the default branch does not:
 git -C <main> log <default-ref>..<branch> --oneline
 ```
 
-**This is the skill's containment oracle, and it is the only one.** Empty means
+**This is the skill's containment oracle**, and step 6's merged-PR check below is the only other proof it accepts. Empty means
 every commit on the branch is already in the default branch and deleting it
 loses nothing. Non-empty means it isn't, and what that implies differs by
 bucket:
@@ -565,8 +569,32 @@ bucket:
   Skip the branch and report it.
 - **Bucket A** — it is either a squash-merge (the commits are the pre-squash
   originals, and the same work is in the default branch under one new sha) or
-  work that never merged at all. **Git cannot tell these apart, and neither can
-  this skill.** Carry the list to step 7, which asks.
+  work that never merged at all. **Git cannot tell these apart**, so ask the
+  forge, below. Where it cannot answer, carry the list to step 7, which asks.
+
+**The merged-PR check, for bucket A with containment non-empty.** Where `gh`
+is available, look for a merged PR whose head was this branch's tip and whose
+base was the default branch:
+
+```bash
+git -C <main> rev-parse <branch>
+gh pr list --repo <url> --head <name> --base <default-branch> --state merged --json headRefOid --jq '.[].headRefOid'
+```
+
+`<url>` and `<name>` are as in step 5's open-PR check: the remote's URL, and
+the branch's upstream name without the `<remote>/` prefix, run against the
+parent repository too where the remote is a fork. **Proven** when any printed
+sha equals the branch's tip exactly: GitHub merged precisely what the branch
+holds, into the default branch, so the squash commit carries all of it. Step 7
+then deletes it without asking.
+
+Everything short of that stays a question: no `gh`, a failed call, no merged
+PR, or a merged PR whose head is an older commit. That last one is a branch
+that gained commits after its PR merged, and those commits exist nowhere else.
+A PR merged into some other base, such as an integration branch, does not
+count either, since its work may not have reached the default branch yet. Do
+not compare trees or patch-ids instead (step 5's squash-merge gap): the exact
+head sha is the only proof this check accepts.
 
 The remote copy gets the same check, `git -C <main> log <default-ref>..<remote>/<name>
 --oneline`, for every bucket R branch and every bucket B branch with a remote
@@ -613,7 +641,9 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   Second for the same reason the bullet above is first.
 - **Bucket A, containment empty** → `delete`, no question. The remote branch is
   gone and every commit is already in the default branch.
-- **Bucket A, containment non-empty** → **ask, and do not guess.** Show the
+- **Bucket A, containment non-empty, merged-PR check proven (step 6)** →
+  `delete`, no question. Report the PR number beside the branch's sha.
+- **Bucket A, containment non-empty, merged-PR check not proven** → **ask, and do not guess.** Show the
   branch and the commits step 6 listed, and say plainly that git cannot
   distinguish a squash-merge from work that never landed. The user's answer sets
   `delete` or `keep`.
