@@ -427,18 +427,39 @@ step 6's merged-PR check, and it applies only in bucket A.
 
 ## Step 6: Check for uncommitted work
 
-First, save `git -C <main> worktree list --porcelain`, then clear out worktree
-entries whose directory no longer exists:
+First, clear out worktree entries whose directory no longer exists — but
+rescue any detached commit the prune would orphan. A detached entry's admin
+directory is the only ref to its commit, so ask git what it would remove first:
+
+```bash
+git -C <main> worktree prune --dry-run -v 2>&1
+```
+
+Each line names `worktrees/<id>`. In `<git-common-dir>/worktrees/<id>/`, `HEAD`
+holds a bare sha for a detached entry (a branch entry's reads `ref: …`) and
+`gitdir` names its path; record both for every detached entry listed. For each
+detached one whose sha is not in the default branch (`git -C <main> merge-base
+--is-ancestor <sha> <default-ref>` exits anything but `0`), or whose `HEAD`
+cannot be read, keep its commits on a branch before pruning:
+
+```bash
+git -C <main> branch rescued/<id>-<short sha> <sha>
+```
+
+A branch of that name already at that sha counts as done. Where the rescue
+fails, or there is no sha to rescue, do not prune: report the entry, and skip
+every prune in this run. Otherwise prune:
 
 ```bash
 git -C <main> worktree prune -v 2>&1
 ```
 
-A detached entry's admin directory is the only ref to its commit, so a prune
-can leave that commit dangling. Compare the saved listing with a fresh one: each
-detached entry that is gone goes in the step 8 report with its path and the
-`HEAD` sha from the saved listing, which is what recovers the commit
-(`git branch <name> <sha>`) before gc does.
+**Every prune this skill runs takes the same rescue first**, including the
+per-branch one below. The dry run and the prune are not atomic, so an entry
+that loses its directory in between is pruned unrescued; that window is
+accepted. Report each detached entry a prune removed with its path,
+its sha, and the `rescued/…` branch where one was made, so the user can delete
+that branch once they no longer need it.
 
 This runs here, before anything reads a worktree, because the status check below
 would otherwise run `git -C` against a path that does not exist — which fails,
@@ -467,8 +488,10 @@ So for each branch the sweep proposes to delete, decide first whether its
 worktree directory is still there, and keep that distinct from a check that
 failed:
 
-- **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then `git -C <main>
-  worktree prune -v 2>&1`. Skip the status check, and treat none of it as a
+- **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then
+  the dry run, rescue and `git -C <main> worktree prune -v 2>&1` above. Where the
+  rescue blocked pruning this run, keep the branch and report that as the
+  reason. Skip the status check, and treat none of it as a
   failure. Both flags for the same reasons as above: its stderr output is what
   the report is built from.
 - **Path exists** → run the check below.
@@ -508,14 +531,16 @@ alternative gets wrong:
   worktree, plus that worktree's own HEAD, index and reflog. Recovery is manual —
   move the files aside, re-add the worktree, move them back. The sweep needs the
   prune and git offers no scoped form, so this is a cost the skill accepts rather
-  than one it avoids. Say so in the report if a prune removed anything.
+  than one it avoids. Say so in the report if a prune removed anything. A
+  detached entry's commits are not part of that cost: the rescue above keeps
+  them on a branch.
 
 **A detached entry whose directory does not exist is never unlocked**, and is
 not in bucket W. Probe each detached entry's path the same way as a branch's
 (`test -d`, or `Test-Path`), since a locked one prints exactly like a live one.
 A branch's commits survive on the branch; a detached entry's only ref is the
 entry itself, and a missing path can be an unmounted drive or share, which is
-what a lock is for. So a locked one that survived the prune above is left
+what a lock is for. So a locked one, which every prune skips, is left
 exactly as it is and reported with its path, its lock reason and its `HEAD`
 sha.
 
@@ -546,7 +571,8 @@ with its path.
 ### Running sessions
 
 A branch is **in use** when it is checked out in a worktree that a running
-Claude Code session has as its working directory. Claude Code registers each
+Claude Code session is working in — its working directory is the worktree or a
+directory below it. Claude Code registers each
 running session as a JSON file in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`,
 carrying `pid`, `sessionId` and `cwd`.
 
@@ -561,7 +587,9 @@ that follow. Otherwise, for every file there:
 - Skip it when `pid` is not running: `tasklist /FI "PID eq <pid>" /NH` on
   Windows (`//FI` from Git Bash) prints the pid only when it is, and `kill -0
   <pid>` answers elsewhere. Registry files outlive crashed sessions.
-- Otherwise, a branch whose worktree path equals `cwd` or contains it is in use.
+- Otherwise, a branch is in use when `cwd` is its worktree path or a directory
+  below it, compared on whole path components (`<wt>/sub` matches, `<wt>-old`
+  does not).
   Compare with slashes unified, and case-insensitively on Windows, where the
   registry writes `C:\...` and git writes `C:/...`.
 
@@ -757,7 +785,8 @@ No `--force`. Three failures are expected here and only the last is a problem:
   - it is not, and pass 1's question about this lock came back **approved** →
     unlock and retry the removal;
   - it is not, and pass 1's question about this lock came back **declined** →
-    keep the branch and report it with the lock reason.
+    keep the branch, or for bucket W the worktree, and report it with the
+    lock reason.
 
   Reading this error as a decline on its own reports a refusal nobody was asked
   for, and leaves the worktree and branch the run exists to remove both standing.
@@ -803,7 +832,8 @@ So split on whether the lock is demonstrably **yours**:
 - **Everything else** — the registry could not be read, so a lock naming another
   session may be a live one. Show the user the path and the lock reason verbatim
   and ask before unlocking, then **act on the answer**: approved → unlock and
-  remove, as above; declined → keep the branch and report it with the reason.
+  remove, as above; declined → keep the branch, or for bucket W the worktree,
+  and report it with the reason.
 
 **Ask in the batch**, in the same pass-1 question as the ambiguous branches, so
 three locked worktrees cost one question rather than three.
@@ -872,7 +902,8 @@ State plainly what happened:
   separately from the line above, because these are entries whose directory was
   already gone rather than worktrees this run removed, the prune is repo-wide so
   some may belong to branches the sweep never considered, and it is irreversible.
-  A detached entry among them carries its path and the `HEAD` sha step 6 saved.
+  A detached entry among them carries its path, its sha, and any `rescued/…`
+  branch step 6 made.
   Silence here is the normal case and needs no line at all
 - Anything kept, and why — uncommitted work (with the path), a failed `worktree
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
