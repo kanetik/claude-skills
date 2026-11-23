@@ -578,13 +578,14 @@ base was the default branch:
 
 ```bash
 git -C <main> rev-parse <branch>
-gh pr list --repo <url> --head <name> --base <default-branch> --state merged --json headRefOid --jq '.[].headRefOid'
+gh pr list --repo <url> --head <name> --base <default-branch> --state merged --json number,headRefOid --jq '.[] | "\(.number) \(.headRefOid)"'
 ```
 
 `<url>` and `<name>` are as in step 5's open-PR check: the remote's URL, and
 the branch's upstream name without the `<remote>/` prefix, run against the
-parent repository too where the remote is a fork. **Proven** when any printed
-sha equals the branch's tip exactly: GitHub merged precisely what the branch
+parent repository too where the remote is a fork. Each line is a PR number and
+its head sha. **Proven** when any printed sha equals the branch's tip exactly,
+and that line's number is the PR step 7 reports: GitHub merged precisely what the branch
 holds, into the default branch, so the squash commit carries all of it. Step 7
 then deletes it without asking.
 
@@ -802,7 +803,8 @@ State plainly what happened:
   pulled — and where the switch or the pull did not happen, say so and why,
   since that is the difference between the user being left on an updated default
   branch and being left where they started
-- Branches deleted, with the sha of each and which bucket it came from
+- Branches deleted, with the sha of each and which bucket it came from, and for
+  a squash-merge proven by a merged PR, that PR's number
 - Remote branches deleted, with the sha of each, and any remote delete that
   failed with what git said
 - Worktrees removed
