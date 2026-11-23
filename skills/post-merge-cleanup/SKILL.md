@@ -5,6 +5,9 @@ description: |
   back to the main checkout, prunes remote-tracking refs, fast-forwards the
   default branch, then removes the worktrees, local branches and remote
   branches the merge made stale, clearing stale worktree entries in its path.
+  A clean detached worktree whose commit is already in the default branch, and
+  that no running session uses, is removed too; one holding commits found
+  nowhere else is asked about.
   A branch merged into the default branch is deleted, locally and on the
   remote, without asking, unless a running Claude Code session is using it, or
   it is the base or head of open PRs (checked with gh where available). A
@@ -386,6 +389,16 @@ is the head of an open PR: this fallback is weaker than the `gh` check.
 A bucket B branch that was never pushed has no remote branch to protect, so the
 check does not apply to it.
 
+**Bucket W — detached worktrees.** Every linked worktree in `git -C <main>
+worktree list --porcelain` whose entry carries `detached` rather than a
+`branch` line: a review checkout, a test of a PR's head, a session's scratch
+tree. No branch names it, so nothing above ever reaches it, and without this
+bucket such worktrees pile up for ever. Its candidate is the worktree alone,
+and its tip is the entry's `HEAD` sha. Step 6 checks it like the worktree of a
+branch about to go, and step 7 removes it where those checks prove nothing is
+lost. A `bare` entry, the main checkout, and a detached entry whose
+directory does not exist are never in it (step 6 handles the last).
+
 **Bucket C — everything else.** Leave alone, silently.
 
 **Two branches never go in bucket A or B**, and both exclusions are needed:
@@ -414,11 +427,39 @@ step 6's merged-PR check, and it applies only in bucket A.
 
 ## Step 6: Check for uncommitted work
 
-First, clear out worktree entries whose directory no longer exists:
+First, clear out worktree entries whose directory no longer exists — but
+rescue any detached commit the prune would orphan. A detached entry's admin
+directory is the only ref to its commit, so ask git what it would remove first:
+
+```bash
+git -C <main> worktree prune --dry-run -v 2>&1
+```
+
+Each line names `worktrees/<id>`. In `<git-common-dir>/worktrees/<id>/`, `HEAD`
+holds a bare sha for a detached entry (a branch entry's reads `ref: …`) and
+`gitdir` names its path; record both for every detached entry listed. For each
+detached one whose sha is not in the default branch (`git -C <main> merge-base
+--is-ancestor <sha> <default-ref>` exits anything but `0`), or whose `HEAD`
+cannot be read, keep its commits on a branch before pruning:
+
+```bash
+git -C <main> branch rescued/<id>-<short sha> <sha>
+```
+
+A branch of that name already at that sha counts as done. Where the rescue
+fails, or there is no sha to rescue, do not prune: report the entry, and skip
+every prune in this run. Otherwise prune:
 
 ```bash
 git -C <main> worktree prune -v 2>&1
 ```
+
+**Every prune this skill runs takes the same rescue first**, including the
+per-branch one below. The dry run and the prune are not atomic, so an entry
+that loses its directory in between is pruned unrescued; that window is
+accepted. Report each detached entry a prune removed with its path,
+its sha, and the `rescued/…` branch where one was made, so the user can delete
+that branch once they no longer need it.
 
 This runs here, before anything reads a worktree, because the status check below
 would otherwise run `git -C` against a path that does not exist — which fails,
@@ -447,8 +488,10 @@ So for each branch the sweep proposes to delete, decide first whether its
 worktree directory is still there, and keep that distinct from a check that
 failed:
 
-- **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then `git -C <main>
-  worktree prune -v 2>&1`. Skip the status check, and treat none of it as a
+- **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then
+  the dry run, rescue and `git -C <main> worktree prune -v 2>&1` above. Where the
+  rescue blocked pruning this run, keep the branch and report that as the
+  reason. Skip the status check, and treat none of it as a
   failure. Both flags for the same reasons as above: its stderr output is what
   the report is built from.
 - **Path exists** → run the check below.
@@ -471,8 +514,8 @@ alternative gets wrong:
 - **Unlocking here is exempt from step 7's ask-before-unlocking rule.** That rule
   protects a working directory someone else may be using; here the directory is
   gone and the lock guards nothing, so the question would have one sensible
-  answer. The exemption is this case only — step 7's unlocking stays scoped to
-  the branches in the candidate set.
+  answer. The exemption is this case only, and for branches only — step 7's
+  unlocking stays scoped to the branches in the candidate set and bucket W.
 
   **The plain prune above is repo-wide and cannot be scoped**, and that is worth
   stating honestly rather than justifying away. `git worktree prune` takes no
@@ -488,10 +531,22 @@ alternative gets wrong:
   worktree, plus that worktree's own HEAD, index and reflog. Recovery is manual —
   move the files aside, re-add the worktree, move them back. The sweep needs the
   prune and git offers no scoped form, so this is a cost the skill accepts rather
-  than one it avoids. Say so in the report if a prune removed anything.
+  than one it avoids. Say so in the report if a prune removed anything. A
+  detached entry's commits are not part of that cost: the rescue above keeps
+  them on a branch.
+
+**A detached entry whose directory does not exist is never unlocked**, and is
+not in bucket W. Probe each detached entry's path the same way as a branch's
+(`test -d`, or `Test-Path`), since a locked one prints exactly like a live one.
+A branch's commits survive on the branch; a detached entry's only ref is the
+entry itself, and a missing path can be an unmounted drive or share, which is
+what a lock is for. So a locked one, which every prune skips, is left
+exactly as it is and reported with its path, its lock reason and its `HEAD`
+sha.
 
 Then, for every branch about to be deleted whose worktree directory is still
-there, check it before touching it:
+there, and every bucket W worktree (whose directory exists, by definition),
+check it before touching it:
 
 ```bash
 git -C <worktree-path> status --porcelain
@@ -510,10 +565,14 @@ worktree exists nowhere else.
 Ignored files are not checked and not asked about: a worktree that is otherwise
 deletable goes with everything in it, ignored or not.
 
+A bucket W worktree with any output is skipped the same way: kept, and reported
+with its path.
+
 ### Running sessions
 
 A branch is **in use** when it is checked out in a worktree that a running
-Claude Code session has as its working directory. Claude Code registers each
+Claude Code session is working in — its working directory is the worktree or a
+directory below it. Claude Code registers each
 running session as a JSON file in `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`,
 carrying `pid`, `sessionId` and `cwd`.
 
@@ -528,7 +587,9 @@ that follow. Otherwise, for every file there:
 - Skip it when `pid` is not running: `tasklist /FI "PID eq <pid>" /NH` on
   Windows (`//FI` from Git Bash) prints the pid only when it is, and `kill -0
   <pid>` answers elsewhere. Registry files outlive crashed sessions.
-- Otherwise, a branch whose worktree path equals `cwd` or contains it is in use.
+- Otherwise, a branch is in use when `cwd` is its worktree path or a directory
+  below it, compared on whole path components (`<wt>/sub` matches, `<wt>-old`
+  does not).
   Compare with slashes unified, and case-insensitively on Windows, where the
   registry writes `C:\...` and git writes `C:/...`.
 
@@ -543,12 +604,16 @@ never a question. A session started outside the repo never matches by `cwd`, so
 a worktree it creates there is recognised as in use only if created locked
 that way: `git -C <repo> worktree add --lock --reason "pid <its pid>" …`.
 
+A bucket W worktree is in use on exactly the same tests, `cwd` or a lock naming
+a running pid, and is kept the same way.
+
 A reused pid can make a dead session look alive. That keeps a branch it could
 have deleted, which is the safe direction, so nothing more is checked.
 
 **If the registry directory does not exist or cannot be read, nothing is known
-about sessions**, so step 7 falls back to asking: bucket B branches, and locked
-worktrees whose lock is not this session's, go into its batched question.
+about sessions**, so step 7 falls back to asking: bucket B branches, bucket W
+worktrees, and locked worktrees whose lock is not this session's, go into its
+batched question.
 An empty directory is a reading, not a failure: no session is running.
 
 ### The containment check
@@ -597,6 +662,16 @@ count either, since its work may not have reached the default branch yet. Do
 not compare trees or patch-ids instead (step 5's squash-merge gap): the exact
 head sha is the only proof this check accepts.
 
+A bucket W worktree gets the same question about its tip:
+
+```bash
+git -C <main> merge-base --is-ancestor <HEAD sha> <default-ref>
+```
+
+Exit `0` means its commit is already in the default branch, so removing the
+worktree loses nothing. Anything else means the commit may exist only there,
+and step 7 asks.
+
 The remote copy gets the same check, `git -C <main> log <default-ref>..<remote>/<name>
 --oneline`, for every bucket R branch and every bucket B branch with a remote
 branch (step 5), since someone may have pushed to it. Non-empty → keep the branch,
@@ -625,7 +700,8 @@ directory of a branch the user goes on to tell you to keep.
 
 Sort every candidate into `delete` or `keep`, using what step 6 established:
 
-- **Any branch step 6 skipped for uncommitted work** → `keep`, before any other
+- **Any branch or bucket W worktree step 6 skipped for uncommitted work** →
+  `keep`, before any other
   bullet is considered. Report it with its worktree path so the user can go and
   look. No question is asked about it and nothing below applies to it.
 
@@ -637,7 +713,8 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   underneath you". Git refuses the deletion either way; the lock and the
   explanation are what get lost.
 
-- **Any branch step 6 found in use by a running session** → `keep`, with the
+- **Any branch or bucket W worktree step 6 found in use by a running session**
+  → `keep`, with the
   session's `pid` and the `cwd` or lock reason that matched in the report.
   Second for the same reason the bullet above is first.
 - **Bucket A, containment empty** → `delete`, no question. The remote branch is
@@ -662,13 +739,19 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
 - **Bucket R, containment empty, and step 5's open-PR check passed** → `delete`
   from the remote, no question.
   Non-empty → `keep` and report.
+- **Bucket W, tip contained (step 6)** → `delete` the worktree, no question.
+  Where step 6 could not read the session registry, **ask** instead, as for
+  bucket B: nothing then says the worktree is not in use.
+- **Bucket W, tip not contained** → **ask**, showing its path and its tip's
+  `git -C <main> log --oneline -5 <HEAD sha>`. Removing it can drop commits
+  that exist nowhere else.
 
 **Everything needing an answer goes into one question**: those ambiguous bucket A
 branches, the bucket B and R branches step 5's first-parent fallback caught, any
 bucket B branches
-that reached the ask because the registry could not be read, and any **locked
-worktree belonging to a branch in this candidate
-set** whose lock the rule below says to ask about. Not the branches the bullets
+that reached the ask because the registry could not be read, the bucket W
+worktrees that reached the ask, and any **locked worktree belonging to a branch
+in this candidate set, or in bucket W,** whose lock the rule below says to ask about. Not the branches the bullets
 above already sorted — those are decided, not open.
 Three of each costs one question, not nine. **Do not ask per branch** — that
 trains the user to say yes without reading, which costs exactly the case the
@@ -702,7 +785,8 @@ No `--force`. Three failures are expected here and only the last is a problem:
   - it is not, and pass 1's question about this lock came back **approved** →
     unlock and retry the removal;
   - it is not, and pass 1's question about this lock came back **declined** →
-    keep the branch and report it with the lock reason.
+    keep the branch, or for bucket W the worktree, and report it with the
+    lock reason.
 
   Reading this error as a decline on its own reports a refusal nobody was asked
   for, and leaves the worktree and branch the run exists to remove both standing.
@@ -711,6 +795,9 @@ No `--force`. Three failures are expected here and only the last is a problem:
 
 Step 6 already established the worktree is clean, so `--force` buys nothing here
 that is not already covered.
+
+A bucket W worktree takes the same removal and the same lock rule, and has no
+branch to delete afterwards.
 
 ### Locked worktrees
 
@@ -737,14 +824,16 @@ So split on whether the lock is demonstrably **yours**:
   rather than likely — but it is the reason the second half is there, and the
   reason collapsing this to "the tool said we left it, so it is ours" is wrong.
   Where you cannot tell, you cannot tell: take one of the bullets below.
-- **Step 6 read the session registry.** A branch in use never reaches `delete`,
+- **Step 6 read the session registry.** A branch or bucket W worktree in use
+  never reaches `delete`,
   so no running session is in this worktree and the lock guards nothing a clean,
   fully decided worktree still needs. `git -C <main> worktree unlock <path>`, then remove.
   No question.
 - **Everything else** — the registry could not be read, so a lock naming another
   session may be a live one. Show the user the path and the lock reason verbatim
   and ask before unlocking, then **act on the answer**: approved → unlock and
-  remove, as above; declined → keep the branch and report it with the reason.
+  remove, as above; declined → keep the branch, or for bucket W the worktree,
+  and report it with the reason.
 
 **Ask in the batch**, in the same pass-1 question as the ambiguous branches, so
 three locked worktrees cost one question rather than three.
@@ -807,11 +896,14 @@ State plainly what happened:
   a squash-merge proven by a merged PR, that PR's number
 - Remote branches deleted, with the sha of each, and any remote delete that
   failed with what git said
-- Worktrees removed
+- Worktrees removed, naming the detached (bucket W) ones as such, each with
+  the sha it was on
 - **Worktree entries pruned**, from step 6's `git worktree prune -v 2>&1` output —
   separately from the line above, because these are entries whose directory was
   already gone rather than worktrees this run removed, the prune is repo-wide so
   some may belong to branches the sweep never considered, and it is irreversible.
+  A detached entry among them carries its path, its sha, and any `rescued/…`
+  branch step 6 made.
   Silence here is the normal case and needs no line at all
 - Anything kept, and why — uncommitted work (with the path), a failed `worktree
   remove`, an ambiguous branch the user chose to keep, a bucket B branch that
@@ -819,7 +911,9 @@ State plainly what happened:
   lacks, a branch in use by a running session or a lock naming a running pid, a
   base or head of open PRs, a never-diverged branch the user chose to keep, a
   branch excluded because it was
-  checked out
+  checked out, a detached (bucket W) worktree kept for uncommitted work, a
+  running session, or the user's answer, and a locked detached entry whose
+  directory is missing, with its path, lock reason and `HEAD` sha
 - Where the session is now
 
 If nothing needed cleaning, say that in one line. A repo that was already clean
