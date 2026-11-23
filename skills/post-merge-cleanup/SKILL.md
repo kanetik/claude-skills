@@ -455,8 +455,8 @@ stop its administrative files being pruned, so a *locked* entry whose directory
 is gone survives it — and agent tooling locks the worktrees it creates (step 7),
 so that is the common flavour here rather than an exotic one.
 
-So for each branch the sweep proposes to delete, decide first whether its
-worktree directory is still there, and keep that distinct from a check that
+So for each branch the sweep proposes to delete, and each bucket W worktree,
+decide first whether its worktree directory is still there, and keep that distinct from a check that
 failed:
 
 - **Path does not exist** → `git -C <main> worktree unlock <worktree-path>`, then `git -C <main>
@@ -465,7 +465,7 @@ failed:
   the report is built from.
 - **Path exists** → run the check below.
 
-Three things about that first bullet, each of which a plausible-looking
+Four things about that first bullet, each of which a plausible-looking
 alternative gets wrong:
 
 - **Test existence by probing the path** — `test -d "<worktree-path>"`, or
@@ -484,7 +484,10 @@ alternative gets wrong:
   protects a working directory someone else may be using; here the directory is
   gone and the lock guards nothing, so the question would have one sensible
   answer. The exemption is this case only — step 7's unlocking stays scoped to
-  the branches in the candidate set.
+  the branches in the candidate set and bucket W.
+- **A bucket W worktree handled here is finished.** Its directory is gone and
+  its entry pruned, so there is nothing left to remove: report it among the
+  pruned entries and leave it out of step 7.
 
   **The plain prune above is repo-wide and cannot be scoped**, and that is worth
   stating honestly rather than justifying away. `git worktree prune` takes no
@@ -565,8 +568,9 @@ A reused pid can make a dead session look alive. That keeps a branch it could
 have deleted, which is the safe direction, so nothing more is checked.
 
 **If the registry directory does not exist or cannot be read, nothing is known
-about sessions**, so step 7 falls back to asking: bucket B branches, and locked
-worktrees whose lock is not this session's, go into its batched question.
+about sessions**, so step 7 falls back to asking: bucket B branches, bucket W
+worktrees, and locked worktrees whose lock is not this session's, go into its
+batched question.
 An empty directory is a reading, not a failure: no session is running.
 
 ### The containment check
@@ -653,7 +657,8 @@ directory of a branch the user goes on to tell you to keep.
 
 Sort every candidate into `delete` or `keep`, using what step 6 established:
 
-- **Any branch step 6 skipped for uncommitted work** → `keep`, before any other
+- **Any branch or bucket W worktree step 6 skipped for uncommitted work** →
+  `keep`, before any other
   bullet is considered. Report it with its worktree path so the user can go and
   look. No question is asked about it and nothing below applies to it.
 
@@ -665,7 +670,8 @@ Sort every candidate into `delete` or `keep`, using what step 6 established:
   underneath you". Git refuses the deletion either way; the lock and the
   explanation are what get lost.
 
-- **Any branch step 6 found in use by a running session** → `keep`, with the
+- **Any branch or bucket W worktree step 6 found in use by a running session**
+  → `keep`, with the
   session's `pid` and the `cwd` or lock reason that matched in the report.
   Second for the same reason the bullet above is first.
 - **Bucket A, containment empty** → `delete`, no question. The remote branch is
@@ -774,7 +780,8 @@ So split on whether the lock is demonstrably **yours**:
   rather than likely — but it is the reason the second half is there, and the
   reason collapsing this to "the tool said we left it, so it is ours" is wrong.
   Where you cannot tell, you cannot tell: take one of the bullets below.
-- **Step 6 read the session registry.** A branch in use never reaches `delete`,
+- **Step 6 read the session registry.** A branch or bucket W worktree in use
+  never reaches `delete`,
   so no running session is in this worktree and the lock guards nothing a clean,
   fully decided worktree still needs. `git -C <main> worktree unlock <path>`, then remove.
   No question.
@@ -856,7 +863,8 @@ State plainly what happened:
   lacks, a branch in use by a running session or a lock naming a running pid, a
   base or head of open PRs, a never-diverged branch the user chose to keep, a
   branch excluded because it was
-  checked out
+  checked out, and a detached (bucket W) worktree kept for uncommitted work, a
+  running session, or the user's answer
 - Where the session is now
 
 If nothing needed cleaning, say that in one line. A repo that was already clean
